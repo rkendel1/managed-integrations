@@ -81,6 +81,7 @@ const BASE_SDL = /* GraphQL */ `
     currencyCode: String!
     totalPriceSet: MoneyBag!
     email: String
+    note: String
     customer: Customer
     lineItems(first: Int, after: String): LineItemConnection!
   }
@@ -110,6 +111,7 @@ export interface FixtureOrder {
   cancelledAt: string | null;
   currencyCode: string;
   email: string | null;
+  note?: string | null;
   lineItems: FixtureLineItem[];
 }
 
@@ -224,6 +226,7 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
       currencyCode: o.currencyCode,
       totalPriceSet: money(lineTotal(o), o.currencyCode),
       email: o.email,
+      note: o.note ?? null,
       customer: o.email ? { id: `gid://shopify/Customer/${o.legacyId}`, email: o.email } : null,
       lineItems: ({ first }: { first?: number }) => {
         const items = o.lineItems.slice(0, first ?? 50).map((li, i) => ({
@@ -332,6 +335,7 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
         cancelledAt: o.cancelledAt ?? existing?.cancelledAt ?? null,
         currencyCode: o.currencyCode ?? existing?.currencyCode ?? 'USD',
         email: o.email ?? existing?.email ?? null,
+        note: o.note ?? existing?.note ?? null,
         lineItems: o.lineItems,
       };
       state.orders.set(legacyId, order);
@@ -374,6 +378,26 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
       state.bucket = { available: bucketSize, at: Date.now() };
       state.requestLog.length = 0;
       state.nextLegacyId = 5000000001n;
+    },
+    webhookPayload(o: FixtureOrder) {
+      return {
+        id: Number(o.legacyId),
+        name: o.name,
+        created_at: o.createdAt,
+        updated_at: o.updatedAt,
+        cancelled_at: o.cancelledAt,
+        email: o.email,
+        customer: o.email ? { id: Number(o.legacyId), email: o.email } : null,
+        currency: o.currencyCode,
+        note: o.note ?? null,
+        line_items: o.lineItems.map((li, i) => ({
+          id: Number(`${o.legacyId}${i}`),
+          sku: li.sku,
+          title: li.title,
+          quantity: li.quantity,
+          price: li.unitPrice,
+        })),
+      };
     },
     /** Issue a token directly (fixture convenience for tests that do not exercise OAuth). */
     issueToken(scope = 'read_orders') {
@@ -546,6 +570,17 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
 
   /* fixture control endpoints, used by the demo CLI */
   app.post('/__fixture/orders', async (req) => control.upsertOrder(req.body as FixtureOrder));
+  /**
+   * The fixture's model of Shopify's REST `orders/create` webhook body for an order (the subset of the
+   * REST Order resource used by consumers: id, name, created_at, updated_at, email, customer, currency,
+   * note, line_items[].{sku,title,quantity,price}). Independent of any client code, so tests can compare
+   * a client's reconstruction against it.
+   */
+  app.get('/__fixture/orders/:legacyId/webhook-payload', async (req, reply) => {
+    const o = state.orders.get((req.params as { legacyId: string }).legacyId);
+    if (!o) return reply.code(404).send({ error: 'unknown order' });
+    return control.webhookPayload(o);
+  });
   app.post('/__fixture/seed', async (req) => {
     const b = req.body as { count: number; start?: string; stepMs?: number };
     return control.seedOrders(b.count, {

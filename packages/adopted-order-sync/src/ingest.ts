@@ -11,7 +11,8 @@ import { ADOPTED_FLOW_TYPE } from './contract.ts';
 
 export const SUPPORTED_TOPIC = 'orders/create';
 
-export type IngestDisposition = 'accepted' | 'duplicate_webhook' | 'already_delivered' | 'ignored_topic';
+export type IngestDisposition =
+  'accepted' | 'duplicate_webhook' | 'already_delivered' | 'ignored_topic' | 'joined_recovery';
 
 export interface IngestResult {
   httpStatus: 200 | 400 | 401 | 404;
@@ -114,44 +115,56 @@ export async function ingestShopifyWebhook(p: IngestParams): Promise<IngestResul
     const sourceId = `gid://shopify/Order/${legacyId}`;
     const createdAt = new Date(order.created_at ?? Date.now());
     const updatedAt = new Date(order.updated_at ?? order.created_at ?? Date.now());
-    const [existing] = await tx
-      .select()
-      .from(deliveries)
-      .where(eq(deliveries.idempotencyKey, `${integ.id}:${sourceId}`));
+    const key = `${integ.id}:${sourceId}`;
+    // Conflict-safe: a reconciliation recovery may create the same delivery concurrently.
+    const [created] = await tx
+      .insert(deliveries)
+      .values({
+        integrationId: integ.id,
+        idempotencyKey: key,
+        sourceId,
+        sourceLegacyId: legacyId,
+        sourceName: order.name,
+        sourceCreatedAt: createdAt,
+        sourceUpdatedAt: updatedAt,
+        latestSourceUpdatedAt: updatedAt,
+        externalId: `shopify-${legacyId}`,
+        outcome: 'pending',
+        receiptId,
+      })
+      .onConflictDoNothing()
+      .returning({ id: deliveries.id });
     let deliveryId: string;
     let execute = true;
     let finalDisposition: IngestDisposition = 'accepted';
-    if (!existing) {
-      const [row] = await tx
-        .insert(deliveries)
-        .values({
-          integrationId: integ.id,
-          idempotencyKey: `${integ.id}:${sourceId}`,
-          sourceId,
-          sourceLegacyId: legacyId,
-          sourceName: order.name,
-          sourceCreatedAt: createdAt,
-          sourceUpdatedAt: updatedAt,
-          latestSourceUpdatedAt: updatedAt,
-          externalId: `shopify-${legacyId}`,
-          outcome: 'pending',
-          receiptId,
-        })
-        .returning({ id: deliveries.id });
-      deliveryId = row!.id;
+    if (created) {
+      deliveryId = created.id;
     } else {
-      deliveryId = existing.id;
-      if (existing.outcome === 'delivered') {
+      const [existing] = await tx
+        .select()
+        .from(deliveries)
+        .where(eq(deliveries.idempotencyKey, key))
+        .for('update');
+      deliveryId = existing!.id;
+      if (existing!.outcome === 'delivered') {
         execute = false;
         finalDisposition = 'already_delivered';
-      } else if (existing.outcome === 'pending' || existing.outcome === 'running') {
+      } else if (existing!.outcome === 'pending' && existing!.receiptId == null) {
+        // A reconciliation recovery is waiting for its input: the real webhook payload takes precedence.
+        await tx
+          .update(deliveries)
+          .set({ receiptId, updatedAt: new Date() })
+          .where(eq(deliveries.id, existing!.id));
+        execute = false; // the recovery job executes it (single execution path)
+        finalDisposition = 'joined_recovery';
+      } else if (existing!.outcome === 'pending' || existing!.outcome === 'running') {
         execute = false; // already queued/executing; the newer receipt is kept as evidence only
         finalDisposition = 'duplicate_webhook';
       } else {
         await tx
           .update(deliveries)
           .set({ outcome: 'pending', receiptId, updatedAt: new Date() })
-          .where(eq(deliveries.id, existing.id));
+          .where(eq(deliveries.id, existing!.id));
       }
     }
     await tx

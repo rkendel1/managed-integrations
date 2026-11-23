@@ -9,7 +9,7 @@
  * If any side cannot be read completely the outcome is `partial` or `unknown`, never `consistent`.
  */
 import { and, eq, gte, inArray, lte } from 'drizzle-orm';
-import { IntegrationConfigSchema, ProviderError, type ReconciliationOutcome } from '@mi/contracts';
+import { FLOW_TYPE, IntegrationConfigSchema, ProviderError, type ReconciliationOutcome } from '@mi/contracts';
 import { deliveries, integrations, reconciliationRuns, type Db } from '@mi/database';
 import { describeError, redact } from '@mi/observability';
 import {
@@ -334,13 +334,11 @@ export async function readDestination(
     );
     for (const l of rows) {
       // SuiteQL transactionline quantities on sales transactions may be stored negated; compare magnitudes.
-      records
-        .get(String(l.transaction))
-        ?.lines.push({
-          itemId: String(l.item),
-          quantity: Math.abs(Number(l.quantity)),
-          rateMinor: Math.abs(minor(l.rate)),
-        });
+      records.get(String(l.transaction))?.lines.push({
+        itemId: String(l.item),
+        quantity: Math.abs(Number(l.quantity)),
+        rateMinor: Math.abs(minor(l.rate)),
+      });
     }
   }
   return [...records.values()];
@@ -375,6 +373,10 @@ export interface ReconcileResult {
 export async function reconcile(p: ReconcileParams): Promise<ReconcileResult> {
   const [integration] = await p.db.select().from(integrations).where(eq(integrations.id, p.integrationId));
   if (!integration) throw new Error('integration not found');
+  // The native reconciliation is defined by the native contract; adopted integrations have their own.
+  if (integration.flowType !== FLOW_TYPE) {
+    throw new Error(`Native reconciliation does not apply to flow ${integration.flowType}`);
+  }
   const config = IntegrationConfigSchema.parse(integration.config);
   const watermark = integration.cursorWatermark ? new Date(integration.cursorWatermark) : null;
   const windowTo = p.windowTo ?? watermark ?? new Date(config.backfillFrom);

@@ -16,6 +16,10 @@ export const AdoptedConfigSchema = z.object({
   erp: z.literal('netsuite'),
   customerByEmail: z.record(z.string().email(), z.string().min(1)).default({}),
   defaultCustomer: z.string().min(1).default('WEB'),
+  /** Managed Integrations (not upstream): orders created on/after this are reconciled. Default: enrollment time. */
+  reconcileFrom: z.string().datetime({ offset: true }).optional(),
+  /** Orders newer than this are not reconciled yet (their webhook may still be in flight). */
+  reconcileGraceMinutes: z.number().int().min(0).max(1440).default(10),
 });
 export type AdoptedConfig = z.infer<typeof AdoptedConfigSchema>;
 

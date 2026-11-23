@@ -265,8 +265,10 @@ export const webhookReceipts = pgTable(
     shopDomain: text('shop_domain').notNull(),
     payloadCiphertext: text('payload_ciphertext').notNull(),
     payloadSha256: text('payload_sha256').notNull(),
-    /** accepted | duplicate_webhook | already_delivered | ignored_topic */
+    /** accepted | duplicate_webhook | already_delivered | ignored_topic | recovery_input */
     disposition: text('disposition').notNull(),
+    /** webhook: received from Shopify. reconciliation: execution input reconstructed from the Shopify Admin API. */
+    origin: text('origin').notNull().default('webhook'),
     deliveryId: uuid('delivery_id'),
     correlationId: text('correlation_id'),
     receivedAt: createdAt(),
@@ -400,10 +402,67 @@ export const reconciliationRuns = pgTable(
     recoveryEnqueued: integer('recovery_enqueued').notNull().default(0),
     errorMessage: text('error_message'),
     evidence: jsonb('evidence').notNull().default({}),
+    /** Adopted-flow scans: provider pagination cursor of the last durably processed page (resume point). */
+    cursor: text('cursor'),
+    pagesScanned: integer('pages_scanned').notNull().default(0),
+    /** Fenced lease: one scanner per run; an expired lease (dead worker) can be taken over. */
+    leaseOwner: text('lease_owner'),
+    leaseExpiresAt: ts('lease_expires_at'),
+    /** AppPort principal that requested the run (null for scheduled runs). */
+    requestedBy: text('requested_by'),
     startedAt: ts('started_at').notNull().defaultNow(),
     finishedAt: ts('finished_at'),
   },
   (t) => [index('reconciliation_runs_integration_idx').on(t.integrationId, t.startedAt)],
+);
+
+/**
+ * One source order discovered by a reconciliation scan of an adopted integration, its classification
+ * against local evidence and NetSuite, and its recovery lifecycle. Unique per (run, source order), so a
+ * repeated page or resumed scan updates rather than duplicates.
+ */
+export const reconciliationItems = pgTable(
+  'reconciliation_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => reconciliationRuns.id),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    integrationId: uuid('integration_id')
+      .notNull()
+      .references(() => integrations.id),
+    sourceOrderId: text('source_order_id').notNull(),
+    sourceLegacyId: text('source_legacy_id').notNull(),
+    orderName: text('order_name').notNull(),
+    sourceCreatedAt: ts('source_created_at').notNull(),
+    /** delivered | missing_delivery | pending_delivery | failed_delivery | destination_exists_untracked | ambiguous | undetermined | excluded */
+    classification: text('classification').notNull(),
+    reason: text('reason'),
+    deliveryId: uuid('delivery_id'),
+    /** NetSuite internal ids matched by externalId or order reference at classification time. */
+    destinationIds: text('destination_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    /** none | requested | executing | recovered | failed | unverified | skipped */
+    recoveryState: text('recovery_state').notNull().default('none'),
+    recoveryReason: text('recovery_reason'),
+    recoveryRequestedBy: text('recovery_requested_by'),
+    recoveryRequestId: text('recovery_request_id'),
+    recoveryRequestedAt: ts('recovery_requested_at'),
+    verifiedDestinationId: text('verified_destination_id'),
+    verifiedAt: ts('verified_at'),
+    verification: jsonb('verification').notNull().default({}),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('reconciliation_items_run_order_uq').on(t.runId, t.sourceOrderId),
+    index('reconciliation_items_integration_idx').on(t.integrationId, t.classification),
+  ],
 );
 
 /* ----------------------------------- Maintenance & release ----------------------------------- */

@@ -39,7 +39,8 @@ export function nextAutomaticRetryDelaySeconds(executions: number): number | nul
 }
 
 export interface ExecutionTrigger {
-  kind: 'webhook' | 'automatic_retry' | 'manual_retry';
+  kind: 'webhook' | 'automatic_retry' | 'manual_retry' | 'reconciliation_recovery';
+  runId?: string;
   principalId?: string;
   appportRequestId?: string;
   reason?: string;

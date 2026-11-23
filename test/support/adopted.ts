@@ -7,7 +7,9 @@ import { createHmac, randomBytes } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { ADOPTED_CONTRACT, ADOPTED_FLOW_TYPE, registerAdoptedContract } from '@mi/adopted-order-sync';
 import { connections, integrations, tenants } from '@mi/database';
+import type { AddressInfo } from 'node:net';
 import { generateNetSuiteKeyPair } from '@mi/integration-shopify-netsuite';
+import { createShopifyFixture } from '@mi/test-fixtures';
 import { testCipher, type Harness } from './harness.ts';
 
 export const ADOPTED_SHOP = 'bluewave-supply.myshopify.com';
@@ -25,14 +27,43 @@ export async function attachAdoptedTenant(h: Harness, opts: { name?: string; sho
     })
     .returning();
   const shop = opts.shop ?? ADOPTED_SHOP;
-  await db.insert(connections).values({
-    tenantId: tenant!.id,
-    providerId: 'shopify',
-    status: 'verified',
-    externalAccount: shop,
-    baseUrl: h.shopifyUrl,
-    grantedScopes: ['read_orders'],
-  });
+  // The adopted tenant's own Shopify store: a separate fixture instance (stores do not share orders).
+  const shopify = createShopifyFixture({ shopDomain: shop });
+  await shopify.app.listen({ port: 0, host: '127.0.0.1' });
+  const shopifyUrl = `http://127.0.0.1:${(shopify.app.server.address() as AddressInfo).port}`;
+  const closeHarness = h.close;
+  h.close = async () => {
+    await shopify.app.close();
+    await closeHarness();
+  };
+  const tok = shopify.control.issueToken('read_orders');
+  const [sc] = await db
+    .insert(connections)
+    .values({
+      tenantId: tenant!.id,
+      providerId: 'shopify',
+      status: 'verified',
+      externalAccount: shop,
+      baseUrl: shopifyUrl,
+      grantedScopes: ['read_orders'],
+    })
+    .returning();
+  await db
+    .update(connections)
+    .set({
+      credentialsCiphertext: testCipher.encrypt(
+        {
+          accessToken: tok.access_token,
+          refreshToken: tok.refresh_token,
+          accessTokenExpiresAt: new Date(Date.now() + tok.expires_in * 1000).toISOString(),
+          refreshTokenExpiresAt: new Date(Date.now() + tok.refresh_token_expires_in * 1000).toISOString(),
+          scope: tok.scope,
+        },
+        `connection:${sc!.id}`,
+      ),
+      credentialsKeyId: testCipher.keyId,
+    })
+    .where(sql`id = ${sc!.id}`);
   const kp = generateNetSuiteKeyPair();
   h.netsuite.control.registerPublicKey(kp.publicKeyPem);
   const [nc] = await db
@@ -73,7 +104,7 @@ export async function attachAdoptedTenant(h: Harness, opts: { name?: string; sho
       contractVersion: ADOPTED_CONTRACT.version,
     })
     .returning();
-  return { tenantId: tenant!.id, integrationId: integration!.id, shop };
+  return { tenantId: tenant!.id, integrationId: integration!.id, shop, shopify, shopifyUrl };
 }
 
 let orderSeq = 7_100_000_000;

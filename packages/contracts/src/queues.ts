@@ -10,6 +10,8 @@ export const QUEUES = {
   validation: 'validation.run',
   release: 'release.run',
   adoptedExecute: 'adopted.execute',
+  adoptedReconcile: 'adopted.reconcile',
+  adoptedRecover: 'adopted.recover',
 } as const;
 
 export const SyncJobSchema = z.object({
@@ -30,9 +32,11 @@ export const ReleaseJobSchema = z.object({ releaseId: z.string().uuid() });
 export const AdoptedExecuteJobSchema = z.object({
   deliveryId: z.string().uuid(),
   trigger: z.object({
-    kind: z.enum(['webhook', 'automatic_retry', 'manual_retry']),
+    kind: z.enum(['webhook', 'automatic_retry', 'manual_retry', 'reconciliation_recovery']),
     principalId: z.string().optional(),
     appportRequestId: z.string().optional(),
     reason: z.string().max(500).optional(),
   }),
 });
+export const AdoptedReconcileJobSchema = z.object({ runId: z.string().uuid() });
+export const AdoptedRecoverJobSchema = z.object({ itemId: z.string().uuid() });
