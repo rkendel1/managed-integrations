@@ -462,7 +462,11 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
           incidentId: job.incidentId,
           clients,
           enqueueExecution: async (deliveryId, trigger) => {
-            await boss.send(QUEUES.adoptedExecute, { deliveryId, trigger }, { singletonKey: `adopted:${deliveryId}` });
+            await boss.send(
+              QUEUES.adoptedExecute,
+              { deliveryId, trigger },
+              { singletonKey: `adopted:${deliveryId}` },
+            );
           },
           enqueueReconciliation: async (runId) => {
             await boss.send(QUEUES.adoptedReconcile, { runId }, { singletonKey: `adopted-recon:${runId}` });

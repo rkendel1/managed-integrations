@@ -18,7 +18,13 @@ import { loadServiceConfig } from '@mi/integration-shopify-netsuite';
 import { buildApp } from '../src/app.ts';
 import { hashPassword } from '../src/auth.ts';
 import { ensureQueues } from '../src/queues.ts';
-import { createHarness, FAST_RETRY, TEST_DB_URL, testCipher, type Harness } from '../../../test/support/harness.ts';
+import {
+  createHarness,
+  FAST_RETRY,
+  TEST_DB_URL,
+  testCipher,
+  type Harness,
+} from '../../../test/support/harness.ts';
 import { attachAdoptedTenant } from '../../../test/support/adopted.ts';
 import { maintenanceKit } from '../../../test/support/maintenance.ts';
 
@@ -38,7 +44,13 @@ beforeAll(async () => {
   const [integ] = await h.dbh.db.select().from(integrations).where(eq(integrations.id, a.integrationId));
   await h.dbh.db
     .update(integrations)
-    .set({ config: { ...(integ!.config as object), reconcileFrom: '2026-11-01T00:00:00Z', reconcileGraceMinutes: 0 } })
+    .set({
+      config: {
+        ...(integ!.config as object),
+        reconcileFrom: '2026-11-01T00:00:00Z',
+        reconcileGraceMinutes: 0,
+      },
+    })
     .where(eq(integrations.id, a.integrationId));
   clients = await adoptedClients(h.dbh.db, testCipher, h.endpoints, a.integrationId);
   kit = maintenanceKit(h, a, clients);
@@ -79,19 +91,30 @@ async function cookie(email: string) {
   return (r.headers.get('set-cookie') ?? '').split(';')[0]!;
 }
 async function ui(c: string) {
-  const client = createClient({ transport: createHttpTransport({ url: `${base}/appport`, headers: { cookie: c } }) });
+  const client = createClient({
+    transport: createHttpTransport({ url: `${base}/appport`, headers: { cookie: c } }),
+  });
   await client.connect();
   await client.load();
   return client;
 }
 async function mcp(c: string) {
   const client = new Client({ name: 'product-test', version: '1.0.0' });
-  await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { cookie: c } } }));
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`${base}/mcp`), { requestInit: { headers: { cookie: c } } }),
+  );
   return client;
 }
-type ToolResult = { isError?: boolean; structuredContent?: unknown; content?: { type: string; text?: string }[] };
+type ToolResult = {
+  isError?: boolean;
+  structuredContent?: unknown;
+  content?: { type: string; text?: string }[];
+};
 const json = (r: ToolResult) =>
-  (r.structuredContent ?? JSON.parse(r.content?.find((x) => x.type === 'text')?.text ?? 'null')) as Record<string, unknown>;
+  (r.structuredContent ?? JSON.parse(r.content?.find((x) => x.type === 'text')?.text ?? 'null')) as Record<
+    string,
+    unknown
+  >;
 const code = async (p: Promise<unknown>) => {
   try {
     await p;
@@ -100,10 +123,19 @@ const code = async (p: Promise<unknown>) => {
     return (e as { code?: string }).code ?? String(e);
   }
 };
-type Portfolio = { integrations: { id: string; status: { code: string; reason: string; definition: string } }[] };
-type Ev = { state: string; headline: string; facts: { label: string; value: string }[]; claim: { zeroLoss: boolean; statement: string | null }; customerAction: { required: boolean } };
+type Portfolio = {
+  integrations: { id: string; status: { code: string; reason: string; definition: string } }[];
+};
+type Ev = {
+  state: string;
+  headline: string;
+  facts: { label: string; value: string }[];
+  claim: { zeroLoss: boolean; statement: string | null };
+  customerAction: { required: boolean };
+};
 const statusOf = async (c: Awaited<ReturnType<typeof ui>>) =>
-  ((await c.call('portfolio.list', {})) as Portfolio).integrations.find((i) => i.id === a.integrationId)!.status;
+  ((await c.call('portfolio.list', {})) as Portfolio).integrations.find((i) => i.id === a.integrationId)!
+    .status;
 
 describe('customer product through AppPort', () => {
   it('status is not optimistic: no recent check → "checking"; a completed, consistent check → "protected"', async () => {
@@ -114,7 +146,10 @@ describe('customer product through AppPort', () => {
     const s = await startReconciliation(h.dbh.db, { integrationId: a.integrationId, trigger: 'manual' });
     await scanReconciliation({ db: h.dbh.db, runId: s.runId, workerId: 'w', clients, retry: FAST_RETRY });
     const st = await statusOf(c);
-    expect(st).toMatchObject({ code: 'protected', reason: expect.stringMatching(/checked 2 order\(s\).*all accounted for/) });
+    expect(st).toMatchObject({
+      code: 'protected',
+      reason: expect.stringMatching(/checked 2 order\(s\).*all accounted for/),
+    });
   });
 
   it('a provider change opens a maintenance event; the customer sees "maintaining" and no premature claim', async () => {
@@ -126,9 +161,21 @@ describe('customer product through AppPort', () => {
     const c = await ui(await cookie('ops@bluewave.test'));
     expect((await statusOf(c)).code).toBe('maintaining');
     const ev = (await c.call('maintenance.events.get', { eventId })) as Ev;
-    expect(ev).toMatchObject({ state: 'in_progress', claim: { zeroLoss: false, statement: null }, customerAction: { required: false } });
-    expect(ev.facts.find((f) => f.label === 'Change detected')!.value).toMatch(/2026-10 → 2027-01.*unit price of each order line/);
+    expect(ev).toMatchObject({
+      state: 'in_progress',
+      claim: { zeroLoss: false, statement: null },
+      customerAction: { required: false },
+    });
+    expect(ev.facts.find((f) => f.label === 'Change detected')!.value).toMatch(
+      /2026-10 → 2027-01.*unit price of each order line/,
+    );
     expect(ev.facts.find((f) => f.label === 'Transactions affected')!.value).toBe('Being established.');
+    // operators still see the operational detail, including the held orders
+    const op = await ui(await cookie('operator@mi.test'));
+    const list = (await op.call('deliveries.list', { integrationId: a.integrationId })) as {
+      counts: Record<string, number>;
+    };
+    expect(list.counts['held']).toBe(2);
   });
 
   it('after the lifecycle resolves it, the customer sees the verified outcome and a proven zero-loss claim (test 16)', async () => {
@@ -136,7 +183,9 @@ describe('customer product through AppPort', () => {
     expect(inc.status).toBe('resolved');
     const c = await ui(await cookie('ops@bluewave.test'));
     expect((await statusOf(c)).code).toBe('verified');
-    const ev = (await c.call('maintenance.events.get', { eventId })) as Ev & { accounting: Record<string, number> };
+    const ev = (await c.call('maintenance.events.get', { eventId })) as Ev & {
+      accounting: Record<string, number>;
+    };
     expect(ev).toMatchObject({
       state: 'completed',
       headline: 'We resolved a compatibility issue',
@@ -144,13 +193,26 @@ describe('customer product through AppPort', () => {
       customerAction: { required: false },
     });
     const fact = (l: string) => ev.facts.find((f) => f.label === l)!.value;
-    expect(fact('Transactions affected')).toMatch(/^3: 2 orders held and delayed; 1 order whose notification never reached us/);
+    expect(fact('Transactions affected')).toMatch(
+      /^3: 2 orders held and delayed; 1 order whose notification never reached us/,
+    );
     expect(fact('Transactions recovered')).toBe('3 of 3.');
     expect(fact('Final outcome')).toMatch(/^All 4 orders .* exactly once/);
     expect(fact('Customer action')).toBe('None required.');
     // the numbers on screen are the persisted accounting, not text
-    expect(ev.accounting).toMatchObject({ ordersInWindow: 4, delayed: 2, foundByChecking: 1, recovered: 3, verified: 4, unresolved: 0, duplicates: 0 });
-    const detail = (await c.call('portfolio.integration', { integrationId: a.integrationId })) as { responsibilities: string[]; maintenance: { id: string; zeroLoss: boolean }[] };
+    expect(ev.accounting).toMatchObject({
+      ordersInWindow: 4,
+      delayed: 2,
+      foundByChecking: 1,
+      recovered: 3,
+      verified: 4,
+      unresolved: 0,
+      duplicates: 0,
+    });
+    const detail = (await c.call('portfolio.integration', { integrationId: a.integrationId })) as {
+      responsibilities: string[];
+      maintenance: { id: string; zeroLoss: boolean }[];
+    };
     expect(detail.responsibilities.length).toBeGreaterThanOrEqual(4);
     expect(detail.maintenance.find((m) => m.id === eventId)).toMatchObject({ zeroLoss: true });
   });
@@ -159,8 +221,12 @@ describe('customer product through AppPort', () => {
     const customer = await ui(await cookie('ops@bluewave.test'));
     const viaCustomer = await customer.call('maintenance.events.get', { eventId });
     const m = await mcp(await cookie('operator@mi.test'));
-    const viaOperator = json((await m.callTool({ name: 'maintenance_events_get', arguments: { eventId } })) as ToolResult);
-    const evidence = json((await m.callTool({ name: 'maintenance_events_evidence', arguments: { eventId } })) as ToolResult);
+    const viaOperator = json(
+      (await m.callTool({ name: 'maintenance_events_get', arguments: { eventId } })) as ToolResult,
+    );
+    const evidence = json(
+      (await m.callTool({ name: 'maintenance_events_evidence', arguments: { eventId } })) as ToolResult,
+    );
     await m.close();
     expect(viaOperator).toEqual(viaCustomer);
     expect(evidence['event']).toEqual(viaCustomer);
@@ -177,7 +243,9 @@ describe('customer product through AppPort', () => {
   it('tenant isolation: another tenant cannot see the event or the integration (test 18)', async () => {
     const acme = await ui(await cookie('customer@acme.test'));
     expect(await code(acme.call('maintenance.events.get', { eventId }))).toBe('FORBIDDEN');
-    expect(await code(acme.call('portfolio.integration', { integrationId: a.integrationId }))).toBe('FORBIDDEN');
+    expect(await code(acme.call('portfolio.integration', { integrationId: a.integrationId }))).toBe(
+      'FORBIDDEN',
+    );
     const own = (await acme.call('portfolio.list', {})) as Portfolio;
     expect(own.integrations.map((i) => i.id)).toEqual([h.integrationId]);
     const m = await mcp(await cookie('customer@acme.test'));
@@ -190,8 +258,16 @@ describe('customer product through AppPort', () => {
     const m = await mcp(await cookie('operator@mi.test'));
     const tools = (await m.listTools()).tools;
     await m.close();
-    const maint = tools.filter((t) => /^(maintenance|portfolio)_/.test(t.name)).map((t) => t.name).sort();
-    expect(maint).toEqual(['maintenance_events_evidence', 'maintenance_events_get', 'portfolio_integration', 'portfolio_list']);
+    const maint = tools
+      .filter((t) => /^(maintenance|portfolio)_/.test(t.name))
+      .map((t) => t.name)
+      .sort();
+    expect(maint).toEqual([
+      'maintenance_events_evidence',
+      'maintenance_events_get',
+      'portfolio_integration',
+      'portfolio_list',
+    ]);
     expect(tools.map((t) => t.name).some((n) => /incident|resolve/.test(n))).toBe(false);
   });
 });

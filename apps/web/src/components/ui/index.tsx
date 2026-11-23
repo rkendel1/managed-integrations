@@ -99,6 +99,8 @@ const TONES: Record<string, VariantProps<typeof badgeVariants>['tone']> = {
   interrupted: 'warn',
   discrepancies: 'warn',
   recovered: 'good',
+  in_progress: 'info',
+  needs_you: 'warn',
   completed: 'good',
   missing_delivery: 'bad',
   failed_delivery: 'bad',

@@ -97,7 +97,7 @@ export async function attachAdoptedTenant(h: Harness, opts: { name?: string; sho
     .values({
       tenantId: tenant!.id,
       flowType: ADOPTED_FLOW_TYPE,
-      displayName: 'Shopify orders → NetSuite (adopted: shopify-erp-order-sync)',
+      displayName: 'Shopify → NetSuite orders',
       config: { erp: 'netsuite', customerByEmail: {}, defaultCustomer: 'WEB' },
       enabled: true,
       lifecycle: 'active',

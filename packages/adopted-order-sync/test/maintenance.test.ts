@@ -38,7 +38,13 @@ beforeEach(async () => {
   const [integ] = await db().select().from(integrations).where(eq(integrations.id, a.integrationId));
   await db()
     .update(integrations)
-    .set({ config: { ...(integ!.config as object), reconcileFrom: '2026-11-01T00:00:00Z', reconcileGraceMinutes: 0 } })
+    .set({
+      config: {
+        ...(integ!.config as object),
+        reconcileFrom: '2026-11-01T00:00:00Z',
+        reconcileGraceMinutes: 0,
+      },
+    })
     .where(eq(integrations.id, a.integrationId));
   clients = await adoptedClients(db(), testCipher, h.endpoints, a.integrationId);
   delete process.env.PROVIDER_DOCS_DIR;
@@ -81,7 +87,10 @@ describe('maintenance lifecycle: provider input change on the adopted flow', () 
     const f = inc!.finding as Finding;
     expect(inc!.integrationId).toBe(a.integrationId);
     expect(inc!.tenantId).toBe(a.tenantId);
-    expect(f.dependency).toMatchObject({ integrationId: a.integrationId, upstream: { commit: ADOPTED.commit } });
+    expect(f.dependency).toMatchObject({
+      integrationId: a.integrationId,
+      upstream: { commit: ADOPTED.commit },
+    });
     expect(f.expected.baseline).toMatchObject({ apiVersion: '2026-10' });
     expect(f.observed).toMatchObject({ apiVersion: '2027-01', deliveryId: s.held[0]!.deliveryId });
     expect(f.observed.violations).toEqual([
@@ -101,9 +110,16 @@ describe('maintenance lifecycle: provider input change on the adopted flow', () 
     expect(inc.status, states.join('\n')).toBe('resolved');
 
     // investigation: the actual upstream code path, and what the real code would have done
-    const inv = inc.investigation as { codePaths: { reads: { file: string; line: number; code: string; matchesPinnedCommit: boolean }[] }[]; dryRun: { wouldSendInvalidRate: number } };
+    const inv = inc.investigation as {
+      codePaths: { reads: { file: string; line: number; code: string; matchesPinnedCommit: boolean }[] }[];
+      dryRun: { wouldSendInvalidRate: number };
+    };
     expect(inv.codePaths[0]!.reads).toEqual([
-      expect.objectContaining({ file: 'src/mapping.js', code: expect.stringContaining('Number(l.price)'), matchesPinnedCommit: true }),
+      expect.objectContaining({
+        file: 'src/mapping.js',
+        code: expect.stringContaining('Number(l.price)'),
+        matchesPinnedCommit: true,
+      }),
     ]);
     expect(inv.dryRun.wouldSendInvalidRate).toBe(1);
 
@@ -111,13 +127,20 @@ describe('maintenance lifecycle: provider input change on the adopted flow', () 
     const [integ] = await db().select().from(integrations).where(eq(integrations.id, a.integrationId));
     const config = AdoptedConfigSchema.parse(integ!.config);
     expect(config.inputCompat).toEqual([
-      expect.objectContaining({ target: 'line_items[].price', source: 'line_items[].price_set.shop_money.amount', maintenanceEventId: incidentId }),
+      expect.objectContaining({
+        target: 'line_items[].price',
+        source: 'line_items[].price_set.shop_money.amount',
+        maintenanceEventId: incidentId,
+      }),
     ]);
     const mapping = readFileSync(join(upstreamDir(), 'src/mapping.js'));
     expect(createHash('sha256').update(mapping).digest('hex')).toBe(ADOPTED.fileSha256['src/mapping.js']);
 
     // validation ran separately, with real checks
-    const val = inc.validation as { passed: boolean; checks: { name: string; passed: boolean; detail: string }[] };
+    const val = inc.validation as {
+      passed: boolean;
+      checks: { name: string; passed: boolean; detail: string }[];
+    };
     expect(val.passed).toBe(true);
     expect(val.checks.map((c) => c.name)).toEqual([
       'upstream unmodified',
@@ -149,12 +172,17 @@ describe('maintenance lifecycle: provider input change on the adopted flow', () 
       expect(recs[0]!.item.items.map((l) => l.rate)).toEqual(o.lineItems.map((l) => Number(l.unitPrice)));
     }
     // the delayed orders went through the normal execution path with the rule applied
-    const delayedRows = await db().select().from(deliveries).where(eq(deliveries.integrationId, a.integrationId));
+    const delayedRows = await db()
+      .select()
+      .from(deliveries)
+      .where(eq(deliveries.integrationId, a.integrationId));
     expect(delayedRows.filter((d) => d.outcome !== 'delivered')).toHaveLength(0);
 
     // timeline: customer-visible steps exist; resolution carries verification evidence
     const tl = await db().select().from(incidentEvents).where(eq(incidentEvents.incidentId, incidentId));
-    expect(tl.map((e) => e.toStatus)).toEqual(expect.arrayContaining(['investigating', 'recovery', 'verification', 'resolved']));
+    expect(tl.map((e) => e.toStatus)).toEqual(
+      expect.arrayContaining(['investigating', 'recovery', 'verification', 'resolved']),
+    );
     expect(inc.verification).toMatchObject({ passed: true, duplicates: 0 });
 
     // after the correction, new orders in the changed format flow normally and open nothing new
@@ -162,7 +190,12 @@ describe('maintenance lifecycle: provider input change on the adopted flow', () 
     const r = await webhook(later.legacyId);
     expect(r.exec).toMatchObject({ executed: true, outcome: 'delivered' });
     expect(nsRecords(later.legacyId)[0]!.item.items[0]!.rate).toBe(7.25);
-    expect(await db().select().from(incidents).where(and(eq(incidents.kind, MAINTENANCE_KIND)))).toHaveLength(1);
+    expect(
+      await db()
+        .select()
+        .from(incidents)
+        .where(and(eq(incidents.kind, MAINTENANCE_KIND))),
+    ).toHaveLength(1);
   });
 
   it('an event cannot be resolved without the required persisted evidence (test 15)', async () => {
@@ -172,10 +205,18 @@ describe('maintenance lifecycle: provider input change on the adopted flow', () 
     await transitionIncident(db(), id, 'recovery', { actor: 'operator:x', note: 'skip' });
     await transitionIncident(db(), id, 'verification', { actor: 'operator:x', note: 'skip' });
     await expect(
-      transitionIncident(db(), id, 'resolved', { actor: 'operator:x', note: 'looks fine', verification: { passed: true } }),
+      transitionIncident(db(), id, 'resolved', {
+        actor: 'operator:x',
+        note: 'looks fine',
+        verification: { passed: true },
+      }),
     ).rejects.toThrow(InvalidIncidentTransition);
     await expect(
-      transitionIncident(db(), id, 'resolved', { actor: 'operator:x', note: 'x', verification: { passed: true } }),
+      transitionIncident(db(), id, 'resolved', {
+        actor: 'operator:x',
+        note: 'x',
+        verification: { passed: true },
+      }),
     ).rejects.toThrow(/correction not validated.*no correction activated.*no transaction accounting/);
     const [inc] = await db().select().from(incidents).where(eq(incidents.id, id));
     expect(inc!.status).toBe('verification');
@@ -186,7 +227,9 @@ describe('maintenance lifecycle: provider input change on the adopted flow', () 
     const s = await scenario();
     const { inc } = await drive(s.held[0]!.finding!.incidentId);
     expect(inc.status).toBe('investigating');
-    expect((inc.evidence as { maintenance: { escalated: string } }).maintenance.escalated).toMatch(/changelog unavailable/i);
+    expect((inc.evidence as { maintenance: { escalated: string } }).maintenance.escalated).toMatch(
+      /changelog unavailable/i,
+    );
     expect(inc.accounting).toBeNull();
     const [integ] = await db().select().from(integrations).where(eq(integrations.id, a.integrationId));
     expect(AdoptedConfigSchema.parse(integ!.config).inputCompat).toEqual([]);
@@ -204,7 +247,9 @@ describe('maintenance lifecycle: provider input change on the adopted flow', () 
     const acc = inc.accounting as Accounting;
     expect(acc.unresolved).toBe(1);
     expect(acc.zeroLoss).toBe(false);
-    expect((inc.evidence as { maintenance: { escalated: string } }).maintenance.escalated).toMatch(/1 transaction\(s\) unresolved/);
+    expect((inc.evidence as { maintenance: { escalated: string } }).maintenance.escalated).toMatch(
+      /1 transaction\(s\) unresolved/,
+    );
     expect(inc.resolvedAt).toBeNull();
   });
 

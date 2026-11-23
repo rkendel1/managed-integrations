@@ -40,7 +40,9 @@ const statusSchema = s.object({
   reason: s.string(),
   basis: s.object({ incidentId: s.optional(s.string()), reconciliationRunId: s.optional(s.string()) }),
 });
-const lastVerifiedSchema = s.nullable(s.object({ at: s.string(), ordersChecked: s.integer(), statement: s.string() }));
+const lastVerifiedSchema = s.nullable(
+  s.object({ at: s.string(), ordersChecked: s.integer(), statement: s.string() }),
+);
 const eventSummarySchema = s.object({
   id: s.string(),
   category: s.string(),
@@ -75,7 +77,11 @@ const eventSchema = s.object({
       duplicates: s.integer(),
     }),
   ),
-  claim: s.object({ zeroLoss: s.boolean('proven zero loss'), statement: s.nullable(s.string()), basis: s.string() }),
+  claim: s.object({
+    zeroLoss: s.boolean('proven zero loss'),
+    statement: s.nullable(s.string()),
+    basis: s.string(),
+  }),
   customerAction: s.object({ required: s.boolean('customer action required'), text: s.nullable(s.string()) }),
   timeline: s.array(s.object({ at: s.string(), text: s.string() })),
 });
@@ -127,7 +133,9 @@ async function assess(db: Db, integ: typeof integrations.$inferSelect): Promise<
         }
       : null,
     openIssues: open.length,
-    customerActions: open.filter((i) => i.status === 'requires_action').map((i) => i.customerAction ?? i.title),
+    customerActions: open
+      .filter((i) => i.status === 'requires_action')
+      .map((i) => i.customerAction ?? i.title),
   };
 }
 
@@ -139,7 +147,10 @@ const tenantOf = (input: { tenantId?: string }, principal: Parameters<typeof ten
 
 export function createPortfolioListCapability(
   db: Db,
-): CapabilityDefinition<{ tenantId?: string }, { tenant: { id: string; name: string }; statusDefinitions: unknown; integrations: IntegrationAssessment[] }> {
+): CapabilityDefinition<
+  { tenantId?: string },
+  { tenant: { id: string; name: string }; statusDefinitions: unknown; integrations: IntegrationAssessment[] }
+> {
   return defineCapability({
     name: 'portfolio.list',
     version: 1,
@@ -167,7 +178,11 @@ export function createPortfolioListCapability(
       const tenantId = tenantOf(input, context.principal);
       const [tenant] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
       if (!tenant) throw errors.notFound('Tenant not found');
-      const rows = await db.select().from(integrations).where(eq(integrations.tenantId, tenantId)).orderBy(integrations.createdAt);
+      const rows = await db
+        .select()
+        .from(integrations)
+        .where(eq(integrations.tenantId, tenantId))
+        .orderBy(integrations.createdAt);
       return {
         tenant: { id: tenant.id, name: tenant.name },
         statusDefinitions: STATUS_DEFINITIONS,
@@ -180,7 +195,10 @@ export function createPortfolioListCapability(
 export function createPortfolioIntegrationCapability(
   db: Db,
   reconcileIntervalMinutes: number | null,
-): CapabilityDefinition<{ integrationId: string }, IntegrationAssessment & { responsibilities: string[]; maintenance: unknown[] }> {
+): CapabilityDefinition<
+  { integrationId: string },
+  IntegrationAssessment & { responsibilities: string[]; maintenance: unknown[] }
+> {
   return defineCapability({
     name: 'portfolio.integration',
     version: 1,
@@ -237,7 +255,9 @@ async function loadEvent(db: Db, eventId: string) {
   return { inc, events };
 }
 
-export function createMaintenanceEventGetCapability(db: Db): CapabilityDefinition<{ eventId: string }, CustomerEvent> {
+export function createMaintenanceEventGetCapability(
+  db: Db,
+): CapabilityDefinition<{ eventId: string }, CustomerEvent> {
   return defineCapability({
     name: 'maintenance.events.get',
     version: 1,
@@ -254,7 +274,9 @@ export function createMaintenanceEventGetCapability(db: Db): CapabilityDefinitio
   });
 }
 
-export function createMaintenanceEvidenceCapability(db: Db): CapabilityDefinition<{ eventId: string }, Record<string, unknown>> {
+export function createMaintenanceEvidenceCapability(
+  db: Db,
+): CapabilityDefinition<{ eventId: string }, Record<string, unknown>> {
   return defineCapability({
     name: 'maintenance.events.evidence',
     version: 1,
@@ -279,9 +301,13 @@ export function createMaintenanceEvidenceCapability(db: Db): CapabilityDefinitio
     }),
     async handler(input) {
       const { inc, events } = await loadEvent(db, input.eventId);
-      const progress = (inc.evidence as { maintenance?: { reconcileRunId?: string; verifyRunId?: string } }).maintenance ?? null;
+      const progress =
+        (inc.evidence as { maintenance?: { reconcileRunId?: string; verifyRunId?: string } }).maintenance ??
+        null;
       const runIds = [progress?.reconcileRunId, progress?.verifyRunId].filter((x): x is string => !!x);
-      const runs = runIds.length ? await db.select().from(reconciliationRuns).where(inArray(reconciliationRuns.id, runIds)) : [];
+      const runs = runIds.length
+        ? await db.select().from(reconciliationRuns).where(inArray(reconciliationRuns.id, runIds))
+        : [];
       return {
         event: presentEvent(inc, events),
         kind: inc.kind,

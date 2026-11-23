@@ -34,7 +34,13 @@ export const ReleaseJobSchema = z.object({ releaseId: z.string().uuid() });
 export const AdoptedExecuteJobSchema = z.object({
   deliveryId: z.string().uuid(),
   trigger: z.object({
-    kind: z.enum(['webhook', 'automatic_retry', 'manual_retry', 'reconciliation_recovery', 'maintenance_recovery']),
+    kind: z.enum([
+      'webhook',
+      'automatic_retry',
+      'manual_retry',
+      'reconciliation_recovery',
+      'maintenance_recovery',
+    ]),
     maintenanceEventId: z.string().uuid().optional(),
     principalId: z.string().optional(),
     appportRequestId: z.string().optional(),

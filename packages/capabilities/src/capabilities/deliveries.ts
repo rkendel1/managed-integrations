@@ -26,6 +26,8 @@ export const DELIVERY_OUTCOMES = [
   'skipped',
   'rejected',
   'failed',
+  /** Input violated the adopted contract; not written; a maintenance event owns it (slice 4). */
+  'held',
 ] as const;
 type Outcome = (typeof DELIVERY_OUTCOMES)[number];
 const STUCK_MS = 10 * 60_000;

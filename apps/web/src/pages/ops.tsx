@@ -76,6 +76,9 @@ export function OpsTenants() {
                 <Td>{fmtDate(i.cursorWatermark)}</Td>
                 <Td>{i.openIncidents}</Td>
                 <Td className="space-x-2 whitespace-nowrap">
+                  <Link className="text-sm underline" to={`/ops/integrations/${i.id}`}>
+                    Maintenance
+                  </Link>
                   <Link className="text-sm underline" to={`/ops/integrations/${i.id}/deliveries`}>
                     Deliveries
                   </Link>

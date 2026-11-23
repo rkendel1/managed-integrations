@@ -31,7 +31,7 @@ async function missedOrder(page: Page, name: string) {
   expect(r.ok()).toBe(true);
 }
 
-test('customer detects orders whose webhooks never arrived and recovers them (bulk needs confirmation)', async ({
+test('operator detects orders whose webhooks never arrived and recovers them (bulk needs confirmation)', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -42,11 +42,14 @@ test('customer detects orders whose webhooks never arrived and recovers them (bu
 
   await login(
     page,
-    'ops@bluewave.test',
-    process.env.SEED_ADOPTED_CUSTOMER_PASSWORD || 'bluewave-demo-password',
+    'operator@managed-integrations.test',
+    process.env.SEED_OPERATOR_PASSWORD || 'operator-demo-password',
   );
-  await page.goto('/app/integrations');
-  await page.getByRole('link', { name: 'Deliveries' }).first().click();
+  await page.getByRole('link', { name: 'Tenants' }).click();
+  await page
+    .getByRole('row', { name: /Bluewave Supply/ })
+    .getByRole('link', { name: 'Deliveries' })
+    .click();
   const panel = page.getByTestId('reconciliation');
   await expect(panel).toBeVisible();
   await panel.getByRole('button', { name: 'Run reconciliation' }).click();

@@ -55,7 +55,9 @@ export function createAppPortRuntime(options: AppPortRuntimeOptions): AppPortRun
       ? { enqueueReconciliationScan: options.enqueueReconciliationScan }
       : {}),
     ...(options.enqueueRecovery ? { enqueueRecovery: options.enqueueRecovery } : {}),
-    ...(options.reconcileIntervalMinutes ? { reconcileIntervalMinutes: options.reconcileIntervalMinutes } : {}),
+    ...(options.reconcileIntervalMinutes
+      ? { reconcileIntervalMinutes: options.reconcileIntervalMinutes }
+      : {}),
     ...(options.telemetry ? { telemetry: options.telemetry } : {}),
     ...(options.logger ? { logger: options.logger } : {}),
   });

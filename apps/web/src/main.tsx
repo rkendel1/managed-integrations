@@ -4,18 +4,9 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router';
 import { Button, Card, CardBody, ErrorNote, Field, inputClass } from '@/components/ui';
 import { api, setCsrf } from '@/lib/api';
-import {
-  CustomerConnections,
-  CustomerIncident,
-  CustomerIncidents,
-  CustomerIntegration,
-  CustomerOverview,
-  CustomerReliability,
-  CustomerRun,
-  CustomerRuns,
-} from '@/pages/customer';
+import { CustomerConnections, CustomerIntegration } from '@/pages/customer';
 import { Deliveries } from '@/pages/deliveries';
-import { CustomerIntegrations } from '@/pages/integrations';
+import { IntegrationDetail, MaintenanceEventPage, OpsMaintenanceEvent, Portfolio } from '@/pages/product';
 import {
   OpsCandidate,
   OpsInbox,
@@ -162,14 +153,11 @@ function Guard({ role, children }: { role: 'customer' | 'operator'; children: (m
   return <>{children(me.data)}</>;
 }
 
+// The customer product: outcomes, credentials and decisions. Operational detail lives under /ops.
 const CUSTOMER_NAV: [string, string][] = [
   ['/app', 'Overview'],
-  ['/app/integrations', 'Integrations'],
   ['/app/connections', 'Connections'],
-  ['/app/integration', 'Integration'],
-  ['/app/history', 'Delivery history'],
-  ['/app/reliability', 'Reliability'],
-  ['/app/incidents', 'Incidents'],
+  ['/app/settings', 'Settings'],
 ];
 const OPS_NAV: [string, string][] = [
   ['/ops', 'Inbox'],
@@ -196,16 +184,12 @@ function App() {
             {(me) => (
               <Shell me={me} nav={CUSTOMER_NAV}>
                 <Routes>
-                  <Route index element={<CustomerOverview />} />
-                  <Route path="integrations" element={<CustomerIntegrations />} />
-                  <Route path="integrations/:integrationId/deliveries" element={<Deliveries />} />
+                  <Route index element={<Portfolio />} />
+                  <Route path="integrations/:integrationId" element={<IntegrationDetail />} />
+                  <Route path="maintenance/:eventId" element={<MaintenanceEventPage />} />
                   <Route path="connections" element={<CustomerConnections />} />
-                  <Route path="integration" element={<CustomerIntegration />} />
-                  <Route path="history" element={<CustomerRuns />} />
-                  <Route path="history/:id" element={<CustomerRun />} />
-                  <Route path="reliability" element={<CustomerReliability />} />
-                  <Route path="incidents" element={<CustomerIncidents />} />
-                  <Route path="incidents/:id" element={<CustomerIncident />} />
+                  <Route path="settings" element={<CustomerIntegration />} />
+                  <Route path="*" element={<Navigate to="/app" replace />} />
                 </Routes>
               </Shell>
             )}
@@ -222,11 +206,17 @@ function App() {
                   <Route index element={<OpsInbox />} />
                   <Route path="tenants" element={<OpsTenants />} />
                   <Route path="integrations/:integrationId/deliveries" element={<Deliveries />} />
+                  <Route
+                    path="integrations/:integrationId"
+                    element={<IntegrationDetail eventBase="/ops/maintenance-events" />}
+                  />
+                  <Route path="maintenance-events/:eventId" element={<OpsMaintenanceEvent />} />
                   <Route path="incidents/:id" element={<OpsIncident />} />
                   <Route path="candidates/:id" element={<OpsCandidate />} />
                   <Route path="maintenance/:id" element={<OpsMaintenance />} />
                   <Route path="releases" element={<OpsReleases />} />
                   <Route path="metrics" element={<OpsMetrics />} />
+                  <Route path="*" element={<Navigate to="/ops" replace />} />
                 </Routes>
               </Shell>
             )}

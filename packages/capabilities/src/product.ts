@@ -76,23 +76,32 @@ export function assessStatus(
     basis,
   });
   const action = open.find((i) => i.status === 'requires_action');
-  if (action) return make('customer_action', action.customerAction ?? action.title, { incidentId: action.id });
+  if (action)
+    return make('customer_action', action.customerAction ?? action.title, { incidentId: action.id });
   if (open[0]) return make('maintaining', headlineFor(open[0], null), { incidentId: open[0].id });
   if (
     lastResolved?.resolvedAt &&
     lastResolved.verification &&
     now.getTime() - lastResolved.resolvedAt.getTime() < VERIFIED_FOR_MS
   ) {
-    return make('verified', `${headlineFor(lastResolved, null)} on ${lastResolved.resolvedAt.toISOString().slice(0, 10)}.`, {
-      incidentId: lastResolved.id,
-    });
+    return make(
+      'verified',
+      `${headlineFor(lastResolved, null)} on ${lastResolved.resolvedAt.toISOString().slice(0, 10)}.`,
+      {
+        incidentId: lastResolved.id,
+      },
+    );
   }
   if (lastCheck?.finishedAt && now.getTime() - lastCheck.finishedAt.getTime() < EVIDENCE_FRESH_MS) {
     if (lastCheck.status === 'completed' && lastCheck.outcome === 'consistent')
       return make('protected', checkSentence(lastCheck), { reconciliationRunId: lastCheck.id });
-    return make('checking', 'The most recent check did not account for every order yet; we are reviewing it.', {
-      reconciliationRunId: lastCheck.id,
-    });
+    return make(
+      'checking',
+      'The most recent check did not account for every order yet; we are reviewing it.',
+      {
+        reconciliationRunId: lastCheck.id,
+      },
+    );
   }
   return make('checking', 'No completed check in the last 24 hours.', {});
 }
@@ -105,13 +114,41 @@ export function checkSentence(run: RunRow): string {
 /* ================================================================== maintenance events */
 
 const KIND_HEADLINES: Record<string, { open: string; done: string; category: string }> = {
-  input_contract_change: { open: 'We are handling a change in how Shopify sends orders', done: 'We resolved a compatibility issue', category: 'Provider change' },
-  schema_drift: { open: 'We are handling a change in Shopify’s order data', done: 'We resolved a compatibility issue', category: 'Provider change' },
-  connection_auth: { open: 'A connection needs to be re-authorized', done: 'A connection was restored', category: 'Access' },
-  records_rejected: { open: 'Some orders need information from you', done: 'Orders that needed your input were completed', category: 'Data' },
-  sync_failure: { open: 'We are restoring order delivery', done: 'We restored order delivery', category: 'Availability' },
-  freshness_breach: { open: 'Orders are arriving later than usual; we are on it', done: 'Order delivery is back on time', category: 'Availability' },
-  reconciliation_discrepancy: { open: 'We are correcting orders that did not match', done: 'We corrected orders that did not match', category: 'Accuracy' },
+  input_contract_change: {
+    open: 'We are handling a change in how Shopify sends orders',
+    done: 'We resolved a compatibility issue',
+    category: 'Provider change',
+  },
+  schema_drift: {
+    open: 'We are handling a change in Shopify’s order data',
+    done: 'We resolved a compatibility issue',
+    category: 'Provider change',
+  },
+  connection_auth: {
+    open: 'A connection needs to be re-authorized',
+    done: 'A connection was restored',
+    category: 'Access',
+  },
+  records_rejected: {
+    open: 'Some orders need information from you',
+    done: 'Orders that needed your input were completed',
+    category: 'Data',
+  },
+  sync_failure: {
+    open: 'We are restoring order delivery',
+    done: 'We restored order delivery',
+    category: 'Availability',
+  },
+  freshness_breach: {
+    open: 'Orders are arriving later than usual; we are on it',
+    done: 'Order delivery is back on time',
+    category: 'Availability',
+  },
+  reconciliation_discrepancy: {
+    open: 'We are correcting orders that did not match',
+    done: 'We corrected orders that did not match',
+    category: 'Accuracy',
+  },
 };
 
 function headlineFor(inc: IncidentRow, accounting: Accounting | null): string {
@@ -154,8 +191,14 @@ export interface CustomerEvent {
 /** A maintenance event as the customer sees it — derived entirely from persisted facts. */
 export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEvent {
   const finding = inc.finding as Finding | null;
-  const correction = inc.correction as { activatedAt?: string; rules?: { target: string; source: string }[] } | null;
-  const validation = inc.validation as { passed?: boolean; checks?: { name: string; detail: string }[] } | null;
+  const correction = inc.correction as {
+    activatedAt?: string;
+    rules?: { target: string; source: string }[];
+  } | null;
+  const validation = inc.validation as {
+    passed?: boolean;
+    checks?: { name: string; detail: string }[];
+  } | null;
   const accounting = inc.accounting as Accounting | null;
   const verification = inc.verification as { passed?: boolean } | null;
   const resolved = inc.status === 'resolved';
@@ -166,7 +209,9 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
   if (finding) {
     const what = finding.observed.violations.map((v) => labelOf(v.path)).join(' and ');
     const version =
-      finding.observed.apiVersion && finding.expected.baseline?.apiVersion && finding.observed.apiVersion !== finding.expected.baseline.apiVersion
+      finding.observed.apiVersion &&
+      finding.expected.baseline?.apiVersion &&
+      finding.observed.apiVersion !== finding.expected.baseline.apiVersion
         ? ` (format ${finding.expected.baseline.apiVersion} → ${finding.observed.apiVersion})`
         : '';
     facts.push({
@@ -201,7 +246,8 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
 
   // Transactions
   if (accounting) {
-    const affected = accounting.delayed + accounting.failedDuringDisruption + accounting.discoveredByReconciliation;
+    const affected =
+      accounting.delayed + accounting.failedDuringDisruption + accounting.discoveredByReconciliation;
     const parts = [
       accounting.delayed ? `${plural(accounting.delayed, 'order')} held and delayed` : null,
       accounting.failedDuringDisruption ? `${accounting.failedDuringDisruption} failed` : null,
@@ -209,7 +255,10 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
         ? `${plural(accounting.discoveredByReconciliation, 'order')} whose notification never reached us, found by checking Shopify directly`
         : null,
     ].filter(Boolean);
-    facts.push({ label: 'Transactions affected', value: affected ? `${affected}: ${parts.join('; ')}.` : 'None.' });
+    facts.push({
+      label: 'Transactions affected',
+      value: affected ? `${affected}: ${parts.join('; ')}.` : 'None.',
+    });
     facts.push({ label: 'Transactions recovered', value: `${accounting.recovered} of ${affected}.` });
     const relevant = accounting.population - accounting.excluded.count;
     facts.push({

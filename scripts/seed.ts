@@ -339,7 +339,7 @@ if (process.env.DEMO_FIXTURES === 'true') {
     .values({
       tenantId: t2!.id,
       flowType: ADOPTED_FLOW_TYPE,
-      displayName: 'Shopify orders → NetSuite (adopted: shopify-erp-order-sync)',
+      displayName: 'Shopify → NetSuite orders',
       contractVersion: ADOPTED_CONTRACT.version,
       config: demoAdoptedConfig,
       enabled: true,

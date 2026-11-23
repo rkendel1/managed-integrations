@@ -105,7 +105,9 @@ function matches(kind: Kind, v: unknown): boolean {
     case 'string':
       return typeof v === 'string' && v.length > 0;
     case 'decimal_string':
-      return (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v)) || (typeof v === 'number' && Number.isFinite(v));
+      return (
+        (typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v)) || (typeof v === 'number' && Number.isFinite(v))
+      );
     case 'number':
       return (typeof v === 'number' && Number.isFinite(v)) || (typeof v === 'string' && /^\d+$/.test(v));
   }
@@ -179,7 +181,10 @@ export const InputCompatRuleSchema = z.object({
 export type InputCompatRule = z.infer<typeof InputCompatRuleSchema>;
 
 const get = (o: unknown, path: string[]): unknown =>
-  path.reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), o);
+  path.reduce<unknown>(
+    (v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined),
+    o,
+  );
 
 /**
  * Applies compatibility rules to a parsed payload (copy, never overwrite). Pure: returns a new object;

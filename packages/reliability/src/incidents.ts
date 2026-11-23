@@ -165,7 +165,8 @@ export function resolutionBlockers(row: IncidentRow, verification: Record<string
   else {
     if (accounting.populationComplete !== true) out.push('transaction population not complete');
     if (accounting.unresolved !== 0) out.push(`${accounting.unresolved ?? '?'} transaction(s) unresolved`);
-    if (accounting.duplicates !== 0) out.push(`${accounting.duplicates ?? '?'} duplicate destination record(s)`);
+    if (accounting.duplicates !== 0)
+      out.push(`${accounting.duplicates ?? '?'} duplicate destination record(s)`);
   }
   if (verification['passed'] !== true) out.push('verification did not pass');
   return out;
@@ -197,7 +198,9 @@ export async function transitionIncident(
     if (to === 'resolved') {
       const blockers = resolutionBlockers(cur, p.verification!);
       if (blockers.length)
-        throw new InvalidIncidentTransition(`Incident ${incidentId} cannot be resolved: ${blockers.join('; ')}`);
+        throw new InvalidIncidentTransition(
+          `Incident ${incidentId} cannot be resolved: ${blockers.join('; ')}`,
+        );
     }
     const now = new Date();
     const [updated] = await tx

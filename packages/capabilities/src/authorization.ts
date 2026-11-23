@@ -76,7 +76,10 @@ export function resourceTenantAuthorizer(db: Db): Authorizer {
 
     let resourceTenant: string | undefined;
     if (eventId) {
-      const [row] = await db.select({ tenantId: incidents.tenantId }).from(incidents).where(eq(incidents.id, eventId));
+      const [row] = await db
+        .select({ tenantId: incidents.tenantId })
+        .from(incidents)
+        .where(eq(incidents.id, eventId));
       resourceTenant = row?.tenantId;
     } else if (deliveryId) {
       const [row] = await db

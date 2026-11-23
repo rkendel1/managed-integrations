@@ -82,11 +82,24 @@ export function maintenanceKit(h: Harness, a: Adopted, clients: Clients) {
       });
       states.push(`${r.state}:${r.detail}`);
       for (const e of exec.splice(0))
-        await executeDelivery({ db, cipher: testCipher, endpoints: h.endpoints, deliveryId: e.id, trigger: e.trigger });
+        await executeDelivery({
+          db,
+          cipher: testCipher,
+          endpoints: h.endpoints,
+          deliveryId: e.id,
+          trigger: e.trigger,
+        });
       for (const runId of recon.splice(0))
         await scanReconciliation({ db, runId, workerId: 'w', clients, retry: FAST_RETRY });
       for (const itemId of recov.splice(0))
-        await executeRecovery({ db, cipher: testCipher, endpoints: h.endpoints, itemId, clients, retry: FAST_RETRY });
+        await executeRecovery({
+          db,
+          cipher: testCipher,
+          endpoints: h.endpoints,
+          itemId,
+          clients,
+          retry: FAST_RETRY,
+        });
       if (r.state === 'resolved' || r.state === 'escalated' || r.state === 'noop') break;
     }
     const [inc] = await db.select().from(incidents).where(eq(incidents.id, incidentId));

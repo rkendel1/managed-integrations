@@ -32,7 +32,12 @@ import {
   reconciliationRuns,
   webhookReceipts,
 } from '@mi/database';
-import { DEFAULT_RETRY, withRetry, type CredentialCipher, type RetryPolicy } from '@mi/integration-shopify-netsuite';
+import {
+  DEFAULT_RETRY,
+  withRetry,
+  type CredentialCipher,
+  type RetryPolicy,
+} from '@mi/integration-shopify-netsuite';
 import { describeError } from '@mi/observability';
 import {
   openIncident,
@@ -114,7 +119,14 @@ export interface Accounting {
   orders: {
     order: string;
     legacyId: string;
-    category: 'delivered_before_change' | 'delayed' | 'failed' | 'discovered' | 'delivered' | 'excluded' | 'unresolved';
+    category:
+      | 'delivered_before_change'
+      | 'delayed'
+      | 'failed'
+      | 'discovered'
+      | 'delivered'
+      | 'excluded'
+      | 'unresolved';
     verified: boolean;
     detail: string;
   }[];
@@ -125,7 +137,14 @@ export interface Accounting {
 }
 
 interface Progress {
-  phase?: 'release' | 'await_release' | 'reconcile' | 'await_reconcile' | 'await_recovery' | 'verify_reconcile' | 'await_verify';
+  phase?:
+    | 'release'
+    | 'await_release'
+    | 'reconcile'
+    | 'await_reconcile'
+    | 'await_recovery'
+    | 'verify_reconcile'
+    | 'await_verify';
   released?: string[];
   reconcileRunId?: string;
   verifyRunId?: string;
@@ -259,13 +278,17 @@ export async function recordInputContractFinding(
     customerSummary:
       'A change in the order data Shopify sends could affect order processing. Orders are held safely while we take care of it.',
     classifyAs: 'investigating',
-    classificationNote: 'Input contract violated; affected orders are held (nothing written) and maintenance has started.',
+    classificationNote:
+      'Input contract violated; affected orders are held (nothing written) and maintenance has started.',
     evidence: { detector: 'adopted input contract (execute.ts)', firstReceiptId: receipt.id },
   });
   // The first observation is the finding; later held orders attach to the same event.
   await db
     .update(incidents)
-    .set({ finding: sql`coalesce(${incidents.finding}, ${JSON.stringify(finding)}::jsonb)`, updatedAt: new Date() })
+    .set({
+      finding: sql`coalesce(${incidents.finding}, ${JSON.stringify(finding)}::jsonb)`,
+      updatedAt: new Date(),
+    })
     .where(eq(incidents.id, inc.id));
   return { incidentId: inc.id, created };
 }
@@ -300,7 +323,7 @@ export async function openMaintenanceEvents(db: Db): Promise<string[]> {
     .from(incidents)
     .where(and(eq(incidents.kind, MAINTENANCE_KIND), sql`${incidents.status} <> 'resolved'`));
   return rows
-    .filter((r) => !((r.evidence as { maintenance?: Progress }).maintenance?.escalated))
+    .filter((r) => !(r.evidence as { maintenance?: Progress }).maintenance?.escalated)
     .map((r) => r.id);
 }
 
@@ -313,10 +336,18 @@ export async function investigate(db: Db, cipher: CredentialCipher, inc: Inciden
   const config = AdoptedConfigSchema.parse(integ!.config);
   const codePaths = finding.observed.violations.map((v) => {
     const field = UPSTREAM_INPUT_CONTRACT.find((f) => f.path === v.path)!;
-    return { path: v.path, expression: field.upstream.expression, effect: field.upstream.effect, reads: locateUpstreamRead(field) };
+    return {
+      path: v.path,
+      expression: field.upstream.expression,
+      effect: field.upstream.effect,
+      reads: locateUpstreamRead(field),
+    };
   });
   // Dry run of the REAL upstream mapping on the held input: what would have been sent to NetSuite.
-  const [receipt] = await db.select().from(webhookReceipts).where(eq(webhookReceipts.id, finding.observed.receiptId));
+  const [receipt] = await db
+    .select()
+    .from(webhookReceipts)
+    .where(eq(webhookReceipts.id, finding.observed.receiptId));
   const payload = await payloadOf(cipher, receipt!);
   let dryRun: Record<string, unknown>;
   try {
@@ -324,7 +355,11 @@ export async function investigate(db: Db, cipher: CredentialCipher, inc: Inciden
       customerByEmail: config.customerByEmail,
       defaultCustomer: config.defaultCustomer,
     });
-    const sent = JSON.parse(JSON.stringify(order.lines)) as { sku: string; qty: unknown; unitPrice: unknown }[];
+    const sent = JSON.parse(JSON.stringify(order.lines)) as {
+      sku: string;
+      qty: unknown;
+      unitPrice: unknown;
+    }[];
     dryRun = {
       upstreamFunction: 'src/mapping.js#toCanonicalOrder',
       lines: sent.map((l) => ({ sku: l.sku, qty: l.qty, unitPriceAsSentToNetSuite: l.unitPrice })),
@@ -370,7 +405,12 @@ export function parseWebhookChangelog(doc: string): ChangelogEntry[] {
 
 const num = (v: unknown) => (v == null || v === '' ? NaN : Number(v));
 const at = (o: unknown, path: string) =>
-  path.split('.').reduce<unknown>((v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined), o);
+  path
+    .split('.')
+    .reduce<unknown>(
+      (v, k) => (v && typeof v === 'object' ? (v as Record<string, unknown>)[k] : undefined),
+      o,
+    );
 
 /**
  * Derives a correction: the provider's documented replacement for each removed field, accepted only if
@@ -378,35 +418,55 @@ const at = (o: unknown, path: string) =>
  */
 export async function deriveCorrection(db: Db, cipher: CredentialCipher, inc: IncidentRow) {
   const finding = inc.finding as Finding;
-  let entries: ChangelogEntry[] = [];
-  let changelogSha256: string | null = null;
+  let entries: ChangelogEntry[];
+  let changelogSha256: string;
   try {
     const doc = readFileSync(join(docsDir(), PROVIDER_CHANGELOG));
     changelogSha256 = createHash('sha256').update(doc).digest('hex');
     entries = parseWebhookChangelog(doc.toString('utf8'));
   } catch (err) {
-    return { rules: [], derivable: false, reason: `Provider changelog unavailable: ${describeError(err).message}` };
+    return {
+      rules: [],
+      derivable: false,
+      reason: `Provider changelog unavailable: ${describeError(err).message}`,
+    };
   }
-  const baseline = await baselineReceipts(db, cipher, inc.integrationId!, new Date(finding.observed.receivedAt));
+  const baseline = await baselineReceipts(
+    db,
+    cipher,
+    inc.integrationId!,
+    new Date(finding.observed.receivedAt),
+  );
   const rules: (Pick<InputCompatRule, 'target' | 'source'> & { evidence: Record<string, unknown> })[] = [];
   for (const v of finding.observed.violations) {
     const entry = entries.find(
-      (e) => e.topic === finding.topic && e.removed === v.path && (!finding.observed.apiVersion || e.version === finding.observed.apiVersion),
+      (e) =>
+        e.topic === finding.topic &&
+        e.removed === v.path &&
+        (!finding.observed.apiVersion || e.version === finding.observed.apiVersion),
     );
     if (!entry)
-      return { rules: [], derivable: false, reason: `No documented replacement for ${v.path} (${finding.observed.apiVersion})` };
+      return {
+        rules: [],
+        derivable: false,
+        reason: `No documented replacement for ${v.path} (${finding.observed.apiVersion})`,
+      };
     const [tHead, tKey] = v.path.split('[].') as [string, string | undefined];
     const [sHead, sRest] = entry.replacement.split('[].') as [string, string | undefined];
     if ((tKey === undefined) !== (sRest === undefined) || (tKey && tHead !== sHead))
-      return { rules: [], derivable: false, reason: `Replacement ${entry.replacement} is not at the level of ${v.path}` };
+      return {
+        rules: [],
+        derivable: false,
+        reason: `Replacement ${entry.replacement} is not at the level of ${v.path}`,
+      };
     // Baseline equivalence: in orders received before the change, both fields were present and equal.
     let compared = 0;
     let mismatches = 0;
     for (const b of baseline) {
-      const lines = tKey ? ((b.payload as Record<string, unknown>)[tHead] as unknown[]) ?? [] : [b.payload];
+      const lines = tKey ? (((b.payload as Record<string, unknown>)[tHead] as unknown[]) ?? []) : [b.payload];
       for (const l of lines) {
         const t = tKey ? (l as Record<string, unknown>)[tKey] : at(l, v.path);
-        const s = at(l, (sRest ?? entry.replacement));
+        const s = at(l, sRest ?? entry.replacement);
         if (t === undefined || s === undefined) continue;
         compared++;
         if (num(t) !== num(s)) mismatches++;
@@ -465,12 +525,17 @@ export async function validateCorrection(
   // 1. provenance
   const dir = upstreamDir();
   const drift = Object.entries(ADOPTED.fileSha256).filter(
-    ([f, h]) => createHash('sha256').update(readFileSync(join(dir, f))).digest('hex') !== h,
+    ([f, h]) =>
+      createHash('sha256')
+        .update(readFileSync(join(dir, f)))
+        .digest('hex') !== h,
   );
   checks.push({
     name: 'upstream unmodified',
     passed: drift.length === 0,
-    detail: drift.length ? `changed: ${drift.map(([f]) => f).join(', ')}` : `${Object.keys(ADOPTED.fileSha256).length} files match ${ADOPTED.commit.slice(0, 12)}`,
+    detail: drift.length
+      ? `changed: ${drift.map(([f]) => f).join(', ')}`
+      : `${Object.keys(ADOPTED.fileSha256).length} files match ${ADOPTED.commit.slice(0, 12)}`,
   });
 
   // 2. regression on stored baseline orders
@@ -514,11 +579,18 @@ export async function validateCorrection(
       problems.push(`${d.sourceName}: ${describeError(err).message}`);
       continue;
     }
-    const res = await withRetry(() => clients.shopify.graphql(RECOVERY_ORDER_QUERY, { id: d.sourceId }), retry);
+    const res = await withRetry(
+      () => clients.shopify.graphql(RECOVERY_ORDER_QUERY, { id: d.sourceId }),
+      retry,
+    );
     const order = (res.data as { order?: RecoveryOrder | null }).order;
     const expected = (order?.lineItems.nodes ?? [])
       .filter((l) => !!l.sku)
-      .map((l) => ({ sku: l.sku, qty: l.quantity, unitPrice: Math.round(Number(l.originalUnitPriceSet.shopMoney.amount) * 100) / 100 }));
+      .map((l) => ({
+        sku: l.sku,
+        qty: l.quantity,
+        unitPrice: Math.round(Number(l.originalUnitPriceSet.shopMoney.amount) * 100) / 100,
+      }));
     if (JSON.stringify(expected) === JSON.stringify(canonical.lines)) matchedSource++;
     else problems.push(`${d.sourceName}: mapped lines differ from Shopify's order record`);
   }
@@ -549,20 +621,40 @@ const sqlLiteral = (s: string) => `'${s.replace(/'/g, "''")}'`;
  * Line-level destination verification of every order in a completed reconciliation run, against
  * Shopify's own order record: exactly one NetSuite sales order, same items, quantities and prices.
  */
-export async function verifyDestinations(db: Db, runId: string, clients: AdoptedClients, retry: RetryPolicy = DEFAULT_RETRY) {
+export async function verifyDestinations(
+  db: Db,
+  runId: string,
+  clients: AdoptedClients,
+  retry: RetryPolicy = DEFAULT_RETRY,
+) {
   const items = await db.select().from(reconciliationItems).where(eq(reconciliationItems.runId, runId));
   const relevant = items.filter((i) => i.classification !== 'excluded');
   const orders = new Map<string, RecoveryOrder>();
   for (const i of relevant) {
-    const res = await withRetry(() => clients.shopify.graphql(RECOVERY_ORDER_QUERY, { id: i.sourceOrderId }), retry);
+    const res = await withRetry(
+      () => clients.shopify.graphql(RECOVERY_ORDER_QUERY, { id: i.sourceOrderId }),
+      retry,
+    );
     const o = (res.data as { order?: RecoveryOrder | null }).order;
     if (o) orders.set(i.sourceOrderId, o);
   }
-  const skus = [...new Set([...orders.values()].flatMap((o) => o.lineItems.nodes.map((l) => l.sku).filter((s): s is string => !!s)))];
+  const skus = [
+    ...new Set(
+      [...orders.values()].flatMap((o) =>
+        o.lineItems.nodes.map((l) => l.sku).filter((s): s is string => !!s),
+      ),
+    ),
+  ];
   const itemIds = new Map<string, string>();
   if (skus.length) {
     const page = await withRetry(
-      () => clients.netsuite.suiteqlPage<{ id: string; itemid: string }>(`SELECT id, itemid FROM item WHERE itemid IN (${skus.map(sqlLiteral).join(', ')})`, [], 1000, 0),
+      () =>
+        clients.netsuite.suiteqlPage<{ id: string; itemid: string }>(
+          `SELECT id, itemid FROM item WHERE itemid IN (${skus.map(sqlLiteral).join(', ')})`,
+          [],
+          1000,
+          0,
+        ),
       retry,
     );
     for (const r of page.items) itemIds.set(r.itemid, String(r.id));
@@ -578,14 +670,39 @@ export async function verifyDestinations(db: Db, runId: string, clients: Adopted
   const dest = identities.length ? await readDestination(clients.netsuite, identities, retry) : [];
   return relevant.map((i) => {
     const o = orders.get(i.sourceOrderId);
-    if (!o) return { sourceOrderId: i.sourceOrderId, order: i.orderName, legacyId: i.sourceLegacyId, verified: false, records: 0, detail: 'Shopify order not readable' };
-    const matches = dest.filter((d) => d.externalId === `shopify-${o.legacyResourceId}` || d.otherRefNum === o.name);
+    if (!o)
+      return {
+        sourceOrderId: i.sourceOrderId,
+        order: i.orderName,
+        legacyId: i.sourceLegacyId,
+        verified: false,
+        records: 0,
+        detail: 'Shopify order not readable',
+      };
+    const matches = dest.filter(
+      (d) => d.externalId === `shopify-${o.legacyResourceId}` || d.otherRefNum === o.name,
+    );
     if (matches.length !== 1)
-      return { sourceOrderId: i.sourceOrderId, order: o.name, legacyId: o.legacyResourceId, verified: false, records: matches.length, detail: `${matches.length} NetSuite sales orders` };
+      return {
+        sourceOrderId: i.sourceOrderId,
+        order: o.name,
+        legacyId: o.legacyResourceId,
+        verified: false,
+        records: matches.length,
+        detail: `${matches.length} NetSuite sales orders`,
+      };
     const expected = o.lineItems.nodes
       .filter((l) => !!l.sku)
-      .map((l) => ({ itemId: itemIds.get(l.sku!) ?? '?', quantity: l.quantity, rateMinor: Math.round(Number(l.originalUnitPriceSet.shopMoney.amount) * 100) }));
-    const actual = matches[0]!.lines.map((l) => ({ itemId: String(l.itemId), quantity: Math.abs(l.quantity), rateMinor: l.rateMinor }));
+      .map((l) => ({
+        itemId: itemIds.get(l.sku!) ?? '?',
+        quantity: l.quantity,
+        rateMinor: Math.round(Number(l.originalUnitPriceSet.shopMoney.amount) * 100),
+      }));
+    const actual = matches[0]!.lines.map((l) => ({
+      itemId: String(l.itemId),
+      quantity: Math.abs(l.quantity),
+      rateMinor: l.rateMinor,
+    }));
     const ok = JSON.stringify(expected) === JSON.stringify(actual);
     return {
       sourceOrderId: i.sourceOrderId,
@@ -594,7 +711,9 @@ export async function verifyDestinations(db: Db, runId: string, clients: Adopted
       verified: ok,
       records: 1,
       destinationId: matches[0]!.id,
-      detail: ok ? `NetSuite ${matches[0]!.id}: ${expected.length} line(s), items, quantities and prices match Shopify` : 'NetSuite lines differ from Shopify',
+      detail: ok
+        ? `NetSuite ${matches[0]!.id}: ${expected.length} line(s), items, quantities and prices match Shopify`
+        : 'NetSuite lines differ from Shopify',
     };
   });
 }
@@ -614,17 +733,41 @@ export async function computeAccounting(
   const finding = inc.finding as Finding;
   const detectedAt = new Date(finding.observed.receivedAt);
   const [run] = await db.select().from(reconciliationRuns).where(eq(reconciliationRuns.id, p.verifyRunId));
-  const items = await db.select().from(reconciliationItems).where(eq(reconciliationItems.runId, p.verifyRunId));
-  const first = await db.select().from(reconciliationItems).where(eq(reconciliationItems.runId, p.reconcileRunId));
-  const discovered = new Set(first.filter((i) => i.classification === 'missing_delivery').map((i) => i.sourceOrderId));
+  const items = await db
+    .select()
+    .from(reconciliationItems)
+    .where(eq(reconciliationItems.runId, p.verifyRunId));
+  const first = await db
+    .select()
+    .from(reconciliationItems)
+    .where(eq(reconciliationItems.runId, p.reconcileRunId));
+  const discovered = new Set(
+    first.filter((i) => i.classification === 'missing_delivery').map((i) => i.sourceOrderId),
+  );
   const dels = items.length
     ? await db
         .select()
         .from(deliveries)
-        .where(and(eq(deliveries.integrationId, inc.integrationId!), inArray(deliveries.sourceId, items.map((i) => i.sourceOrderId))))
+        .where(
+          and(
+            eq(deliveries.integrationId, inc.integrationId!),
+            inArray(
+              deliveries.sourceId,
+              items.map((i) => i.sourceOrderId),
+            ),
+          ),
+        )
     : [];
   const attempts = dels.length
-    ? await db.select().from(deliveryAttempts).where(inArray(deliveryAttempts.deliveryId, dels.map((d) => d.id)))
+    ? await db
+        .select()
+        .from(deliveryAttempts)
+        .where(
+          inArray(
+            deliveryAttempts.deliveryId,
+            dels.map((d) => d.id),
+          ),
+        )
     : [];
   const verifiedBy = new Map(p.verification.map((v) => [v.sourceOrderId, v]));
   const excludedReasons: Record<string, number> = {};
@@ -633,7 +776,13 @@ export async function computeAccounting(
   for (const i of items) {
     if (i.classification === 'excluded') {
       excludedReasons[i.reason ?? 'excluded'] = (excludedReasons[i.reason ?? 'excluded'] ?? 0) + 1;
-      orders.push({ order: i.orderName, legacyId: i.sourceLegacyId, category: 'excluded', verified: false, detail: i.reason ?? '' });
+      orders.push({
+        order: i.orderName,
+        legacyId: i.sourceLegacyId,
+        category: 'excluded',
+        verified: false,
+        detail: i.reason ?? '',
+      });
       continue;
     }
     const d = dels.find((x) => x.sourceId === i.sourceOrderId);
@@ -648,7 +797,13 @@ export async function computeAccounting(
     else if (att.some((a) => a.outcome === 'failed' || a.outcome === 'rejected')) category = 'failed';
     else if (d?.deliveredAt && d.deliveredAt < detectedAt) category = 'delivered_before_change';
     else category = 'delivered';
-    orders.push({ order: i.orderName, legacyId: i.sourceLegacyId, category, verified, detail: v?.detail ?? i.reason ?? '' });
+    orders.push({
+      order: i.orderName,
+      legacyId: i.sourceLegacyId,
+      category,
+      verified,
+      detail: v?.detail ?? i.reason ?? '',
+    });
   }
   const count = (c: string) => orders.filter((o) => o.category === c).length;
   const unresolved = count('unresolved');
@@ -696,10 +851,20 @@ export interface AdvanceParams {
   enqueueRecovery: (itemId: string) => Promise<void>;
   retry?: RetryPolicy;
 }
-export type AdvanceResult = { state: 'continue' | 'wait' | 'escalated' | 'resolved' | 'noop'; detail: string };
+export type AdvanceResult = {
+  state: 'continue' | 'wait' | 'escalated' | 'resolved' | 'noop';
+  detail: string;
+};
 
-async function setFacts(db: Db, id: string, facts: Partial<Record<'investigation' | 'correction' | 'validation' | 'accounting', unknown>>) {
-  await db.update(incidents).set({ ...(facts as object), updatedAt: new Date() }).where(eq(incidents.id, id));
+async function setFacts(
+  db: Db,
+  id: string,
+  facts: Partial<Record<'investigation' | 'correction' | 'validation' | 'accounting', unknown>>,
+) {
+  await db
+    .update(incidents)
+    .set({ ...(facts as object), updatedAt: new Date() })
+    .where(eq(incidents.id, id));
 }
 async function setProgress(db: Db, id: string, progress: Progress) {
   await db
@@ -710,7 +875,13 @@ async function setProgress(db: Db, id: string, progress: Progress) {
     })
     .where(eq(incidents.id, id));
 }
-async function note(db: Db, inc: IncidentRow, text: string, customerVisible: boolean, evidence: Record<string, unknown> = {}) {
+async function note(
+  db: Db,
+  inc: IncidentRow,
+  text: string,
+  customerVisible: boolean,
+  evidence: Record<string, unknown> = {},
+) {
   await db.insert(incidentEvents).values({
     incidentId: inc.id,
     fromStatus: inc.status,
@@ -731,7 +902,8 @@ async function escalate(db: Db, inc: IncidentRow, reason: string): Promise<Advan
 export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResult> {
   const { db } = p;
   const [inc] = await db.select().from(incidents).where(eq(incidents.id, p.incidentId));
-  if (!inc || inc.kind !== MAINTENANCE_KIND || inc.status === 'resolved') return { state: 'noop', detail: 'nothing to do' };
+  if (!inc || inc.kind !== MAINTENANCE_KIND || inc.status === 'resolved')
+    return { state: 'noop', detail: 'nothing to do' };
   const prog = ((inc.evidence as { maintenance?: Progress }).maintenance ?? {}) as Progress;
   if (prog.escalated) return { state: 'escalated', detail: prog.escalated };
   if (!inc.finding) return { state: 'wait', detail: 'finding not recorded yet' };
@@ -740,38 +912,63 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
     if (!inc.investigation) {
       const investigation = await investigate(db, p.cipher, inc);
       await setFacts(db, inc.id, { investigation });
-      await note(db, inc, `Investigated: ${investigation.risk}`, true, { codePaths: investigation.codePaths.length });
+      await note(db, inc, `Investigated: ${investigation.risk}`, true, {
+        codePaths: investigation.codePaths.length,
+      });
       return { state: 'continue', detail: 'investigated' };
     }
-    const correction = inc.correction as (Awaited<ReturnType<typeof deriveCorrection>> & { activatedAt?: string }) | null;
+    const correction = inc.correction as
+      (Awaited<ReturnType<typeof deriveCorrection>> & { activatedAt?: string }) | null;
     if (!correction) {
       const derived = await deriveCorrection(db, p.cipher, inc);
       await setFacts(db, inc.id, { correction: derived });
       if (!derived.derivable) return escalate(db, inc, derived.reason ?? 'no correction derivable');
       return { state: 'continue', detail: 'correction derived' };
     }
-    if (!correction.derivable) return escalate(db, inc, (correction as { reason?: string }).reason ?? 'no correction');
+    if (!correction.derivable)
+      return escalate(db, inc, (correction as { reason?: string }).reason ?? 'no correction');
     if (!inc.validation) {
       const validation = await validateCorrection(db, p.cipher, inc, correction.rules!, p.clients, p.retry);
       await setFacts(db, inc.id, { validation });
-      if (!validation.passed) return escalate(db, inc, `validation failed: ${validation.checks.filter((c) => !c.passed).map((c) => c.name).join(', ')}`);
-      await note(db, inc, 'Correction validated against stored orders and Shopify’s own order records.', true);
+      if (!validation.passed)
+        return escalate(
+          db,
+          inc,
+          `validation failed: ${validation.checks
+            .filter((c) => !c.passed)
+            .map((c) => c.name)
+            .join(', ')}`,
+        );
+      await note(
+        db,
+        inc,
+        'Correction validated against stored orders and Shopify’s own order records.',
+        true,
+      );
       return { state: 'continue', detail: 'validated' };
     }
     if (!(inc.validation as { passed?: boolean }).passed) return escalate(db, inc, 'validation failed');
     // Activate: write the validated rules to the integration's configuration, atomically.
     const activatedAt = new Date().toISOString();
     const configVersion = await db.transaction(async (tx) => {
-      const [integ] = await tx.select().from(integrations).where(eq(integrations.id, inc.integrationId!)).for('update');
+      const [integ] = await tx
+        .select()
+        .from(integrations)
+        .where(eq(integrations.id, inc.integrationId!))
+        .for('update');
       const config = AdoptedConfigSchema.parse(integ!.config);
-      const add = correction.rules!
-        .filter((r) => !config.inputCompat.some((x) => x.target === r.target && x.source === r.source))
+      const add = correction
+        .rules!.filter((r) => !config.inputCompat.some((x) => x.target === r.target && x.source === r.source))
         .map((r) => ({ target: r.target, source: r.source, maintenanceEventId: inc.id, activatedAt }));
       const next = integ!.configVersion + (add.length ? 1 : 0);
       if (add.length)
         await tx
           .update(integrations)
-          .set({ config: { ...(integ!.config as object), inputCompat: [...config.inputCompat, ...add] }, configVersion: next, updatedAt: new Date() })
+          .set({
+            config: { ...(integ!.config as object), inputCompat: [...config.inputCompat, ...add] },
+            configVersion: next,
+            updatedAt: new Date(),
+          })
           .where(eq(integrations.id, integ!.id));
       await tx
         .update(incidents)
@@ -782,7 +979,10 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
     await transitionIncident(db, inc.id, 'recovery', {
       actor: MAINTENANCE_ACTOR,
       note: `Correction applied at the adoption boundary (configuration version ${configVersion}); upstream code unchanged.`,
-      evidence: { rules: correction.rules!.map((r) => ({ target: r.target, source: r.source })), configVersion },
+      evidence: {
+        rules: correction.rules!.map((r) => ({ target: r.target, source: r.source })),
+        configVersion,
+      },
     });
     await setProgress(db, inc.id, { phase: 'release' });
     return { state: 'continue', detail: 'correction activated' };
@@ -799,16 +999,27 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       const released = [...new Set([...(prog.released ?? []), ...held.map((h) => h.id)])];
       await setProgress(db, inc.id, { phase: 'await_release', released });
       for (const h of held)
-        await p.enqueueExecution(h.id, { kind: 'maintenance_recovery', maintenanceEventId: inc.id, reason: 'Released after correction' });
+        await p.enqueueExecution(h.id, {
+          kind: 'maintenance_recovery',
+          maintenanceEventId: inc.id,
+          reason: 'Released after correction',
+        });
       return { state: 'continue', detail: `released ${held.length} held order(s)` };
     }
     if (phase === 'await_release') {
       const ids = prog.released ?? [];
       const rows = ids.length ? await db.select().from(deliveries).where(inArray(deliveries.id, ids)) : [];
-      if (rows.some((r) => r.outcome === 'pending' || r.outcome === 'running')) return { state: 'wait', detail: 'held orders executing' };
-      if (rows.some((r) => r.outcome === 'held')) return escalate(db, inc, 'orders still held after the correction');
+      if (rows.some((r) => r.outcome === 'pending' || r.outcome === 'running'))
+        return { state: 'wait', detail: 'held orders executing' };
+      if (rows.some((r) => r.outcome === 'held'))
+        return escalate(db, inc, 'orders still held after the correction');
       const delivered = rows.filter((r) => r.outcome === 'delivered').length;
-      await note(db, inc, `${delivered} of ${rows.length} delayed order(s) delivered through the normal execution path.`, true);
+      await note(
+        db,
+        inc,
+        `${delivered} of ${rows.length} delayed order(s) delivered through the normal execution path.`,
+        true,
+      );
       await setProgress(db, inc.id, { phase: 'reconcile' });
       return { state: 'continue', detail: 'released orders finished' };
     }
@@ -822,26 +1033,41 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
           requestedBy: MAINTENANCE_ACTOR,
           window: { from: new Date(window.from), to: new Date(window.to) },
         });
-        await setProgress(db, inc.id, { phase: 'await_reconcile', reconcileRunId: s.runId, window, reconcileAttempts: (prog.reconcileAttempts ?? 0) + 1 });
+        await setProgress(db, inc.id, {
+          phase: 'await_reconcile',
+          reconcileRunId: s.runId,
+          window,
+          reconcileAttempts: (prog.reconcileAttempts ?? 0) + 1,
+        });
         await p.enqueueReconciliation(s.runId);
         return { state: 'continue', detail: 'reconciliation started' };
       } catch (err) {
-        if (err instanceof ReconciliationBusy) return { state: 'wait', detail: 'another reconciliation is running' };
+        if (err instanceof ReconciliationBusy)
+          return { state: 'wait', detail: 'another reconciliation is running' };
         throw err;
       }
     }
     if (phase === 'await_reconcile') {
-      const [run] = await db.select().from(reconciliationRuns).where(eq(reconciliationRuns.id, prog.reconcileRunId!));
+      const [run] = await db
+        .select()
+        .from(reconciliationRuns)
+        .where(eq(reconciliationRuns.id, prog.reconcileRunId!));
       if (run!.status === 'running') return { state: 'wait', detail: 'reconciliation running' };
       if (run!.status !== 'completed' || run!.outcome === 'partial') {
-        if ((prog.reconcileAttempts ?? 0) >= 3) return escalate(db, inc, 'reconciliation of the affected window did not complete');
+        if ((prog.reconcileAttempts ?? 0) >= 3)
+          return escalate(db, inc, 'reconciliation of the affected window did not complete');
         await setProgress(db, inc.id, { phase: 'reconcile' });
         return { state: 'wait', detail: 'reconciliation incomplete; retrying' };
       }
       const missing = await db
         .select()
         .from(reconciliationItems)
-        .where(and(eq(reconciliationItems.runId, run!.id), eq(reconciliationItems.classification, 'missing_delivery')));
+        .where(
+          and(
+            eq(reconciliationItems.runId, run!.id),
+            eq(reconciliationItems.classification, 'missing_delivery'),
+          ),
+        );
       const decisions = missing.length
         ? await requestRecovery(db, {
             runId: run!.id,
@@ -852,7 +1078,13 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
           })
         : [];
       for (const d of decisions) if (d.accepted) await p.enqueueRecovery(d.itemId);
-      await note(db, inc, `Checked ${run!.sourceCount ?? 0} Shopify order(s) in the affected window; ${missing.length} had never reached us and are being recovered.`, true, { runId: run!.id });
+      await note(
+        db,
+        inc,
+        `Checked ${run!.sourceCount ?? 0} Shopify order(s) in the affected window; ${missing.length} had never reached us and are being recovered.`,
+        true,
+        { runId: run!.id },
+      );
       await setProgress(db, inc.id, { phase: 'await_recovery' });
       return { state: 'continue', detail: `recovery requested for ${missing.length}` };
     }
@@ -860,7 +1092,12 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       const pending = await db
         .select({ n: sql<number>`count(*)::int` })
         .from(reconciliationItems)
-        .where(and(eq(reconciliationItems.runId, prog.reconcileRunId!), inArray(reconciliationItems.recoveryState, ['requested', 'executing'])));
+        .where(
+          and(
+            eq(reconciliationItems.runId, prog.reconcileRunId!),
+            inArray(reconciliationItems.recoveryState, ['requested', 'executing']),
+          ),
+        );
       if (pending[0]!.n > 0) return { state: 'wait', detail: 'recovering missing orders' };
       await transitionIncident(db, inc.id, 'verification', {
         actor: MAINTENANCE_ACTOR,
@@ -885,16 +1122,23 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
         await p.enqueueReconciliation(s.runId);
         return { state: 'continue', detail: 'verification run started' };
       } catch (err) {
-        if (err instanceof ReconciliationBusy) return { state: 'wait', detail: 'another reconciliation is running' };
+        if (err instanceof ReconciliationBusy)
+          return { state: 'wait', detail: 'another reconciliation is running' };
         throw err;
       }
     }
     if (phase === 'await_verify') {
-      const [run] = await db.select().from(reconciliationRuns).where(eq(reconciliationRuns.id, prog.verifyRunId!));
+      const [run] = await db
+        .select()
+        .from(reconciliationRuns)
+        .where(eq(reconciliationRuns.id, prog.verifyRunId!));
       if (run!.status === 'running') return { state: 'wait', detail: 'verification run running' };
       const verification = await verifyDestinations(db, run!.id, p.clients, p.retry);
       const released = prog.released?.length
-        ? await db.select({ sourceId: deliveries.sourceId }).from(deliveries).where(inArray(deliveries.id, prog.released))
+        ? await db
+            .select({ sourceId: deliveries.sourceId })
+            .from(deliveries)
+            .where(inArray(deliveries.id, prog.released))
         : [];
       const accounting = await computeAccounting(db, inc, {
         reconcileRunId: prog.reconcileRunId!,
@@ -918,7 +1162,8 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       await transitionIncident(db, inc.id, 'resolved', {
         actor: MAINTENANCE_ACTOR,
         note: `Verified: ${accounting.verified} of ${accounting.population - accounting.excluded.count} order(s) in the affected window are in NetSuite exactly once with matching items, quantities and prices.`,
-        resolution: 'Compatibility correction applied at the adoption boundary; affected orders delivered and verified.',
+        resolution:
+          'Compatibility correction applied at the adoption boundary; affected orders delivered and verified.',
         verification: evidence,
       });
       return { state: 'resolved', detail: 'verified and resolved' };

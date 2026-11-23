@@ -4,7 +4,7 @@ export SOURCE_COMMIT := $(shell git rev-parse HEAD)
 export MI_REPO_DIR := $(CURDIR)
 COMPOSE := docker compose --env-file .env
 
-.PHONY: env build up down reset logs ps demo-failure e2e prod-up backup demo-adopted demo-reconcile
+.PHONY: env build up down reset logs ps demo-failure e2e prod-up backup demo-adopted demo-reconcile demo-maintenance
 
 env:            ## create .env with a fresh encryption key (once)
 	@test -f .env || (cp .env.example .env && echo "created .env")
@@ -48,3 +48,6 @@ demo-adopted:   ## SLICE 2: adopted shopify-erp-order-sync operated through AppP
 
 demo-reconcile: ## SLICE 3: detect an order whose webhook never arrived, recover it via AppPort/MCP, verify NetSuite
 	$(COMPOSE) --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-reconcile.ts
+
+demo-maintenance: ## SLICE 4: a provider change is detected, fixed, verified and reported to the customer (run `make reset` first)
+	$(COMPOSE) --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-maintenance.ts

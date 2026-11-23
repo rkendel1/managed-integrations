@@ -43,7 +43,15 @@ const inc = (over: Partial<Inc> = {}): Inc =>
     ...over,
   }) as Inc;
 const run = (over: Partial<Run> = {}): Run =>
-  ({ id: 'run', status: 'completed', outcome: 'consistent', finishedAt: ago(2), expectedCount: 12, sourceCount: 12, ...over }) as Run;
+  ({
+    id: 'run',
+    status: 'completed',
+    outcome: 'consistent',
+    finishedAt: ago(2),
+    expectedCount: 12,
+    sourceCount: 12,
+    ...over,
+  }) as Run;
 const accounting = (over: Record<string, unknown> = {}) => ({
   window: { from: ago(6).toISOString(), to: ago(2).toISOString() },
   sourceRunId: 'r',
@@ -69,12 +77,20 @@ describe('customer status rules', () => {
     expect(assessStatus([], undefined, run(), now).code).toBe('protected');
     expect(assessStatus([], undefined, run({ finishedAt: ago(30) }), now).code).toBe('checking');
     expect(assessStatus([], undefined, run({ outcome: 'discrepancies' }), now).code).toBe('checking');
-    expect(assessStatus([], undefined, run({ outcome: 'partial', status: 'failed' }), now).code).toBe('checking');
+    expect(assessStatus([], undefined, run({ outcome: 'partial', status: 'failed' }), now).code).toBe(
+      'checking',
+    );
     expect(assessStatus([], undefined, undefined, now).code).toBe('checking');
   });
   it('an open issue needing the customer wins; any other open issue is maintenance', () => {
-    const open = [inc({ status: 'investigating' }), inc({ status: 'requires_action', customerAction: 'Add a SKU mapping' })];
-    expect(assessStatus(open, undefined, run(), now)).toMatchObject({ code: 'customer_action', reason: 'Add a SKU mapping' });
+    const open = [
+      inc({ status: 'investigating' }),
+      inc({ status: 'requires_action', customerAction: 'Add a SKU mapping' }),
+    ];
+    expect(assessStatus(open, undefined, run(), now)).toMatchObject({
+      code: 'customer_action',
+      reason: 'Add a SKU mapping',
+    });
     expect(assessStatus([inc({ status: 'recovery' })], undefined, run(), now).code).toBe('maintaining');
   });
   it('verified only for 7 days after a resolution that has verification evidence', () => {
@@ -95,26 +111,52 @@ describe('maintenance event claims (tests 16, 17)', () => {
     expect(ev.claim).toMatchObject({ zeroLoss: true, statement: 'Zero transactions lost.' });
   });
   it('one unresolved order prevents the claim and says so', () => {
-    const ev = presentEvent(inc({ accounting: accounting({ unresolved: 1, verified: 3, zeroLoss: false }) }), []);
+    const ev = presentEvent(
+      inc({ accounting: accounting({ unresolved: 1, verified: 3, zeroLoss: false }) }),
+      [],
+    );
     expect(ev.claim).toMatchObject({ zeroLoss: false, statement: null });
     expect(ev.headline).toMatch(/with exceptions/);
-    expect(ev.facts.find((f) => f.label === 'Final outcome')!.value).toMatch(/^3 of 4 orders confirmed in NetSuite; 1 order not yet confirmed/);
+    expect(ev.facts.find((f) => f.label === 'Final outcome')!.value).toMatch(
+      /^3 of 4 orders confirmed in NetSuite; 1 order not yet confirmed/,
+    );
   });
   it('no claim without accounting, without verification, or before resolution', () => {
     expect(presentEvent(inc(), []).claim.zeroLoss).toBe(false);
-    expect(presentEvent(inc({ accounting: accounting(), verification: { passed: false } }), []).claim.zeroLoss).toBe(false);
-    expect(presentEvent(inc({ accounting: accounting(), status: 'verification', resolvedAt: null }), []).claim.zeroLoss).toBe(false);
+    expect(
+      presentEvent(inc({ accounting: accounting(), verification: { passed: false } }), []).claim.zeroLoss,
+    ).toBe(false);
+    expect(
+      presentEvent(inc({ accounting: accounting(), status: 'verification', resolvedAt: null }), []).claim
+        .zeroLoss,
+    ).toBe(false);
   });
   it('an incomplete population can never be presented as zero loss, even if a stored flag said so', () => {
     // presentEvent trusts only zeroLoss computed by the accounting, which requires a complete population;
     // a row claiming zeroLoss with an incomplete population is still refused at resolution (transitionIncident).
-    const ev = presentEvent(inc({ accounting: accounting({ populationComplete: false, zeroLoss: false }) }), []);
+    const ev = presentEvent(
+      inc({ accounting: accounting({ populationComplete: false, zeroLoss: false }) }),
+      [],
+    );
     expect(ev.claim.zeroLoss).toBe(false);
   });
   it('only customer-visible timeline entries are shown', () => {
     const e = (note: string, customerVisible: boolean, at: number) =>
-      ({ id: note, incidentId: 'x', fromStatus: null, toStatus: 'investigating', actor: 'system', note, customerVisible, evidence: {}, createdAt: ago(at) }) as never;
-    const ev = presentEvent(inc({ status: 'investigating', resolvedAt: null }), [e('internal escalation', false, 2), e('Investigated', true, 3)]);
+      ({
+        id: note,
+        incidentId: 'x',
+        fromStatus: null,
+        toStatus: 'investigating',
+        actor: 'system',
+        note,
+        customerVisible,
+        evidence: {},
+        createdAt: ago(at),
+      }) as never;
+    const ev = presentEvent(inc({ status: 'investigating', resolvedAt: null }), [
+      e('internal escalation', false, 2),
+      e('Investigated', true, 3),
+    ]);
     expect(ev.timeline.map((t) => t.text)).toEqual(['Investigated']);
   });
 });

@@ -7,6 +7,6 @@
 
 ## Payload field changes
 
-| Topic         | Version | Removed field       | Replacement field                        | Notes                                                                                     |
-| ------------- | ------- | ------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------- |
-| orders/create | 2027-01 | line_items[].price  | line_items[].price_set.shop_money.amount | Same value: the line's unit price before discounts, in the shop currency (decimal string). |
+| Topic         | Version | Removed field      | Replacement field                        | Notes                                                                                      |
+| ------------- | ------- | ------------------ | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
+| orders/create | 2027-01 | line_items[].price | line_items[].price_set.shop_money.amount | Same value: the line's unit price before discounts, in the shop currency (decimal string). |
