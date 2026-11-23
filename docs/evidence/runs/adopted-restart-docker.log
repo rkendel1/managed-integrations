@@ -1,0 +1,6 @@
+# Adopted executor: queued work survives a worker restart (Docker stack, 2026-11-23)
+worker stopped
+webhook 200 {"received":true,"disposition":"accepted"}
+while worker down: pending attempts=0 | queued jobs: 1
+worker restarted
+after restart: delivered netsuite=9039 attempts=1

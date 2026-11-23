@@ -13,10 +13,16 @@ async function login(page: Page, email: string, password: string) {
   await page.waitForURL(/\/(app|ops)$/);
 }
 
-test('customer sees the adopted integration, its provenance, outcomes and attempt history', async ({ page }) => {
+test('customer sees the adopted integration, its provenance, outcomes and attempt history', async ({
+  page,
+}) => {
   const errors: string[] = [];
   page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-  await login(page, 'ops@bluewave.test', process.env.SEED_ADOPTED_CUSTOMER_PASSWORD || 'bluewave-demo-password');
+  await login(
+    page,
+    'ops@bluewave.test',
+    process.env.SEED_ADOPTED_CUSTOMER_PASSWORD || 'bluewave-demo-password',
+  );
   await page.goto('/app/integrations');
   await page.getByRole('link', { name: 'Deliveries' }).first().click();
   const panel = page.getByTestId('deliveries');
@@ -25,7 +31,9 @@ test('customer sees the adopted integration, its provenance, outcomes and attemp
   await expect(page.getByTestId('last-success')).not.toHaveText('—');
   const rows = page.getByTestId('delivery-row');
   await expect(rows.first()).toBeVisible();
-  await expect(page.locator('[data-testid="delivery-row"][data-outcome="delivered"]')).toHaveCount(await rows.count());
+  await expect(page.locator('[data-testid="delivery-row"][data-outcome="delivered"]')).toHaveCount(
+    await rows.count(),
+  );
   await page.getByRole('button', { name: '#B-1002' }).first().click();
   const detail = page.getByTestId('delivery-detail');
   await expect(detail).toContainText('manual_retry');
@@ -35,7 +43,11 @@ test('customer sees the adopted integration, its provenance, outcomes and attemp
 });
 
 test('operator finds the tenant and inspects the same evidence', async ({ page }) => {
-  await login(page, 'operator@managed-integrations.test', process.env.SEED_OPERATOR_PASSWORD || 'operator-demo-password');
+  await login(
+    page,
+    'operator@managed-integrations.test',
+    process.env.SEED_OPERATOR_PASSWORD || 'operator-demo-password',
+  );
   await page.getByRole('link', { name: 'Tenants' }).click();
   const row = page.getByRole('row', { name: /Bluewave Supply/ });
   await expect(row).toContainText('adopted');

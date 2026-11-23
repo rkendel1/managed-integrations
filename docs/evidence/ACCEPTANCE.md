@@ -70,22 +70,22 @@ Evidence keys:
 **MANIFEST** `docs/evidence/runs/appport-manifest.log` ·
 **HTTP** `docs/evidence/runs/appport-http.log`.
 
-| # | Criterion | Status | Evidence |
-| --- | --- | --- | --- |
-| 1 | AppPort implementation inspected | VERIFIED | Phase A matrix in `architecture/APPORT-CAPABILITY-MAP.md` §5, with package versions and source symbols |
-| 2 | Capability model understood and documented | VERIFIED | `APPORT-CAPABILITY-MAP.md` (contract, permissions, projections, gaps) |
-| 3 | Real capability via AppPort contracts | VERIFIED | `defineCapability` + `s.object`; T-cap manifest assertions; MANIFEST |
-| 4 | Reads durable application state | VERIFIED | T-cap inserts rows through Drizzle and asserts they are returned; new application instance returns the same rows; restart evidence below |
-| 5 | Authorization at the capability boundary | VERIFIED | T-cap: anonymous `UNAUTHORIZED`, empty permissions `FORBIDDEN`; T-mcp same through MCP |
-| 6 | Tenant isolation proven | VERIFIED | T-cap + T-mcp: tenant A with `{tenantId: B}` → `FORBIDDEN`; tenant B sees only B's row |
-| 7 | Discoverable through native MCP | VERIFIED | T-mcp `tools/list` → `integrations_list` with the AppPort schema; HTTP log `tools/list` |
-| 8 | Real MCP client invokes it | VERIFIED | T-mcp uses `@modelcontextprotocol/sdk` `Client` + `StreamableHTTPClientTransport` over HTTP; HTTP log shows persisted rows |
-| 9 | UI invokes the same capability | VERIFIED | E2E navigates `/app/integrations`; the page uses `@appport/client` + `@appport/transport-http` against `/appport` (no REST listing route) |
-| 10 | UI and MCP produce equivalent results | VERIFIED | Same `handleRequest` path; T-mcp structuredContent equals the serialized business object; E2E row contains the same display name/lifecycle |
-| 11 | Automated persistence/invocation/authorization tests | VERIFIED | T-cap 10 tests · T-mcp 9 tests (see run log) |
-| 12 | Runs locally with documented commands | VERIFIED | `make up`; `curl` checks in `docs/operations/OPERATIONS.md`; HTTP log |
-| 13 | Docs distinguish implemented/limitations/future | VERIFIED | capability map §8, KNOWN-LIMITATIONS "AppPort layer", ROADMAP row 8 |
-| 14 | No parallel capability/authorization framework | VERIFIED | One `createApplication`, one authorizer composition; transport adapter contains no business logic or auth; see `ARCHITECTURE.md` |
+| #   | Criterion                                            | Status   | Evidence                                                                                                                                   |
+| --- | ---------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | AppPort implementation inspected                     | VERIFIED | Phase A matrix in `architecture/APPORT-CAPABILITY-MAP.md` §5, with package versions and source symbols                                     |
+| 2   | Capability model understood and documented           | VERIFIED | `APPORT-CAPABILITY-MAP.md` (contract, permissions, projections, gaps)                                                                      |
+| 3   | Real capability via AppPort contracts                | VERIFIED | `defineCapability` + `s.object`; T-cap manifest assertions; MANIFEST                                                                       |
+| 4   | Reads durable application state                      | VERIFIED | T-cap inserts rows through Drizzle and asserts they are returned; new application instance returns the same rows; restart evidence below   |
+| 5   | Authorization at the capability boundary             | VERIFIED | T-cap: anonymous `UNAUTHORIZED`, empty permissions `FORBIDDEN`; T-mcp same through MCP                                                     |
+| 6   | Tenant isolation proven                              | VERIFIED | T-cap + T-mcp: tenant A with `{tenantId: B}` → `FORBIDDEN`; tenant B sees only B's row                                                     |
+| 7   | Discoverable through native MCP                      | VERIFIED | T-mcp `tools/list` → `integrations_list` with the AppPort schema; HTTP log `tools/list`                                                    |
+| 8   | Real MCP client invokes it                           | VERIFIED | T-mcp uses `@modelcontextprotocol/sdk` `Client` + `StreamableHTTPClientTransport` over HTTP; HTTP log shows persisted rows                 |
+| 9   | UI invokes the same capability                       | VERIFIED | E2E navigates `/app/integrations`; the page uses `@appport/client` + `@appport/transport-http` against `/appport` (no REST listing route)  |
+| 10  | UI and MCP produce equivalent results                | VERIFIED | Same `handleRequest` path; T-mcp structuredContent equals the serialized business object; E2E row contains the same display name/lifecycle |
+| 11  | Automated persistence/invocation/authorization tests | VERIFIED | T-cap 10 tests · T-mcp 9 tests (see run log)                                                                                               |
+| 12  | Runs locally with documented commands                | VERIFIED | `make up`; `curl` checks in `docs/operations/OPERATIONS.md`; HTTP log                                                                      |
+| 13  | Docs distinguish implemented/limitations/future      | VERIFIED | capability map §8, KNOWN-LIMITATIONS "AppPort layer", ROADMAP row 8                                                                        |
+| 14  | No parallel capability/authorization framework       | VERIFIED | One `createApplication`, one authorizer composition; transport adapter contains no business logic or auth; see `ARCHITECTURE.md`           |
 
 State survives restart: the stack was restarted via `make reset`/`make up` and `integrations.list`
 returned the seeded rows from PostgreSQL with no in-memory cache (`HTTP` log; T-cap "fresh application
@@ -95,3 +95,25 @@ instance" test). Migrations run from `packages/database/migrations` on a clean d
 Known deviations from "all green at once": see KNOWN-LIMITATIONS item 10 (the pre-existing unmapped-SKU
 browser test is stateful and requires `make reset`; the suite also expects the first scheduled sync to
 have run). The AppPort-specific tests are independent of that state.
+
+## Slice 2 — existing repository adoption (2026-11-23)
+
+Adopted: `Milo-ai-HQ/shopify-erp-order-sync` @ `d01b51d` (MIT), unmodified. Record: `docs/adoption/ADOPTION.md`.
+Inherited tests are the upstream repository's own suite; adoption tests are new.
+
+| Required evidence (§10)                                  | Status             | Evidence                                                                                                                                                       |
+| -------------------------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Existing repository tests pass                           | VERIFIED           | inherited `test/sync.test.js` 20/20, run unmodified from the installed package (`packages/adopted-order-sync/test/adoption.test.ts`)                           |
+| Existing execution path still works                      | VERIFIED (fixture) | traced path; adoption tests; Docker demo (`runs/demo-adopted-docker.log`)                                                                                      |
+| Existing provider behaviour preserved                    | VERIFIED           | installed upstream files byte-identical to the adopted commit (sha256 test); upstream result recorded verbatim per attempt                                     |
+| AppPort authorization cannot be bypassed                 | VERIFIED           | anonymous refused (UI client at load, MCP per call); missing permission / other tenant FORBIDDEN on both projections (`apps/api/test/adopted-appport.test.ts`) |
+| Tenant isolation enforced                                | VERIFIED           | resource-tenant authorizer; webhook for a foreign shop refused; native integration id not an adopted endpoint; e2e                                             |
+| Duplicate invocations do not cause unsafe duplicate work | VERIFIED           | webhook-id dedupe; delivered order never re-executed; concurrent retry → one accepted, one CONFLICT; concurrent execution → one claim                          |
+| Failure state remains visible                            | VERIFIED           | rejected/failed with upstream message via `deliveries.get`; UI detail; `stuck` flag                                                                            |
+| Durable evidence survives process restart                | VERIFIED           | adoption test (new pool executes pending work); Docker: worker stopped → webhook accepted → restarted → delivered once (`runs/adopted-restart-docker.log`)     |
+| UI and MCP report consistent results                     | VERIFIED           | `deliveries.list` via `@appport/client` (UI path) deep-equals MCP `deliveries_list`                                                                            |
+| Upstream provenance preserved                            | VERIFIED           | lockfile commit + file hashes + LICENSE test; `provenance.ts`                                                                                                  |
+| Vertical slice steps 1–10 (§7)                           | VERIFIED (fixture) | `make demo-adopted` (all 12 steps, MCP-driven)                                                                                                                 |
+| Real Shopify / NetSuite                                  | BLOCKED            | no credentials; fixtures only                                                                                                                                  |
+
+Full suite after slice 2: 14 files, 115 tests passed; Playwright 10/10 against the Docker stack (3 new).

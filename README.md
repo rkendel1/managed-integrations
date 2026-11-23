@@ -88,6 +88,19 @@ This adds Caddy (HTTPS, automatic certificates for `MI_DOMAIN`) and nightly veri
 and refuses fixture overrides. See [`docs/operations/OPERATIONS.md`](docs/operations/OPERATIONS.md) for the
 required environment.
 
+### Slice 2: an adopted integration operated through AppPort
+
+Tenant **Bluewave Supply** runs the unmodified open-source
+[`shopify-erp-order-sync`](https://github.com/Milo-ai-HQ/shopify-erp-order-sync) (MIT, commit `d01b51d`) as its
+executor; Managed Integrations owns receipt, durability, retry, evidence and access through AppPort
+(`deliveries.list/get/retry`, also as MCP tools). Login `ops@bluewave.test` / `bluewave-demo-password`.
+
+```bash
+make reset && make demo-adopted
+```
+
+Record of discovery, selection, boundary and provenance: [`docs/adoption/ADOPTION.md`](docs/adoption/ADOPTION.md).
+
 ## Develop locally (without Docker for the app)
 
 Requirements: Node ≥ 22.12, pnpm 10, PostgreSQL 16, Docker (only for the maintenance sandbox).

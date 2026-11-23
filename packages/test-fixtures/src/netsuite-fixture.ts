@@ -407,10 +407,14 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
           );
       } else if ((m = s.match(SUITEQL_CUSTOMER_BY_CODE))) {
         const codes = new Set(parseLiterals(m[1]!));
-        rows = [...state.customerCodes].filter(([, code]) => codes.has(code)).map(([id, entityid]) => ({ id, entityid }));
+        rows = [...state.customerCodes]
+          .filter(([, code]) => codes.has(code))
+          .map(([id, entityid]) => ({ id, entityid }));
       } else if ((m = s.match(SUITEQL_ITEM_BY_CODE))) {
         const codes = new Set(parseLiterals(m[1]!));
-        rows = [...state.itemCodes].filter(([, code]) => codes.has(code)).map(([id, itemid]) => ({ id, itemid }));
+        rows = [...state.itemCodes]
+          .filter(([, code]) => codes.has(code))
+          .map(([id, itemid]) => ({ id, itemid }));
       } else if (s.match(SUITEQL_PREFIX)) {
         const like = String(params[0] ?? '');
         const prefix = like.endsWith('%') ? like.slice(0, -1) : like;

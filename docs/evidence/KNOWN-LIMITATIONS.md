@@ -79,3 +79,10 @@ single currency; one integration per tenant.
 - Shopify watermark sync can miss late-visible updates older than the 5-minute overlap; reconciliation
   is the backstop.
 - Playbook coverage is narrow; most real failures will need the Claude planner or a human.
+
+## Slice 2 — adopted executor (shopify-erp-order-sync)
+
+See `docs/adoption/ADOPTION.md` §I. In short: fixture-only verification; no subsidiary (OneWorld rejects);
+`orders/create` only; missed webhooks undetected; raw payloads (PII) retained encrypted without a retention job;
+single app-level webhook secret; asynchronous invocation-evidence writes; upstream repository has a single commit
+and author. The Docker build requires `git` and rewrites GitHub SSH URLs to HTTPS for the git-pinned dependency.

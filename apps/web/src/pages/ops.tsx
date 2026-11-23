@@ -83,10 +83,18 @@ export function OpsTenants() {
                     <StatusBadge value="adopted" />
                   ) : (
                     <>
-                      <Button size="sm" variant="outline" onClick={() => act(`/api/operator/integrations/${i.id}/sync`)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => act(`/api/operator/integrations/${i.id}/sync`)}
+                      >
                         Sync
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => act(`/api/operator/integrations/${i.id}/reconcile`)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => act(`/api/operator/integrations/${i.id}/reconcile`)}
+                      >
                         Reconcile
                       </Button>
                     </>

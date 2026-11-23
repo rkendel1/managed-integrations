@@ -1,7 +1,18 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams } from 'react-router';
-import { Button, Card, CardBody, CardHeader, Empty, ErrorNote, inputClass, StatusBadge, Table, Td } from '@/components/ui';
+import {
+  Button,
+  Card,
+  CardBody,
+  CardHeader,
+  Empty,
+  ErrorNote,
+  inputClass,
+  StatusBadge,
+  Table,
+  Td,
+} from '@/components/ui';
 import { callCapability } from '@/lib/capabilities';
 import { fmtDate } from '@/lib/utils';
 
@@ -70,7 +81,10 @@ export function Deliveries() {
     setActionError(null);
     setNotice(null);
     try {
-      await callCapability('deliveries.retry', { deliveryId, reason: reason.trim() || 'Retry requested from console' });
+      await callCapability('deliveries.retry', {
+        deliveryId,
+        reason: reason.trim() || 'Retry requested from console',
+      });
       setNotice('Retry queued. The result will appear here when the executor has run.');
       setReason('');
       await qc.invalidateQueries({ queryKey: ['appport'] });
@@ -97,7 +111,8 @@ export function Deliveries() {
         <CardBody className="space-y-3">
           <div className="flex flex-wrap gap-4 text-sm">
             <span>
-              Last successful execution: <strong data-testid="last-success">{fmtDate(d.integration.lastSuccessfulExecutionAt)}</strong>
+              Last successful execution:{' '}
+              <strong data-testid="last-success">{fmtDate(d.integration.lastSuccessfulExecutionAt)}</strong>
             </span>
             {Object.entries(d.counts).map(([k, v]) => (
               <span key={k}>
@@ -105,7 +120,9 @@ export function Deliveries() {
               </span>
             ))}
           </div>
-          {notice ? <p className="rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p> : null}
+          {notice ? (
+            <p className="rounded bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>
+          ) : null}
           <ErrorNote error={actionError} />
           {d.deliveries.length === 0 ? (
             <Empty>No orders received yet.</Empty>
@@ -147,7 +164,10 @@ export function Deliveries() {
       </Card>
       {selected && detail.data ? (
         <Card data-testid="delivery-detail">
-          <CardHeader title={`Order ${detail.data.delivery.order}`} actions={<StatusBadge value={detail.data.delivery.outcome} />} />
+          <CardHeader
+            title={`Order ${detail.data.delivery.order}`}
+            actions={<StatusBadge value={detail.data.delivery.outcome} />}
+          />
           <CardBody>
             <Table head={['#', 'Trigger', 'Outcome', 'Executor result', 'Executor', 'Finished']}>
               {detail.data.attempts.map((a) => (

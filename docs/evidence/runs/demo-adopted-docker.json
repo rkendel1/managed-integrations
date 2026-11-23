@@ -4,12 +4,7 @@
       "n": 1,
       "title": "Tenant identified via AppPort: Bluewave Supply",
       "data": {
-        "mcpTools": [
-          "deliveries_get",
-          "deliveries_list",
-          "deliveries_retry",
-          "integrations_list"
-        ]
+        "mcpTools": ["deliveries_get", "deliveries_list", "deliveries_retry", "integrations_list"]
       }
     },
     {
