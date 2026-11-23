@@ -1,0 +1,13 @@
+# Backup/restore verification — 2026-11-23T15:10:29Z (Docker stack, after crash test)
+pg_dump -Fc → pg_restore -l (archive readable) → restore into fresh DB → per-table row counts:
+connections|2
+deliveries|90
+delivery_attempts|90
+incident_events|0
+incidents|0
+integration_versions|1
+maintenance_runs|0
+reconciliation_runs|1
+sync_runs|2
+diff vs source: identical
+restored connections.credentials_ciphertext prefixes: v1.k1. (still encrypted; key not in dump)
