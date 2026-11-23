@@ -25,8 +25,8 @@ logs:
 ps:
 	$(COMPOSE) --profile demo ps
 
-demo-failure:   ## run the end-to-end failure demonstration against the running stack
-	$(COMPOSE) --profile demo exec -T worker pnpm exec tsx scripts/demo-failure.ts
+demo-failure:   ## end-to-end failure demo against the running stack (ARGS=--auto-approve to script the approval click)
+	$(COMPOSE) --profile demo exec -T worker pnpm exec tsx scripts/demo-failure.ts $(ARGS)
 
 prod-up: env    ## production on a VPS (HTTPS via Caddy, backups, no fixtures)
 	$(COMPOSE) -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
