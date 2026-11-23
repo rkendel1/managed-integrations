@@ -940,7 +940,12 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
         inc,
         `We traced the change to the part of your integration that reads ${affectedLabels(inc.finding as Finding)} and confirmed that, left alone, it would have produced incorrect sales orders.`,
         true,
-        { step: 'investigated', heldOrders: investigation.heldOrders, risk: investigation.risk, codePaths: investigation.codePaths },
+        {
+          step: 'investigated',
+          heldOrders: investigation.heldOrders,
+          risk: investigation.risk,
+          codePaths: investigation.codePaths,
+        },
       );
       return { state: 'continue', detail: 'investigated' };
     }
@@ -1050,7 +1055,13 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
         inc,
         `The ${orders(rows.length)} we held ${rows.length === 1 ? 'was' : 'were'} delivered to NetSuite (${delivered} of ${rows.length}).`,
         true,
-        { step: 'delivered', delivered, held: rows.length, released: ids, path: 'normal execution path (maintenance_recovery)' },
+        {
+          step: 'delivered',
+          delivered,
+          held: rows.length,
+          released: ids,
+          path: 'normal execution path (maintenance_recovery)',
+        },
       );
       await setProgress(db, inc.id, { phase: 'reconcile' });
       return { state: 'continue', detail: 'released orders finished' };
@@ -1198,7 +1209,7 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       if (blockers.length) return escalate(db, fresh!, `not resolved: ${blockers.join('; ')}`);
       await transitionIncident(db, inc.id, 'resolved', {
         actor: MAINTENANCE_ACTOR,
-        note: `Verified: all ${orders(accounting.verified)} from the affected period are in NetSuite exactly once, with the right items, quantities and prices.`,
+        note: `All ${orders(accounting.verified)} from the affected period are in NetSuite exactly once, with the right items, quantities and prices.`,
         resolution:
           'Compatibility correction applied at the adoption boundary; affected orders delivered and verified.',
         verification: evidence,

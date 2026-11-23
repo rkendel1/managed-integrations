@@ -4,7 +4,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { incidents, reconciliationRuns } from '@mi/database';
-import { assessStatus, presentEvent } from '../src/product.ts';
+import { assessStatus, presentEvent, windowText } from '../src/product.ts';
 
 type Inc = typeof incidents.$inferSelect;
 type Run = typeof reconciliationRuns.$inferSelect;
@@ -158,5 +158,16 @@ describe('maintenance event claims (tests 16, 17)', () => {
       e('Investigated', true, 3),
     ]);
     expect(ev.timeline.map((t) => t.text)).toEqual(['Investigated']);
+  });
+});
+
+describe('window wording', () => {
+  it('shows the date once and seconds for short windows', () => {
+    expect(windowText({ from: '2026-11-23T21:57:07Z', to: '2026-11-23T21:57:53Z' })).toBe(
+      '23 Nov 2026, 21:57:07–21:57:53 UTC',
+    );
+    expect(windowText({ from: '2026-11-22T20:00:00Z', to: '2026-11-23T08:30:00Z' })).toBe(
+      '22 Nov 2026 20:00 – 23 Nov 2026 08:30 UTC',
+    );
   });
 });

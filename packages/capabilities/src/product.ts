@@ -225,7 +225,11 @@ const CHECK_LABELS: Record<string, string> = {
 };
 
 /** Customer-safe details for a timeline step, from that step's persisted evidence and the event's facts. */
-function stepDetails(step: string, ev: Record<string, unknown>, finding: Finding | null): { label: string; value: string }[] {
+function stepDetails(
+  step: string,
+  ev: Record<string, unknown>,
+  finding: Finding | null,
+): { label: string; value: string }[] {
   const n = (k: string) => (typeof ev[k] === 'number' ? (ev[k] as number) : null);
   switch (step) {
     case 'noticed': {
@@ -241,15 +245,19 @@ function stepDetails(step: string, ev: Record<string, unknown>, finding: Finding
     case 'investigated':
       return n('heldOrders') != null ? [{ label: 'Orders held safely', value: String(n('heldOrders')) }] : [];
     case 'tested':
-      return ((ev['checks'] as { name: string; passed: boolean; detail: string }[] | undefined) ?? []).map((c) => {
-        const count = c.detail.match(/^(\d+)\/(\d+)/);
-        return {
-          label: CHECK_LABELS[c.name] ?? c.name,
-          value: `${c.passed ? 'Passed' : 'Failed'}${count ? ` (${count[1]} of ${count[2]})` : ''}`,
-        };
-      });
+      return ((ev['checks'] as { name: string; passed: boolean; detail: string }[] | undefined) ?? []).map(
+        (c) => {
+          const count = c.detail.match(/^(\d+)\/(\d+)/);
+          return {
+            label: CHECK_LABELS[c.name] ?? c.name,
+            value: `${c.passed ? 'Passed' : 'Failed'}${count ? ` (${count[1]} of ${count[2]})` : ''}`,
+          };
+        },
+      );
     case 'delivered':
-      return n('held') != null ? [{ label: 'Delivered to NetSuite', value: `${n('delivered')} of ${n('held')}` }] : [];
+      return n('held') != null
+        ? [{ label: 'Delivered to NetSuite', value: `${n('delivered')} of ${n('held')}` }]
+        : [];
     case 'checked':
       return n('checked') != null
         ? [
@@ -267,6 +275,25 @@ function stepDetails(step: string, ev: Record<string, unknown>, finding: Finding
     default:
       return [];
   }
+}
+
+/** A compact, human time window: "23 Nov 2026, 21:57:07–21:57:53 UTC" (date shown once when it is the same day). */
+export function windowText(w: { from: string; to: string }): string {
+  const f = new Date(w.from);
+  const t = new Date(w.to);
+  const day = (d: Date) =>
+    d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const time = (d: Date, sec: boolean) =>
+    d.toLocaleTimeString('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      ...(sec ? { second: '2-digit' } : {}),
+      timeZone: 'UTC',
+    });
+  const sec = t.getTime() - f.getTime() < 3600_000;
+  return day(f) === day(t)
+    ? `${day(f)}, ${time(f, sec)}–${time(t, sec)} UTC`
+    : `${day(f)} ${time(f, false)} – ${day(t)} ${time(t, false)} UTC`;
 }
 
 /** A maintenance event as the customer sees it — derived entirely from persisted facts. */
@@ -396,7 +423,7 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
       zeroLoss,
       statement: zeroLoss ? 'Zero transactions lost.' : null,
       basis: zeroLoss
-        ? `Every order Shopify has for ${accounting!.window.from.slice(0, 16).replace('T', ' ')}–${accounting!.window.to.slice(0, 16).replace('T', ' ')} UTC was checked in NetSuite after the fix.`
+        ? `Every order Shopify has for the affected period (${windowText(accounting!.window)}) was checked in NetSuite after the fix.`
         : accounting
           ? 'Not claimed: not every order in the affected period is confirmed.'
           : 'Not claimed: transaction accounting is not complete.',
