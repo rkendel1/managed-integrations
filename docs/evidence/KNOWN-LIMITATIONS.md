@@ -108,6 +108,6 @@ See `docs/product/MAINTENANCE.md` §10. In short:
 - NetSuite-side changes for the adopted flow are not detected.
 - There are no outbound customer notifications.
 - "Verified" (7 days) and "Protected" (a consistent check within 24 h) are fixed product rules.
-- The native flow's customer settings page (SKU mappings) is still the slice-1 page.
+- The native flow's customer Settings page (SKU mappings) is still the slice-1 page and keeps some operational vocabulary (health badge, contract version, "synced through").
 - Native incidents appear in the customer's maintenance history with the facts they have; they have no
   transaction accounting, so they never carry a zero-loss claim.

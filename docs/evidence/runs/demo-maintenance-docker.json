@@ -2,14 +2,14 @@
   "steps": [
     {
       "n": 1,
-      "title": "Customer sees \"Shopify → NetSuite orders\" — Protected: On 2026-11-23 22:03 UTC we checked 2 order(s) from Shopify against NetSuite: all accounted for.",
+      "title": "Customer sees \"Shopify → NetSuite orders\" — Protected: On 2026-11-23 22:17 UTC we checked 2 order(s) from Shopify against NetSuite: all accounted for.",
       "data": {
         "code": "protected",
         "label": "Protected",
         "definition": "No open issues, and a check completed in the last 24 hours found every order accounted for in both systems.",
-        "reason": "On 2026-11-23 22:03 UTC we checked 2 order(s) from Shopify against NetSuite: all accounted for.",
+        "reason": "On 2026-11-23 22:17 UTC we checked 2 order(s) from Shopify against NetSuite: all accounted for.",
         "basis": {
-          "reconciliationRunId": "9a6246a2-3a2b-4c2e-86bb-442660695cef"
+          "reconciliationRunId": "4e1de078-81ac-4531-b39b-a4461740bd27"
         }
       }
     },
@@ -18,10 +18,10 @@
       "title": "FIXTURE: Shopify switches its order webhooks to format 2027-01 (unit price moved). 2 new orders arrive (200/2027-01, 200/2027-01); a 3rd order's notification is lost.",
       "data": {
         "delayed": [
-          "#P2293-3",
-          "#P2293-4"
+          "#PE04B-3",
+          "#PE04B-4"
         ],
-        "lost": "#P2293-5"
+        "lost": "#PE04B-5"
       }
     },
     {
@@ -57,9 +57,9 @@
               "note",
               "updated_at"
             ],
-            "receiptId": "7572761b-33e0-4358-a6c5-92b67083c730",
+            "receiptId": "6ee0a4e4-0113-4e30-ab40-66615afb4048",
             "apiVersion": "2026-10",
-            "receivedAt": "2026-11-23T22:03:35.162Z"
+            "receivedAt": "2026-11-23T22:17:34.428Z"
           },
           "contract": [
             {
@@ -96,10 +96,10 @@
             "note",
             "updated_at"
           ],
-          "receiptId": "5426d9d9-c9ba-461d-847c-2227e7909dc0",
+          "receiptId": "bdf3246c-a9f9-48b2-9679-c4a861f99c0d",
           "apiVersion": "2027-01",
-          "deliveryId": "4024a0ef-98c1-4394-b6bc-41bb18f7d551",
-          "receivedAt": "2026-11-23T22:03:40.277Z",
+          "deliveryId": "9319cf16-8469-4410-a723-b4b014e69fe1",
+          "receivedAt": "2026-11-23T22:17:39.539Z",
           "violations": [
             {
               "path": "line_items[].price",
@@ -123,30 +123,30 @@
             "commit": "d01b51d95993598580cdcffda6537a6f20a10a3a",
             "repository": "https://github.com/Milo-ai-HQ/shopify-erp-order-sync"
           },
-          "integrationId": "4fa55f4a-ab52-40bc-b537-e103ee03cbb0"
+          "integrationId": "79f34a47-bc18-4abd-803d-9ee79bb7dba0"
         },
-        "detectedAt": "2026-11-23T22:03:41.455Z",
-        "windowFrom": "2026-11-23T22:03:05.330Z"
+        "detectedAt": "2026-11-23T22:17:40.579Z",
+        "windowFrom": "2026-11-23T22:17:04.596Z"
       }
     },
     {
       "n": 4,
       "title": "Affected integration identified (Shopify → NetSuite orders); scope: orders arriving in the new format are held, not written",
       "data": {
-        "integrationId": "4fa55f4a-ab52-40bc-b537-e103ee03cbb0"
+        "integrationId": "79f34a47-bc18-4abd-803d-9ee79bb7dba0"
       }
     },
     {
       "n": 5,
       "title": "Maintenance event created — customer sees: \"We are handling a change in how Shopify sends orders\" (in_progress)",
       "data": {
-        "id": "33a2f7e4-a728-441d-9c62-dfe6743b6081",
-        "integrationId": "4fa55f4a-ab52-40bc-b537-e103ee03cbb0",
+        "id": "d55afa7f-041e-427d-8646-b019864b524f",
+        "integrationId": "79f34a47-bc18-4abd-803d-9ee79bb7dba0",
         "category": "Provider change",
         "state": "in_progress",
         "headline": "We are handling a change in how Shopify sends orders",
         "summary": "We detected this and are handling it. Orders are protected while we work; nothing is needed from you.",
-        "detectedAt": "2026-11-23T22:03:41.457Z",
+        "detectedAt": "2026-11-23T22:17:40.581Z",
         "resolvedAt": null,
         "facts": [
           {
@@ -182,7 +182,7 @@
         },
         "timeline": [
           {
-            "at": "2026-11-23T22:03:41.466Z",
+            "at": "2026-11-23T22:17:40.591Z",
             "step": "noticed",
             "title": "Change detected",
             "text": "We noticed that Shopify changed the format of the order data it sends (the unit price of each order line). Affected orders are held safely; nothing incorrect was written.",
@@ -236,8 +236,8 @@
             "expression": "l.price"
           }
         ],
-        "heldOrders": 1,
-        "investigatedAt": "2026-11-23T22:03:43.455Z"
+        "heldOrders": 2,
+        "investigatedAt": "2026-11-23T22:17:42.592Z"
       }
     },
     {
@@ -269,8 +269,8 @@
         ],
         "boundary": "adoption boundary: integration configuration `inputCompat` applied before upstream mapping",
         "derivable": true,
-        "derivedAt": "2026-11-23T22:03:43.461Z",
-        "activatedAt": "2026-11-23T22:03:43.490Z",
+        "derivedAt": "2026-11-23T22:17:42.600Z",
+        "activatedAt": "2026-11-23T22:17:42.631Z",
         "configVersion": 2,
         "upstreamModified": false
       }
@@ -303,30 +303,30 @@
         ],
         "passed": true,
         "problems": [],
-        "validatedAt": "2026-11-23T22:03:43.484Z",
+        "validatedAt": "2026-11-23T22:17:42.622Z",
         "upstreamCommit": "d01b51d95993598580cdcffda6537a6f20a10a3a"
       }
     },
     {
       "n": 9,
-      "title": "Recovered 3 order(s): #P2293-3 (delayed), #P2293-4 (delayed), #P2293-5 (discovered)",
+      "title": "Recovered 3 order(s): #PE04B-3 (delayed), #PE04B-4 (delayed), #PE04B-5 (discovered)",
       "data": [
         {
-          "order": "#P2293-3",
+          "order": "#PE04B-3",
           "detail": "NetSuite 9003: 1 line(s), items, quantities and prices match Shopify",
           "category": "delayed",
           "legacyId": "6000000003",
           "verified": true
         },
         {
-          "order": "#P2293-4",
+          "order": "#PE04B-4",
           "detail": "NetSuite 9004: 1 line(s), items, quantities and prices match Shopify",
           "category": "delayed",
           "legacyId": "6000000004",
           "verified": true
         },
         {
-          "order": "#P2293-5",
+          "order": "#PE04B-5",
           "detail": "NetSuite 9005: 1 line(s), items, quantities and prices match Shopify",
           "category": "discovered",
           "legacyId": "6000000005",
@@ -340,28 +340,28 @@
       "data": {
         "orders": [
           {
-            "order": "#P2293-2",
+            "order": "#PE04B-2",
             "detail": "NetSuite 9002: 1 line(s), items, quantities and prices match Shopify",
             "category": "delivered_before_change",
             "legacyId": "6000000002",
             "verified": true
           },
           {
-            "order": "#P2293-3",
+            "order": "#PE04B-3",
             "detail": "NetSuite 9003: 1 line(s), items, quantities and prices match Shopify",
             "category": "delayed",
             "legacyId": "6000000003",
             "verified": true
           },
           {
-            "order": "#P2293-4",
+            "order": "#PE04B-4",
             "detail": "NetSuite 9004: 1 line(s), items, quantities and prices match Shopify",
             "category": "delayed",
             "legacyId": "6000000004",
             "verified": true
           },
           {
-            "order": "#P2293-5",
+            "order": "#PE04B-5",
             "detail": "NetSuite 9005: 1 line(s), items, quantities and prices match Shopify",
             "category": "discovered",
             "legacyId": "6000000005",
@@ -369,8 +369,8 @@
           }
         ],
         "window": {
-          "to": "2026-11-23T22:03:49.456Z",
-          "from": "2026-11-23T22:03:05.330Z"
+          "to": "2026-11-23T22:17:48.577Z",
+          "from": "2026-11-23T22:17:04.596Z"
         },
         "delayed": 2,
         "excluded": {
@@ -380,11 +380,11 @@
         "verified": 4,
         "zeroLoss": true,
         "recovered": 3,
-        "computedAt": "2026-11-23T22:04:01.482Z",
+        "computedAt": "2026-11-23T22:18:00.609Z",
         "duplicates": 0,
         "population": 4,
         "unresolved": 0,
-        "sourceRunId": "5eb0b067-64e5-49b9-bebc-555c8bc3a0c2",
+        "sourceRunId": "b98b0262-a9b8-4648-ba90-138c76d5e7cd",
         "populationComplete": true,
         "deliveredBeforeChange": 1,
         "failedDuringDisruption": 0,
@@ -409,18 +409,18 @@
           "definition": "We completed maintenance in the last 7 days and verified the outcome against your systems. No open issues.",
           "reason": "We resolved a compatibility issue on 2026-11-23.",
           "basis": {
-            "incidentId": "33a2f7e4-a728-441d-9c62-dfe6743b6081"
+            "incidentId": "d55afa7f-041e-427d-8646-b019864b524f"
           }
         },
         "event": {
-          "id": "33a2f7e4-a728-441d-9c62-dfe6743b6081",
-          "integrationId": "4fa55f4a-ab52-40bc-b537-e103ee03cbb0",
+          "id": "d55afa7f-041e-427d-8646-b019864b524f",
+          "integrationId": "79f34a47-bc18-4abd-803d-9ee79bb7dba0",
           "category": "Provider change",
           "state": "completed",
           "headline": "We resolved a compatibility issue",
           "summary": "We detected a change that threatened order processing. We resolved it and verified all 4 orders from the affected period against NetSuite.",
-          "detectedAt": "2026-11-23T22:03:41.457Z",
-          "resolvedAt": "2026-11-23T22:04:01.487Z",
+          "detectedAt": "2026-11-23T22:17:40.581Z",
+          "resolvedAt": "2026-11-23T22:18:00.614Z",
           "facts": [
             {
               "label": "Change detected",
@@ -453,8 +453,8 @@
           ],
           "accounting": {
             "window": {
-              "from": "2026-11-23T22:03:05.330Z",
-              "to": "2026-11-23T22:03:49.456Z"
+              "from": "2026-11-23T22:17:04.596Z",
+              "to": "2026-11-23T22:17:48.577Z"
             },
             "ordersInWindow": 4,
             "deliveredBeforeChange": 1,
@@ -470,7 +470,7 @@
           "claim": {
             "zeroLoss": true,
             "statement": "Zero transactions lost.",
-            "basis": "Every order Shopify has for the affected period (23 Nov 2026, 22:03:05–22:03:49 UTC) was checked in NetSuite after the fix."
+            "basis": "Every order Shopify has for the affected period (23 Nov 2026, 22:17:04–22:17:48 UTC) was checked in NetSuite after the fix."
           },
           "customerAction": {
             "required": false,
@@ -478,7 +478,7 @@
           },
           "timeline": [
             {
-              "at": "2026-11-23T22:03:41.466Z",
+              "at": "2026-11-23T22:17:40.591Z",
               "step": "noticed",
               "title": "Change detected",
               "text": "We noticed that Shopify changed the format of the order data it sends (the unit price of each order line). Affected orders are held safely; nothing incorrect was written.",
@@ -498,19 +498,19 @@
               ]
             },
             {
-              "at": "2026-11-23T22:03:43.457Z",
+              "at": "2026-11-23T22:17:42.595Z",
               "step": "investigated",
               "title": "Investigated",
               "text": "We traced the change to the part of your integration that reads the unit price of each order line and confirmed that, left alone, it would have produced incorrect sales orders.",
               "details": [
                 {
                   "label": "Orders held safely",
-                  "value": "1"
+                  "value": "2"
                 }
               ]
             },
             {
-              "at": "2026-11-23T22:03:43.487Z",
+              "at": "2026-11-23T22:17:42.629Z",
               "step": "tested",
               "title": "Fix tested",
               "text": "We tested the fix against earlier orders and against Shopify’s own records of the affected orders before switching it on.",
@@ -534,14 +534,14 @@
               ]
             },
             {
-              "at": "2026-11-23T22:03:43.495Z",
+              "at": "2026-11-23T22:17:42.636Z",
               "step": "switched_on",
               "title": "Fix switched on",
               "text": "We switched the fix on.",
               "details": []
             },
             {
-              "at": "2026-11-23T22:03:49.451Z",
+              "at": "2026-11-23T22:17:48.574Z",
               "step": "delivered",
               "title": "Held orders delivered",
               "text": "The 2 orders we held were delivered to NetSuite (2 of 2).",
@@ -553,7 +553,7 @@
               ]
             },
             {
-              "at": "2026-11-23T22:03:53.456Z",
+              "at": "2026-11-23T22:17:52.590Z",
               "step": "checked",
               "title": "Every order checked",
               "text": "We checked all 4 orders Shopify has for the affected period. One had never reached us; we are recovering it.",
@@ -569,14 +569,14 @@
               ]
             },
             {
-              "at": "2026-11-23T22:03:57.450Z",
+              "at": "2026-11-23T22:17:56.576Z",
               "step": "verifying",
               "title": "Verifying",
               "text": "Recovery finished. We are now checking every order from the affected period in NetSuite.",
               "details": []
             },
             {
-              "at": "2026-11-23T22:04:01.486Z",
+              "at": "2026-11-23T22:18:00.613Z",
               "step": "verified",
               "title": "Verified",
               "text": "All 4 orders from the affected period are in NetSuite exactly once, with the right items, quantities and prices.",
@@ -596,6 +596,6 @@
       }
     }
   ],
-  "startedAt": "2026-11-23T22:03:32.783Z",
+  "startedAt": "2026-11-23T22:17:32.083Z",
   "providers": "deterministic fixtures (not Shopify or NetSuite); the provider change is fictional and documented"
 }
