@@ -7,19 +7,19 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@appport/authorization": "1.2.2",
-    "@appport/core": "1.11.0",
-    "@appport/mcp": "1.3.12",
-    "@appport/protocol": "1.7.0",
-    "@appport/schema": "1.2.1",
-    "@appport/server": "1.3.6",
+    "@appport/authorization": "1.4.0",
+    "@appport/core": "1.13.0",
+    "@appport/mcp": "1.5.0",
+    "@appport/protocol": "1.8.0",
+    "@appport/schema": "1.2.2",
+    "@appport/server": "1.5.0",
     "@mi/database": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "@mi/adopted-order-sync": "workspace:*"
   },
   "devDependencies": {
-    "@appport/client": "1.1.10",
-    "@appport/transport-http": "1.1.10",
+    "@appport/client": "1.2.0",
+    "@appport/transport-http": "1.1.11",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@mi/contracts": "workspace:*"
   }

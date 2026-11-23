@@ -69,8 +69,8 @@ importers:
   apps/api:
     dependencies:
       '@appport/core':
-        specifier: 1.11.0
-        version: 1.11.0
+        specifier: 1.13.0
+        version: 1.13.0
       '@fastify/cookie':
         specifier: ^11.1.5
         version: 11.1.5
@@ -118,11 +118,11 @@ importers:
         version: 4.6.7
     devDependencies:
       '@appport/client':
-        specifier: 1.1.10
-        version: 1.1.10
+        specifier: 1.2.0
+        version: 1.2.0
       '@appport/transport-http':
-        specifier: 1.1.10
-        version: 1.1.10
+        specifier: 1.1.11
+        version: 1.1.11
       '@modelcontextprotocol/sdk':
         specifier: ^1.31.0
         version: 1.32.2(zod@4.6.7)
@@ -130,11 +130,11 @@ importers:
   apps/web:
     dependencies:
       '@appport/client':
-        specifier: 1.1.10
-        version: 1.1.10
+        specifier: 1.2.0
+        version: 1.2.0
       '@appport/transport-http':
-        specifier: 1.1.10
-        version: 1.1.10
+        specifier: 1.1.11
+        version: 1.1.11
       '@tanstack/react-query':
         specifier: ^5.108.4
         version: 5.108.4(@types/react@19.3.0)(react@19.3.1)
@@ -239,23 +239,23 @@ importers:
   packages/capabilities:
     dependencies:
       '@appport/authorization':
+        specifier: 1.4.0
+        version: 1.4.0
+      '@appport/core':
+        specifier: 1.13.0
+        version: 1.13.0
+      '@appport/mcp':
+        specifier: 1.5.0
+        version: 1.5.0(zod@4.6.7)
+      '@appport/protocol':
+        specifier: 1.8.0
+        version: 1.8.0
+      '@appport/schema':
         specifier: 1.2.2
         version: 1.2.2
-      '@appport/core':
-        specifier: 1.11.0
-        version: 1.11.0
-      '@appport/mcp':
-        specifier: 1.3.12
-        version: 1.3.12(zod@4.6.7)
-      '@appport/protocol':
-        specifier: 1.7.0
-        version: 1.7.0
-      '@appport/schema':
-        specifier: 1.2.1
-        version: 1.2.1
       '@appport/server':
-        specifier: 1.3.6
-        version: 1.3.6(@types/node@22.20.5)
+        specifier: 1.5.0
+        version: 1.5.0(@types/node@22.20.5)
       '@mi/adopted-order-sync':
         specifier: workspace:*
         version: link:../adopted-order-sync
@@ -267,11 +267,11 @@ importers:
         version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
     devDependencies:
       '@appport/client':
-        specifier: 1.1.10
-        version: 1.1.10
+        specifier: 1.2.0
+        version: 1.2.0
       '@appport/transport-http':
-        specifier: 1.1.10
-        version: 1.1.10
+        specifier: 1.1.11
+        version: 1.1.11
       '@mi/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -393,32 +393,32 @@ packages:
       zod:
         optional: true
 
-  '@appport/authorization@1.2.2':
-    resolution: {integrity: sha512-DMNYnIoBBBHkhDEctVHbk8Uh+v5KiTbtp4NkkWYOc8dZFXDQcyj5mA7sB5UTUhR5IJTOVFo4UJV5ZO4FcIq4iA==}
+  '@appport/authorization@1.4.0':
+    resolution: {integrity: sha512-pcY2FGZLyiPas5yBEYCWmOIuANrQJ4KF+1z+YfmznpUyih8b1cwYapKfG/0XEB+duTMJfThWmt/5oqK5lpS19g==}
     engines: {node: '>=20'}
 
-  '@appport/client@1.1.10':
-    resolution: {integrity: sha512-AC1eVZq11IaeBwDF8SOXsPkDRfg/B1YPM2PR2FUZ95uPYk2UGOXr38s3/F7vWpmJdxvcuddKn6/Ef2MLoEqrVg==}
+  '@appport/client@1.2.0':
+    resolution: {integrity: sha512-42rYVAP72tJTU8GKFNM7cWpeeiAX95Kk6XyNx8gBArgtCDUIiK/7UylsWUJY8wChuR0NZhsQwubQfwjxy8kDqA==}
     engines: {node: '>=20'}
 
-  '@appport/core@1.11.0':
-    resolution: {integrity: sha512-DPBHVbquVwFFhj8Oobt3zI85W2hwM2JUiSad2UdR9+V+qpJZbYcV4/6oDdwkdh6XPQnMzfzo7DWQhpLb2sPaHw==}
+  '@appport/core@1.13.0':
+    resolution: {integrity: sha512-Zy4W8fTQN8VWtriwlptcAM+uCemdkfdflnDjJU4A7wiw8c5FWDsW8fJnP01/4fxfH5WoA/InlVDNE9TWH62gBQ==}
     engines: {node: '>=20'}
 
-  '@appport/mcp@1.3.12':
-    resolution: {integrity: sha512-+Me+G3GtX78tpBNHvDwfJsibcGCpXjpdeN0fsZDpsVvPlH53/CUmstHkBDnUXuvcsH1BG6ba6mMcsd1zwAHm+w==}
+  '@appport/mcp@1.5.0':
+    resolution: {integrity: sha512-TW7SRLcac1eJ3OQr0mcA65uz8F1MJNihFtBy6B7Q0SACTf2aJPGXxe64GjAPwJBIY/Y+hgyCHrprC+6hJLbrXA==}
     engines: {node: '>=20'}
 
-  '@appport/protocol@1.7.0':
-    resolution: {integrity: sha512-I1uUdOsZNx7hs7pWg0/MhXjzB/FlzaOZfb+fGISfZSG5f/VeIRKV5xswIkj+h8F2A66iZ0rw6RsVR7pUxY1AZA==}
+  '@appport/protocol@1.8.0':
+    resolution: {integrity: sha512-/bSu4zCoSUqsLlokjiI0aRNaMdIZnYZyxnOg/rPtJ8UObC0pd7DF/KClypJyRYtqSgeEdw2+qnAPTHLsorAjDQ==}
     engines: {node: '>=20'}
 
-  '@appport/schema@1.2.1':
-    resolution: {integrity: sha512-yLRrk9k7/tQZWSkyJkpSS6clUWx9Xxu8QqhDy8h6BJgrQv7EXIGW7NqShcFyegsMtzIS1eNROHs6juXay/UStg==}
+  '@appport/schema@1.2.2':
+    resolution: {integrity: sha512-rciLi+exZzAlAHPmkrpmTzNYiJGAiEKTvkyZe3qjhlXTXbpVOcX847wJ/17CrgH/CafgBz+wCXK5GPwq9Mj1kA==}
     engines: {node: '>=20'}
 
-  '@appport/server@1.3.6':
-    resolution: {integrity: sha512-UbDGDfSc7tzojjoDtOk1CikDeSrLJAsd7KPvrfCpzB4fR0mD7f5jyRvS2TYkf6mVeB9nRYQQP/JR2soFUKPtIQ==}
+  '@appport/server@1.5.0':
+    resolution: {integrity: sha512-XdgFIoriGSpJT8UmSSLPiW1OQksdi1jqbiWK0OsHHI4tKqyix6akfxFuAoPIa+sZay+LfiB4CVKNWaO8sjAU+A==}
     engines: {node: '>=20'}
     peerDependencies:
       '@types/node': '>=20'
@@ -426,8 +426,8 @@ packages:
       '@types/node':
         optional: true
 
-  '@appport/transport-http@1.1.10':
-    resolution: {integrity: sha512-9yhAbzALaPT0WoD3LCesn63YYWDVLpXrI3f9jk63YPAZrxHEp8m3TFnUv62NYKq0a/lGg539l+Tr23ka/i3CyQ==}
+  '@appport/transport-http@1.1.11':
+    resolution: {integrity: sha512-SMEcwpEDv33/KpvdPgD2CoBqq3Bs0QwXPo3Z9mLmOPJlnAhh8UJnY6keZRSWLD9r0kRhhBQEEmbEjYB0i8tHoA==}
     engines: {node: '>=20'}
 
   '@babel/runtime@7.29.15':
@@ -2698,48 +2698,48 @@ snapshots:
     optionalDependencies:
       zod: 4.6.7
 
-  '@appport/authorization@1.2.2':
+  '@appport/authorization@1.4.0':
     dependencies:
-      '@appport/protocol': 1.7.0
+      '@appport/protocol': 1.8.0
 
-  '@appport/client@1.1.10':
+  '@appport/client@1.2.0':
     dependencies:
-      '@appport/protocol': 1.7.0
+      '@appport/protocol': 1.8.0
 
-  '@appport/core@1.11.0':
+  '@appport/core@1.13.0':
     dependencies:
-      '@appport/authorization': 1.2.2
-      '@appport/protocol': 1.7.0
-      '@appport/schema': 1.2.1
+      '@appport/authorization': 1.4.0
+      '@appport/protocol': 1.8.0
+      '@appport/schema': 1.2.2
 
-  '@appport/mcp@1.3.12(zod@4.6.7)':
+  '@appport/mcp@1.5.0(zod@4.6.7)':
     dependencies:
-      '@appport/core': 1.11.0
-      '@appport/protocol': 1.7.0
+      '@appport/core': 1.13.0
+      '@appport/protocol': 1.8.0
       '@modelcontextprotocol/sdk': 1.32.2(zod@4.6.7)
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - supports-color
       - zod
 
-  '@appport/protocol@1.7.0': {}
+  '@appport/protocol@1.8.0': {}
 
-  '@appport/schema@1.2.1':
+  '@appport/schema@1.2.2':
     dependencies:
-      '@appport/protocol': 1.7.0
+      '@appport/protocol': 1.8.0
 
-  '@appport/server@1.3.6(@types/node@22.20.5)':
+  '@appport/server@1.5.0(@types/node@22.20.5)':
     dependencies:
-      '@appport/authorization': 1.2.2
-      '@appport/core': 1.11.0
-      '@appport/protocol': 1.7.0
+      '@appport/authorization': 1.4.0
+      '@appport/core': 1.13.0
+      '@appport/protocol': 1.8.0
     optionalDependencies:
       '@types/node': 22.20.5
 
-  '@appport/transport-http@1.1.10':
+  '@appport/transport-http@1.1.11':
     dependencies:
-      '@appport/client': 1.1.10
-      '@appport/protocol': 1.7.0
+      '@appport/client': 1.2.0
+      '@appport/protocol': 1.8.0
 
   '@babel/runtime@7.29.15': {}
 
