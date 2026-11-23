@@ -4,7 +4,7 @@ export SOURCE_COMMIT := $(shell git rev-parse HEAD)
 export MI_REPO_DIR := $(CURDIR)
 COMPOSE := docker compose --env-file .env
 
-.PHONY: env build up down logs ps seed demo-failure test e2e prod-up backup restore-check
+.PHONY: env build up down reset logs ps demo-failure e2e prod-up backup
 
 env:            ## create .env with a fresh encryption key (once)
 	@test -f .env || (cp .env.example .env && sed -i "s#^CREDENTIAL_ENCRYPTION_KEYS=.*#CREDENTIAL_ENCRYPTION_KEYS=k1:$$(openssl rand -base64 32)#" .env && echo "created .env")
@@ -33,3 +33,7 @@ prod-up: env    ## production on a VPS (HTTPS via Caddy, backups, no fixtures)
 
 backup:
 	$(COMPOSE) -f docker-compose.yml -f deploy/docker-compose.prod.yml exec backup /bin/sh /backup.sh
+
+reset:          ## DESTROY demo data (volumes) and start fresh; fixtures keep state in memory only
+	$(COMPOSE) --profile demo down -v
+	$(MAKE) up

@@ -65,9 +65,17 @@ const operator = await login(process.env.SEED_OPERATOR_EMAIL ?? 'operator@manage
 const [integ] = await db.select().from(integrations);
 if (!integ) throw new Error('no integration — run the seed');
 
-/* 1-3: healthy, delivered, evidence */
+/* Preconditions: the fixtures are in-memory; if they restarted since seeding, the demo is invalid. */
+const shopState = (await (await fetch(`${SHOPIFY}/__fixture/state`)).json()) as { orderCount: number; variant: string };
+if (shopState.orderCount === 0 || shopState.variant !== 'baseline') {
+  throw new Error(`Fixture state is not the seeded baseline (orders=${shopState.orderCount}, variant=${shopState.variant}). Fixtures keep state in memory; run \`make reset\` for a clean demo.`);
+}
+
+/* 1-3: healthy, delivered, evidence — only runs started by this demo count */
+const demoStart = new Date();
 await customer('/api/customer/integration/sync', 'POST');
-const healthyRun = await waitFor('a successful sync', async () => (await db.select().from(syncRuns).where(and(eq(syncRuns.integrationId, integ.id), eq(syncRuns.status, 'succeeded'))).orderBy(desc(syncRuns.createdAt)).limit(1))[0]);
+const healthyRun = await waitFor('a successful sync started by this demo', async () => (await db.select().from(syncRuns).where(and(eq(syncRuns.integrationId, integ.id), eq(syncRuns.status, 'succeeded'))).orderBy(desc(syncRuns.createdAt)).limit(5)).find((r) => r.createdAt >= demoStart));
+if ((await customer('/api/customer/overview')).integration.health !== 'healthy') throw new Error('Integration is not healthy before the demo; resolve open incidents or run `make reset`');
 const ns0 = (await (await fetch(`${NETSUITE}/__fixture/state`)).json()) as { salesOrders: unknown[] };
 step(1, 'Integration healthy', { health: (await customer('/api/customer/overview')).integration.health, implementation: integ.implementationVersionId });
 step(2, `Records delivered: NetSuite fixture holds ${ns0.salesOrders.length} sales orders`, { syncRunId: healthyRun.id, delivered: healthyRun.deliveredCount });
