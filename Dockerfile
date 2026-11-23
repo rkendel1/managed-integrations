@@ -16,7 +16,9 @@ WORKDIR /app
 COPY . .
 RUN --mount=type=secret,id=extra_ca,required=false \
     if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca npm_config_cafile=/run/secrets/extra_ca; fi; \
-    pnpm install --frozen-lockfile
+    pnpm install --frozen-lockfile && pnpm fetch --frozen-lockfile
+# ^ `pnpm fetch` guarantees every lockfile package is in the store, so the maintenance agent's repair
+#   worktrees can install fully offline (no registry access during repairs).
 RUN pnpm --filter @mi/web build
 # The baseline implementation artifact is built from exactly this source tree.
 ARG SOURCE_COMMIT=
