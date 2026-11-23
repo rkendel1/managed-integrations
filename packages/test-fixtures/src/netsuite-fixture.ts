@@ -45,7 +45,8 @@ function nsError(reply: FastifyReply, status: number, errorCode: string, detail:
     .type('application/vnd.oracle.resource+json; type=error')
     .send({
       type: 'https://www.rfc-editor.org/rfc/rfc9110.html#section-15',
-      title: title ?? (status === 429 ? 'Too Many Requests' : status === 401 ? 'Unauthorized' : 'Bad Request'),
+      title:
+        title ?? (status === 429 ? 'Too Many Requests' : status === 401 ? 'Unauthorized' : 'Bad Request'),
       status,
       'o:errorDetails': [{ detail, 'o:errorCode': errorCode }],
     });
@@ -137,10 +138,8 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
   };
 
   const app: FastifyInstance = Fastify({ logger: false, forceCloseConnections: true });
-  app.addContentTypeParser(
-    'application/x-www-form-urlencoded',
-    { parseAs: 'string' },
-    (_req, body, done) => done(null, Object.fromEntries(new URLSearchParams(body as string))),
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) =>
+    done(null, Object.fromEntries(new URLSearchParams(body as string))),
   );
 
   /* ------------------------------ OAuth 2.0 client credentials (M2M) ------------------------------ */
@@ -230,7 +229,13 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
     if (!f) return undefined;
     switch (f.type) {
       case 'http500':
-        return nsError(reply, 500, 'UNEXPECTED_ERROR', 'An unexpected error occurred.', 'Internal Server Error');
+        return nsError(
+          reply,
+          500,
+          'UNEXPECTED_ERROR',
+          'An unexpected error occurred.',
+          'Internal Server Error',
+        );
       case 'http503':
         return nsError(reply, 503, 'UNEXPECTED_ERROR', 'Service unavailable.', 'Service Unavailable');
       case 'http429':
@@ -269,7 +274,12 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
         return nsError(reply, 400, 'USER_ERROR', `Invalid subsidiary reference key ${body.subsidiary.id}.`);
       const lines = body.item?.items ?? [];
       if (!lines.length)
-        return nsError(reply, 400, 'USER_ERROR', 'You must enter at least one line item for this transaction.');
+        return nsError(
+          reply,
+          400,
+          'USER_ERROR',
+          'You must enter at least one line item for this transaction.',
+        );
       for (const l of lines) {
         if (!state.items.has(l.item?.id))
           return nsError(reply, 400, 'USER_ERROR', `Invalid item reference key ${l.item?.id}.`);
@@ -315,7 +325,13 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
         ? findByExternalId(decodeURIComponent(ref.slice(4)))
         : state.salesOrders.get(ref);
       if (!rec)
-        return nsError(reply, 404, 'NONEXISTENT_ID', 'The record instance does not exist.', 'Record Not Found');
+        return nsError(
+          reply,
+          404,
+          'NONEXISTENT_ID',
+          'The record instance does not exist.',
+          'Record Not Found',
+        );
       return rec;
     }),
   );
@@ -352,7 +368,9 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
         const ext = new Set(params.slice(0, nExt).map(String));
         const refs = new Set(params.slice(nExt).map(String));
         rows = [...state.salesOrders.values()]
-          .filter((r) => (r.externalId && ext.has(r.externalId)) || (r.otherRefNum && refs.has(r.otherRefNum)))
+          .filter(
+            (r) => (r.externalId && ext.has(r.externalId)) || (r.otherRefNum && refs.has(r.otherRefNum)),
+          )
           .sort((a, b) => Number(a.id) - Number(b.id))
           .map((r) => ({
             id: r.id,
@@ -360,7 +378,7 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
             otherrefnum: r.otherRefNum,
             trandate: r.tranDate,
           }));
-      } else if ((m = s.match(SUITEQL_LINES))) {
+      } else if (SUITEQL_LINES.test(s)) {
         const ids = new Set(params.map(String));
         rows = [...state.salesOrders.values()]
           .filter((r) => ids.has(r.id))
@@ -379,7 +397,12 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
         rows = [...state.salesOrders.values()]
           .filter((r) => r.externalId?.startsWith(prefix))
           .sort((a, b) => Number(a.id) - Number(b.id))
-          .map((r) => ({ id: r.id, externalid: r.externalId, otherrefnum: r.otherRefNum, trandate: r.tranDate }));
+          .map((r) => ({
+            id: r.id,
+            externalid: r.externalId,
+            otherrefnum: r.otherRefNum,
+            trandate: r.tranDate,
+          }));
       } else {
         return nsError(reply, 400, 'INVALID_SEARCH', `Invalid search query: fixture does not support: ${s}`);
       }

@@ -17,20 +17,59 @@ import { FaultQueue, sleep } from './faults.ts';
 
 const BASE_SDL = /* GraphQL */ `
   scalar DateTime
-  enum OrderSortKeys { UPDATED_AT CREATED_AT PROCESSED_AT ID }
+  enum OrderSortKeys {
+    UPDATED_AT
+    CREATED_AT
+    PROCESSED_AT
+    ID
+  }
   type Query {
     shop: Shop!
-    orders(first: Int, after: String, query: String, sortKey: OrderSortKeys, reverse: Boolean): OrderConnection!
+    orders(
+      first: Int
+      after: String
+      query: String
+      sortKey: OrderSortKeys
+      reverse: Boolean
+    ): OrderConnection!
     order(id: ID!): Order
   }
-  type Shop { name: String! myshopifyDomain: String! currencyCode: String! }
-  type PageInfo { hasNextPage: Boolean! hasPreviousPage: Boolean! endCursor: String startCursor: String }
-  type OrderConnection { edges: [OrderEdge!]! nodes: [Order!]! pageInfo: PageInfo! }
-  type OrderEdge { cursor: String! node: Order! }
-  type MoneyV2 { amount: String! currencyCode: String! }
-  type MoneyBag { shopMoney: MoneyV2! presentmentMoney: MoneyV2! }
-  type Customer { id: ID! email: String }
-  type LineItemConnection { nodes: [LineItem!]! pageInfo: PageInfo! }
+  type Shop {
+    name: String!
+    myshopifyDomain: String!
+    currencyCode: String!
+  }
+  type PageInfo {
+    hasNextPage: Boolean!
+    hasPreviousPage: Boolean!
+    endCursor: String
+    startCursor: String
+  }
+  type OrderConnection {
+    edges: [OrderEdge!]!
+    nodes: [Order!]!
+    pageInfo: PageInfo!
+  }
+  type OrderEdge {
+    cursor: String!
+    node: Order!
+  }
+  type MoneyV2 {
+    amount: String!
+    currencyCode: String!
+  }
+  type MoneyBag {
+    shopMoney: MoneyV2!
+    presentmentMoney: MoneyV2!
+  }
+  type Customer {
+    id: ID!
+    email: String
+  }
+  type LineItemConnection {
+    nodes: [LineItem!]!
+    pageInfo: PageInfo!
+  }
   type Order {
     id: ID!
     legacyResourceId: String!
@@ -130,7 +169,15 @@ function applySearch(orders: FixtureOrder[], query: string | undefined): Fixture
       if (Number.isNaN(v)) throw new Error(`Invalid date in search query: ${raw}`);
       out = out.filter((o) => {
         const t = new Date(o[key]).getTime();
-        return op === '>=' ? t >= v : op === '>' ? t > v : op === '<=' ? t <= v : op === '<' ? t < v : t === v;
+        return op === '>='
+          ? t >= v
+          : op === '>'
+            ? t > v
+            : op === '<='
+              ? t <= v
+              : op === '<'
+                ? t < v
+                : t === v;
       });
     } else if (field === 'id') {
       out = out.filter((o) => o.legacyId === raw);
@@ -205,7 +252,13 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
       const o = state.orders.get(legacy);
       return o ? resolveOrder(o) : null;
     },
-    orders: (args: { first?: number; after?: string; query?: string; sortKey?: string; reverse?: boolean }) => {
+    orders: (args: {
+      first?: number;
+      after?: string;
+      query?: string;
+      sortKey?: string;
+      reverse?: boolean;
+    }) => {
       const first = Math.min(args.first ?? 50, 250);
       let list = applySearch([...state.orders.values()], args.query).sort(compareOrders);
       if (args.reverse) list = list.reverse();
@@ -329,10 +382,8 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
   };
 
   const app: FastifyInstance = Fastify({ logger: false, forceCloseConnections: true });
-  app.addContentTypeParser(
-    'application/x-www-form-urlencoded',
-    { parseAs: 'string' },
-    (_req, body, done) => done(null, Object.fromEntries(new URLSearchParams(body as string))),
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_req, body, done) =>
+    done(null, Object.fromEntries(new URLSearchParams(body as string))),
   );
 
   /* OAuth authorize — the real endpoint shows a merchant consent screen; the fixture auto-approves. */

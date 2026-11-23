@@ -35,7 +35,8 @@ export function parseFieldChanges(doc: string): { type: string; removed: string;
     if (cells.length < 5) continue;
     const [, type, removed, replacement] = cells;
     if (!type || !removed || !replacement || /^-+$/.test(type) || type === 'Type') continue;
-    if (/^\w+$/.test(type) && /^\w+$/.test(removed) && /^\w+$/.test(replacement)) out.push({ type, removed, replacement });
+    if (/^\w+$/.test(type) && /^\w+$/.test(removed) && /^\w+$/.test(replacement))
+      out.push({ type, removed, replacement });
   }
   return out;
 }
@@ -44,18 +45,26 @@ export class PlaybookPlanner implements MaintenancePlanner {
   readonly name = 'playbook' as const;
 
   async run(tb: MaintenanceToolbox): Promise<PlannerOutcome> {
-    const none = (summary: string): PlannerOutcome => ({ outcome: 'no_candidate', hypothesis: summary, summary, cost: {} });
+    const none = (summary: string): PlannerOutcome => ({
+      outcome: 'no_candidate',
+      hypothesis: summary,
+      summary,
+      cost: {},
+    });
 
     await tb.invoke('read_incident');
     const obs = await tb.invoke('read_observations', { limit: 30 });
-    let messages: string[] = [];
+    let messages: string[];
     try {
       messages = (JSON.parse(obs) as { message?: string }[]).map((o) => o.message ?? '');
     } catch {
       messages = [obs];
     }
     const m = messages.map((msg) => msg.match(FIELD_REMOVED)).find(Boolean);
-    if (!m) return none('No known failure signature in observations; escalating to a human (or the Claude planner).');
+    if (!m)
+      return none(
+        'No known failure signature in observations; escalating to a human (or the Claude planner).',
+      );
     const [, field, type] = m as unknown as [string, string, string];
 
     // Reproduce first: a regression test that sends the implementation's own queries to the provider
@@ -65,15 +74,20 @@ export class PlaybookPlanner implements MaintenancePlanner {
     let reproProfile: string | null = null;
     for (const profile of ['baseline', 'drift']) {
       const r = await tb.invoke('run_tests', { target: 'regression', profile });
-      if (r.startsWith('FAILED') && r.replace(/\\"/g, '"').includes(`Cannot query field "${field}" on type "${type}"`)) {
+      if (
+        r.startsWith('FAILED') &&
+        r.replace(/\\"/g, '"').includes(`Cannot query field "${field}" on type "${type}"`)
+      ) {
         reproProfile = profile;
         break;
       }
     }
-    if (!reproProfile) return none(`Could not reproduce "${field}" removal on ${type} in any fixture profile; escalating.`);
+    if (!reproProfile)
+      return none(`Could not reproduce "${field}" removal on ${type} in any fixture profile; escalating.`);
 
     const hits = await tb.invoke('search_source', { pattern: field, path: AGENT_EDITABLE_PREFIXES[0] });
-    if (hits === 'No matches.') return none(`Field ${field} not referenced in the implementation; escalating.`);
+    if (hits === 'No matches.')
+      return none(`Field ${field} not referenced in the implementation; escalating.`);
 
     const index = await tb.invoke('read_provider_docs', {});
     let change: { type: string; removed: string; replacement: string } | undefined;
@@ -82,18 +96,32 @@ export class PlaybookPlanner implements MaintenancePlanner {
       change = parseFieldChanges(doc).find((c) => c.type === type && c.removed === field);
       if (change) break;
     }
-    if (!change) return none(`Provider documentation names no replacement for ${type}.${field}; escalating to a human.`);
+    if (!change)
+      return none(`Provider documentation names no replacement for ${type}.${field}; escalating to a human.`);
 
-    const files = [...new Set(hits.split('\n').map((l) => l.split(':')[0]!).filter(Boolean))];
-    for (const f of files) await tb.invoke('edit_file', { path: f, old: field, new: change.replacement, all: true });
+    const files = [
+      ...new Set(
+        hits
+          .split('\n')
+          .map((l) => l.split(':')[0]!)
+          .filter(Boolean),
+      ),
+    ];
+    for (const f of files)
+      await tb.invoke('edit_file', { path: f, old: field, new: change.replacement, all: true });
 
-    await tb.invoke('write_file', { path: testPath, content: reproductionTest(type, field, change.replacement) });
+    await tb.invoke('write_file', {
+      path: testPath,
+      content: reproductionTest(type, field, change.replacement),
+    });
 
     const acc = await tb.invoke('run_tests', { target: 'acceptance', profile: reproProfile });
     const reg = await tb.invoke('run_tests', { target: 'regression', profile: reproProfile });
     const tc = await tb.invoke('run_tests', { target: 'typecheck', profile: reproProfile });
     if (!acc.startsWith('PASSED') || !reg.startsWith('PASSED') || !tc.startsWith('PASSED')) {
-      return none('Mechanical field replacement did not pass the acceptance suite; escalating with diff attached.');
+      return none(
+        'Mechanical field replacement did not pass the acceptance suite; escalating with diff attached.',
+      );
     }
     await tb.invoke('git_diff');
     const hypothesis =
@@ -111,7 +139,7 @@ export class PlaybookPlanner implements MaintenancePlanner {
 const REPRO_TEMPLATE = [
   '/**',
   ' * Reproduction / regression test written by the maintenance agent (playbook) for: __TYPE__.__REMOVED__',
-  ' * rejected by the provider. It sends the implementation\'s own GraphQL documents to the provider fixture',
+  " * rejected by the provider. It sends the implementation's own GraphQL documents to the provider fixture",
   ' * for the active profile (SHOPIFY_FIXTURE_PROFILE) and requires a clean, parseable response.',
   ' * Lives under test/regression (agent-editable); the authoritative acceptance suite is unchanged.',
   ' */',
@@ -143,14 +171,18 @@ const REPRO_TEMPLATE = [
 
 const REPLACEMENT_TEMPLATE = [
   "  it('uses __REPLACEMENT__ instead of the removed field', () => {",
-  "    expect(implementation.ordersQuery).not.toMatch(/\\b__REMOVED__\\b/);",
+  '    expect(implementation.ordersQuery).not.toMatch(/\\b__REMOVED__\\b/);',
   "    expect(implementation.ordersQuery).toContain('__REPLACEMENT__');",
   '  });',
 ].join('\n');
 
 function reproductionTest(type: string, removed: string, replacement?: string): string {
-  const repl = replacement ? REPLACEMENT_TEMPLATE.replaceAll('__REPLACEMENT__', replacement).replaceAll('__REMOVED__', removed) : '';
-  return REPRO_TEMPLATE.replaceAll('__TYPE__', type).replaceAll('__REMOVED__', removed).replace('__REPLACEMENT_TEST__', repl);
+  const repl = replacement
+    ? REPLACEMENT_TEMPLATE.replaceAll('__REPLACEMENT__', replacement).replaceAll('__REMOVED__', removed)
+    : '';
+  return REPRO_TEMPLATE.replaceAll('__TYPE__', type)
+    .replaceAll('__REMOVED__', removed)
+    .replace('__REPLACEMENT_TEST__', repl);
 }
 
 /* ===================================== Claude ===================================== */
@@ -177,9 +209,7 @@ export class ClaudePlanner implements MaintenancePlanner {
   readonly name = 'claude' as const;
   private readonly client: Anthropic;
 
-  constructor(
-    private readonly opts: { model?: string; maxTurns?: number; client?: Anthropic } = {},
-  ) {
+  constructor(private readonly opts: { model?: string; maxTurns?: number; client?: Anthropic } = {}) {
     this.client = opts.client ?? new Anthropic();
   }
 
@@ -189,7 +219,12 @@ export class ClaudePlanner implements MaintenancePlanner {
       description: t.description,
       input_schema: {
         type: 'object' as const,
-        properties: Object.fromEntries(Object.keys(t.input).map((k) => [k, { type: k === 'limit' ? 'number' : k === 'all' ? 'boolean' : 'string' }])),
+        properties: Object.fromEntries(
+          Object.keys(t.input).map((k) => [
+            k,
+            { type: k === 'limit' ? 'number' : k === 'all' ? 'boolean' : 'string' },
+          ]),
+        ),
       },
     }));
     const messages: Anthropic.Beta.BetaMessageParam[] = [
@@ -213,15 +248,28 @@ export class ClaudePlanner implements MaintenancePlanner {
       calls++;
       inputTokens += response.usage.input_tokens;
       outputTokens += response.usage.output_tokens;
-      finalText = response.content.filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text').map((b) => b.text).join('\n');
-      if (response.stop_reason === 'refusal' || response.stop_reason === 'end_turn' || response.stop_reason === 'max_tokens') break;
+      finalText = response.content
+        .filter((b): b is Anthropic.Beta.BetaTextBlock => b.type === 'text')
+        .map((b) => b.text)
+        .join('\n');
+      if (
+        response.stop_reason === 'refusal' ||
+        response.stop_reason === 'end_turn' ||
+        response.stop_reason === 'max_tokens'
+      )
+        break;
       messages.push({ role: 'assistant', content: response.content });
       if (response.stop_reason === 'pause_turn') continue;
       const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
       for (const block of response.content) {
         if (block.type !== 'tool_use') continue;
         const out = await tb.invoke(block.name, (block.input ?? {}) as Record<string, unknown>);
-        results.push({ type: 'tool_result', tool_use_id: block.id, content: out.slice(0, 20_000), ...(out.startsWith('ERROR') ? { is_error: true } : {}) });
+        results.push({
+          type: 'tool_result',
+          tool_use_id: block.id,
+          content: out.slice(0, 20_000),
+          ...(out.startsWith('ERROR') ? { is_error: true } : {}),
+        });
       }
       if (!results.length) break;
       messages.push({ role: 'user', content: results });
@@ -231,12 +279,24 @@ export class ClaudePlanner implements MaintenancePlanner {
       modelInputTokens: inputTokens,
       modelOutputTokens: outputTokens,
       modelCalls: calls,
-      estimatedUsd: Number(((inputTokens * PRICE.input + outputTokens * PRICE.output) / 1_000_000).toFixed(4)),
+      estimatedUsd: Number(
+        ((inputTokens * PRICE.input + outputTokens * PRICE.output) / 1_000_000).toFixed(4),
+      ),
     };
     const hypothesis = finalText.slice(0, 4000) || 'No explanation returned.';
     return tb.submittedCandidateId
-      ? { outcome: 'candidate_submitted', hypothesis, summary: `Candidate ${tb.submittedCandidateId} submitted`, cost }
-      : { outcome: 'no_candidate', hypothesis, summary: 'Planner stopped without submitting a candidate.', cost };
+      ? {
+          outcome: 'candidate_submitted',
+          hypothesis,
+          summary: `Candidate ${tb.submittedCandidateId} submitted`,
+          cost,
+        }
+      : {
+          outcome: 'no_candidate',
+          hypothesis,
+          summary: 'Planner stopped without submitting a candidate.',
+          cost,
+        };
   }
 }
 

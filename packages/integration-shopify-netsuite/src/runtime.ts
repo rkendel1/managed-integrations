@@ -52,7 +52,11 @@ export async function buildRuntime(
   const [integration] = await deps.db.select().from(integrations).where(eq(integrations.id, integrationId));
   if (!integration) throw new Error(`Integration ${integrationId} not found`);
   const versionId = opts.useCanary ? integration.canaryVersionId : integration.implementationVersionId;
-  const { impl, versionId: resolvedVersion } = await resolveImplementation(deps.db, versionId, deps.implementationOverride);
+  const { impl, versionId: resolvedVersion } = await resolveImplementation(
+    deps.db,
+    versionId,
+    deps.implementationOverride,
+  );
 
   const creds = new ConnectionCredentials(deps.db, deps.cipher, deps.endpoints);
   const shopConn = await creds.load(integration.tenantId, 'shopify');
@@ -63,7 +67,11 @@ export async function buildRuntime(
       code: 'NOT_CONNECTED',
     });
   }
-  const shopify = new ShopifyClient({ baseUrl: shopConn.baseUrl, apiVersion: impl.shopifyApiVersion, auth: creds.shopifyAuth(shopConn) });
+  const shopify = new ShopifyClient({
+    baseUrl: shopConn.baseUrl,
+    apiVersion: impl.shopifyApiVersion,
+    auth: creds.shopifyAuth(shopConn),
+  });
   const netsuite = new NetSuiteClient({ baseUrl: nsConn.baseUrl, auth: creds.netsuiteAuth(nsConn) });
   const engineDeps: EngineDeps = {
     db: deps.db,
@@ -75,5 +83,11 @@ export async function buildRuntime(
     ...(deps.logger ? { logger: deps.logger } : {}),
     ...(deps.retry ? { retry: deps.retry } : {}),
   };
-  return { engine: new SyncEngine(engineDeps), shopify, netsuite, implementation: impl, implementationVersionId: resolvedVersion };
+  return {
+    engine: new SyncEngine(engineDeps),
+    shopify,
+    netsuite,
+    implementation: impl,
+    implementationVersionId: resolvedVersion,
+  };
 }

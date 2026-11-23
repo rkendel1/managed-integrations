@@ -88,7 +88,10 @@ export const connections = pgTable(
     externalAccount: text('external_account'),
     /** Provider API base URL (validated against an allowlist; SSRF protection). */
     baseUrl: text('base_url'),
-    grantedScopes: text('granted_scopes').array().notNull().default(sql`'{}'::text[]`),
+    grantedScopes: text('granted_scopes')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     /** AES-256-GCM envelope; never returned by any API. */
     credentialsCiphertext: text('credentials_ciphertext'),
     credentialsKeyId: text('credentials_key_id'),

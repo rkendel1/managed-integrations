@@ -6,6 +6,6 @@
 
 ## Field changes
 
-| Type | Removed field | Replacement field | Notes |
-|------|---------------|-------------------|-------|
+| Type     | Removed field        | Replacement field       | Notes                                                                                     |
+| -------- | -------------------- | ----------------------- | ----------------------------------------------------------------------------------------- |
 | LineItem | originalUnitPriceSet | preDiscountUnitPriceSet | Same `MoneyBag` shape (`shopMoney { amount currencyCode }`); same pre-discount semantics. |

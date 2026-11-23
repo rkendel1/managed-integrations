@@ -13,10 +13,26 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { incidentEvents, incidents, integrations, maintenanceRuns, releases, repairCandidates, validationRuns } from '@mi/database';
+import {
+  incidentEvents,
+  incidents,
+  integrations,
+  maintenanceRuns,
+  releases,
+  repairCandidates,
+  validationRuns,
+} from '@mi/database';
 import { buildRuntime } from '@mi/integration-shopify-netsuite';
 import { evaluateIntegration } from '@mi/reliability';
-import { approveCandidate, buildVersionFromCommit, DEFAULT_SANDBOX, PlaybookPlanner, runMaintenance, runRelease, validateCandidate } from '../src/index.ts';
+import {
+  approveCandidate,
+  buildVersionFromCommit,
+  DEFAULT_SANDBOX,
+  PlaybookPlanner,
+  runMaintenance,
+  runRelease,
+  validateCandidate,
+} from '../src/index.ts';
 import { createHarness, FAST_RETRY, testCipher, type Harness } from '../../../test/support/harness.ts';
 
 const REPO = join(import.meta.dirname, '..', '..', '..');
@@ -48,10 +64,23 @@ describe.skipIf(!dockerOk)('maintenance pipeline (requires Docker)', () => {
     const { db } = h.dbh;
     const artifactDir = join(work, 'artifacts');
     const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: clone }).toString().trim();
-    const baseVersion = await buildVersionFromCommit(db, { repoDir: clone, workDir: join(work, 'wt'), artifactDir, commit: head, releaseState: 'released' });
-    await db.update(integrations).set({ implementationVersionId: baseVersion }).where(eq(integrations.id, h.integrationId));
+    const baseVersion = await buildVersionFromCommit(db, {
+      repoDir: clone,
+      workDir: join(work, 'wt'),
+      artifactDir,
+      commit: head,
+      releaseState: 'released',
+    });
+    await db
+      .update(integrations)
+      .set({ implementationVersionId: baseVersion })
+      .where(eq(integrations.id, h.integrationId));
     const rt = (opts?: { useCanary?: boolean }) =>
-      buildRuntime({ db, cipher: testCipher, endpoints: h.endpoints, workerId: 'pipeline-test', retry: FAST_RETRY }, h.integrationId, opts);
+      buildRuntime(
+        { db, cipher: testCipher, endpoints: h.endpoints, workerId: 'pipeline-test', retry: FAST_RETRY },
+        h.integrationId,
+        opts,
+      );
 
     // 1-3. Healthy: deliver with the released artifact.
     h.shopify.control.seedOrders(6, { start: new Date(Date.now() - 3600_000), stepMs: 60_000 });
@@ -71,20 +100,53 @@ describe.skipIf(!dockerOk)('maintenance pipeline (requires Docker)', () => {
     expect(inc!.status).toBe('investigating');
 
     // 9-12. Maintenance agent in an isolated worktree (deterministic playbook planner).
-    const [mr] = await db.insert(maintenanceRuns).values({ incidentId: inc!.id, integrationId: h.integrationId, trigger: 'incident', status: 'queued', baseVersionId: baseVersion }).returning();
+    const [mr] = await db
+      .insert(maintenanceRuns)
+      .values({
+        incidentId: inc!.id,
+        integrationId: h.integrationId,
+        trigger: 'incident',
+        status: 'queued',
+        baseVersionId: baseVersion,
+      })
+      .returning();
     const sandbox = { ...DEFAULT_SANDBOX, mode: 'docker' as const };
-    const m = await runMaintenance({ db, repoDir: clone, workDir: join(work, 'wt'), sandbox, planner: new PlaybookPlanner() }, mr!.id);
+    const m = await runMaintenance(
+      { db, repoDir: clone, workDir: join(work, 'wt'), sandbox, planner: new PlaybookPlanner() },
+      mr!.id,
+    );
     const [mrRow] = await db.select().from(maintenanceRuns).where(eq(maintenanceRuns.id, mr!.id));
-    expect(m.status, JSON.stringify({ outcome: mrRow!.outcome, tools: (mrRow!.toolCalls as { tool: string; ok: boolean; result: string }[]).map((t) => `${t.tool}:${t.ok}:${t.result.slice(0, 300)}`) }, null, 1)).toBe('candidate_submitted');
+    expect(
+      m.status,
+      JSON.stringify(
+        {
+          outcome: mrRow!.outcome,
+          tools: (mrRow!.toolCalls as { tool: string; ok: boolean; result: string }[]).map(
+            (t) => `${t.tool}:${t.ok}:${t.result.slice(0, 300)}`,
+          ),
+        },
+        null,
+        1,
+      ),
+    ).toBe('candidate_submitted');
     const [cand] = await db.select().from(repairCandidates).where(eq(repairCandidates.id, m.candidateId!));
-    expect(cand!.changedFiles.every((f) => f.startsWith('packages/integration-shopify-netsuite/src/implementation/') || f.startsWith('packages/integration-shopify-netsuite/test/regression/'))).toBe(true);
+    expect(
+      cand!.changedFiles.every(
+        (f) =>
+          f.startsWith('packages/integration-shopify-netsuite/src/implementation/') ||
+          f.startsWith('packages/integration-shopify-netsuite/test/regression/'),
+      ),
+    ).toBe(true);
     expect(cand!.changedFiles.some((f) => f.includes('/test/acceptance/'))).toBe(false);
     expect(cand!.diff).toContain('preDiscountUnitPriceSet');
     const [mrDone] = await db.select().from(maintenanceRuns).where(eq(maintenanceRuns.id, mr!.id));
     expect((mrDone!.toolCalls as unknown[]).length).toBeGreaterThan(5);
 
     // 13. Independent validation (fresh tree from base + editable changes only, Docker sandbox).
-    const v = await validateCandidate({ db, repoDir: clone, workDir: join(work, 'wt'), artifactDir, sandbox }, cand!.id);
+    const v = await validateCandidate(
+      { db, repoDir: clone, workDir: join(work, 'wt'), artifactDir, sandbox },
+      cand!.id,
+    );
     expect(v.status).toBe('passed');
     const [vr] = await db.select().from(validationRuns).where(eq(validationRuns.id, v.validationRunId));
     expect(vr!.protectedPathsOk).toBe(true);
@@ -92,10 +154,20 @@ describe.skipIf(!dockerOk)('maintenance pipeline (requires Docker)', () => {
 
     // Approval cannot be skipped: an unvalidated path is refused (checked in release.test), here a human approves.
     const operatorId = '00000000-0000-4000-8000-000000000001';
-    const { releaseId } = await approveCandidate(db, { candidateId: cand!.id, operatorUserId: operatorId, note: 'reviewed diff + validation' });
+    const { releaseId } = await approveCandidate(db, {
+      candidateId: cand!.id,
+      operatorUserId: operatorId,
+      note: 'reviewed diff + validation',
+    });
 
     // 15-18. Canary → promote → catch-up → post-release reconciliation → resolved.
-    const rel = await runRelease({ db, releaseId, buildRuntime: (_id, o) => rt(o), retry: FAST_RETRY, canaryLimit: 2 });
+    const rel = await runRelease({
+      db,
+      releaseId,
+      buildRuntime: (_id, o) => rt(o),
+      retry: FAST_RETRY,
+      canaryLimit: 2,
+    });
     expect(rel.status).toBe('released');
     const [relRow] = await db.select().from(releases).where(eq(releases.id, releaseId));
     expect(relRow!.postReleaseReconciliationId).not.toBeNull();
@@ -109,7 +181,18 @@ describe.skipIf(!dockerOk)('maintenance pipeline (requires Docker)', () => {
     const [resolved] = await db.select().from(incidents).where(eq(incidents.id, inc!.id));
     expect(resolved!.status).toBe('resolved');
     expect((resolved!.verification as { missing: number; duplicates: number }).missing).toBe(0);
-    const timeline = (await db.select().from(incidentEvents).where(eq(incidentEvents.incidentId, inc!.id))).map((e) => e.toStatus);
-    expect(timeline).toEqual(expect.arrayContaining(['detected', 'classified', 'investigating', 'recovery', 'verification', 'resolved']));
+    const timeline = (
+      await db.select().from(incidentEvents).where(eq(incidentEvents.incidentId, inc!.id))
+    ).map((e) => e.toStatus);
+    expect(timeline).toEqual(
+      expect.arrayContaining([
+        'detected',
+        'classified',
+        'investigating',
+        'recovery',
+        'verification',
+        'resolved',
+      ]),
+    );
   }, 900_000);
 });

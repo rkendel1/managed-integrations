@@ -5,7 +5,13 @@
  */
 import { IMPLEMENTATION_API_VERSION, type IntegrationImplementation } from '../implementation-api.ts';
 import { externalIdFor, mapOrder } from './mapping.ts';
-import { ORDER_BY_ID_QUERY, ORDERS_QUERY, parseOrder, parseOrdersPage, SHOPIFY_API_VERSION } from './shopify-orders.ts';
+import {
+  ORDER_BY_ID_QUERY,
+  ORDERS_QUERY,
+  parseOrder,
+  parseOrdersPage,
+  SHOPIFY_API_VERSION,
+} from './shopify-orders.ts';
 
 export const implementation: IntegrationImplementation = {
   apiVersion: IMPLEMENTATION_API_VERSION,

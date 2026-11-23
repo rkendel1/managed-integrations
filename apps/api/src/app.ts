@@ -28,10 +28,21 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: deps.logLevel ?? deps.config.env.LOG_LEVEL,
-      redact: { paths: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]'], censor: '[REDACTED]' },
-      serializers: { req: (r) => ({ method: r.method, url: String(redact(r.url)).replace(/([?&](code|hmac|state)=)[^&]+/g, '$1[REDACTED]') }) },
+      redact: {
+        paths: ['req.headers.cookie', 'req.headers.authorization', 'req.headers["x-csrf-token"]'],
+        censor: '[REDACTED]',
+      },
+      serializers: {
+        req: (r) => ({
+          method: r.method,
+          url: String(redact(r.url)).replace(/([?&](code|hmac|state)=)[^&]+/g, '$1[REDACTED]'),
+        }),
+      },
     },
-    genReqId: (req) => (typeof req.headers['x-request-id'] === 'string' && /^[\w-]{8,64}$/.test(req.headers['x-request-id']) ? req.headers['x-request-id'] : newCorrelationId()),
+    genReqId: (req) =>
+      typeof req.headers['x-request-id'] === 'string' && /^[\w-]{8,64}$/.test(req.headers['x-request-id'])
+        ? req.headers['x-request-id']
+        : newCorrelationId(),
     trustProxy: true,
     bodyLimit: 256 * 1024,
   });
@@ -68,16 +79,28 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
 
   /* ------------------------------ auth ------------------------------ */
   const secureCookie = deps.config.production;
-  app.post('/api/auth/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req, reply) => {
-    const body = z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) }).safeParse(req.body);
-    if (!body.success) return reply.code(400).send({ error: 'email and password are required' });
-    const [user] = await deps.db.select().from(users).where(eq(users.email, body.data.email.toLowerCase()));
-    const ok = user ? await verifyPassword(body.data.password, user.passwordHash) : false;
-    if (!user || !ok) return reply.code(401).send({ error: 'Invalid email or password' });
-    const s = await createSession(deps.db, user.id);
-    reply.setCookie(SESSION_COOKIE, s.token, { httpOnly: true, sameSite: 'lax', secure: secureCookie, path: '/', expires: s.expiresAt });
-    return { user: { email: user.email, role: user.role }, csrfToken: s.csrfToken };
-  });
+  app.post(
+    '/api/auth/login',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async (req, reply) => {
+      const body = z
+        .object({ email: z.string().email().max(200), password: z.string().min(1).max(200) })
+        .safeParse(req.body);
+      if (!body.success) return reply.code(400).send({ error: 'email and password are required' });
+      const [user] = await deps.db.select().from(users).where(eq(users.email, body.data.email.toLowerCase()));
+      const ok = user ? await verifyPassword(body.data.password, user.passwordHash) : false;
+      if (!user || !ok) return reply.code(401).send({ error: 'Invalid email or password' });
+      const s = await createSession(deps.db, user.id);
+      reply.setCookie(SESSION_COOKIE, s.token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: secureCookie,
+        path: '/',
+        expires: s.expiresAt,
+      });
+      return { user: { email: user.email, role: user.role }, csrfToken: s.csrfToken };
+    },
+  );
   app.post('/api/auth/logout', async (req, reply) => {
     await destroySession(deps.db, req.cookies[SESSION_COOKIE]);
     reply.clearCookie(SESSION_COOKIE, { path: '/' });

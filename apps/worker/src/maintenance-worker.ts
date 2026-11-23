@@ -6,7 +6,13 @@
 import type { PgBoss } from 'pg-boss';
 import { MaintenanceJobSchema, QUEUES, ValidationJobSchema } from '@mi/contracts';
 import type { Db } from '@mi/database';
-import { DEFAULT_SANDBOX, plannerFromEnv, runMaintenance, validateCandidate, type SandboxConfig } from '@mi/maintenance';
+import {
+  DEFAULT_SANDBOX,
+  plannerFromEnv,
+  runMaintenance,
+  validateCandidate,
+  type SandboxConfig,
+} from '@mi/maintenance';
 import { describeError, withCorrelation, type Logger } from '@mi/observability';
 import { ensureQueues } from './runtime-worker.ts';
 
@@ -42,7 +48,17 @@ export function createMaintenanceWorker(d: MaintenanceWorkerDeps) {
     },
     async validation(raw: unknown) {
       const job = ValidationJobSchema.parse(raw);
-      return validateCandidate({ db: d.db, repoDir: d.repoDir, workDir: d.workDir, artifactDir: d.artifactDir, sandbox, logger: d.logger }, job.repairCandidateId);
+      return validateCandidate(
+        {
+          db: d.db,
+          repoDir: d.repoDir,
+          workDir: d.workDir,
+          artifactDir: d.artifactDir,
+          sandbox,
+          logger: d.logger,
+        },
+        job.repairCandidateId,
+      );
     },
   };
   async function start() {

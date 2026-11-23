@@ -113,8 +113,11 @@ export function parseRawOrder(raw: RawOrder): ParsedOrder {
 }
 
 export function parseOrdersPage(data: unknown): OrdersPage {
-  const conn = (data as { orders?: { nodes?: RawOrder[]; pageInfo?: { hasNextPage?: boolean; endCursor?: string | null } } })
-    ?.orders;
+  const conn = (
+    data as {
+      orders?: { nodes?: RawOrder[]; pageInfo?: { hasNextPage?: boolean; endCursor?: string | null } };
+    }
+  )?.orders;
   if (!conn || !Array.isArray(conn.nodes) || !conn.pageInfo) {
     throw new Error('Unexpected orders response shape');
   }

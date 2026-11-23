@@ -13,8 +13,22 @@ import {
   ReleaseJobSchema,
   SyncJobSchema,
 } from '@mi/contracts';
-import { incidents, integrations, maintenanceRuns, observations, reconciliationRuns, syncRuns, type Db } from '@mi/database';
-import { buildRuntime, recoverInterruptedRuns, type IntegrationImplementation, type RetryPolicy, type ServiceConfig } from '@mi/integration-shopify-netsuite';
+import {
+  incidents,
+  integrations,
+  maintenanceRuns,
+  observations,
+  reconciliationRuns,
+  syncRuns,
+  type Db,
+} from '@mi/database';
+import {
+  buildRuntime,
+  recoverInterruptedRuns,
+  type IntegrationImplementation,
+  type RetryPolicy,
+  type ServiceConfig,
+} from '@mi/integration-shopify-netsuite';
 import { describeError, withCorrelation, type Logger } from '@mi/observability';
 import { runRelease } from '@mi/maintenance';
 import {
@@ -39,12 +53,26 @@ export interface RuntimeWorkerDeps {
   retry?: RetryPolicy;
 }
 
-export const RUNTIME_QUEUES = [QUEUES.reliabilityTick, QUEUES.sync, QUEUES.reconcile, QUEUES.backlog, QUEUES.release, QUEUES.maintenance, QUEUES.validation];
+export const RUNTIME_QUEUES = [
+  QUEUES.reliabilityTick,
+  QUEUES.sync,
+  QUEUES.reconcile,
+  QUEUES.backlog,
+  QUEUES.release,
+  QUEUES.maintenance,
+  QUEUES.validation,
+];
 
 export async function ensureQueues(boss: PgBoss): Promise<void> {
   for (const q of RUNTIME_QUEUES) {
     const existing = await boss.getQueue(q);
-    if (!existing) await boss.createQueue(q, { retryLimit: q === QUEUES.sync ? 0 : 2, retryDelay: 30, retryBackoff: true, expireInSeconds: 30 * 60 });
+    if (!existing)
+      await boss.createQueue(q, {
+        retryLimit: q === QUEUES.sync ? 0 : 2,
+        retryDelay: 30,
+        retryBackoff: true,
+        expireInSeconds: 30 * 60,
+      });
   }
 }
 
@@ -64,26 +92,54 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     for (const a of actions) {
       switch (a.type) {
         case 'sync':
-          await boss.send(QUEUES.sync, { integrationId: a.integrationId, trigger: a.trigger, mode: 'auto' }, { singletonKey: `sync:${a.integrationId}` });
+          await boss.send(
+            QUEUES.sync,
+            { integrationId: a.integrationId, trigger: a.trigger, mode: 'auto' },
+            { singletonKey: `sync:${a.integrationId}` },
+          );
           break;
         case 'reconcile':
-          await boss.send(QUEUES.reconcile, { integrationId: a.integrationId, incidentId: a.incidentId, trigger: a.trigger }, { singletonKey: `reconcile:${a.integrationId}:${a.incidentId ?? 'sched'}` });
+          await boss.send(
+            QUEUES.reconcile,
+            { integrationId: a.integrationId, incidentId: a.incidentId, trigger: a.trigger },
+            { singletonKey: `reconcile:${a.integrationId}:${a.incidentId ?? 'sched'}` },
+          );
           break;
         case 'redeliver':
-          await boss.send(QUEUES.sync, { integrationId: a.integrationId, trigger: 'recovery', mode: 'redelivery', sourceLegacyIds: a.legacyIds.slice(0, 1000) });
+          await boss.send(QUEUES.sync, {
+            integrationId: a.integrationId,
+            trigger: 'recovery',
+            mode: 'redelivery',
+            sourceLegacyIds: a.legacyIds.slice(0, 1000),
+          });
           break;
         case 'assess_backlog':
           await boss.send(QUEUES.backlog, { integrationId: a.integrationId, incidentId: a.incidentId });
           break;
         case 'maintenance': {
-          const existing = await db.select({ id: maintenanceRuns.id }).from(maintenanceRuns).where(eq(maintenanceRuns.incidentId, a.incidentId)).limit(1);
+          const existing = await db
+            .select({ id: maintenanceRuns.id })
+            .from(maintenanceRuns)
+            .where(eq(maintenanceRuns.incidentId, a.incidentId))
+            .limit(1);
           if (existing.length) break;
           const [integ] = await db.select().from(integrations).where(eq(integrations.id, a.integrationId));
           const [mr] = await db
             .insert(maintenanceRuns)
-            .values({ incidentId: a.incidentId, integrationId: a.integrationId, trigger: 'incident', status: 'queued', baseVersionId: integ?.implementationVersionId ?? null })
+            .values({
+              incidentId: a.incidentId,
+              integrationId: a.integrationId,
+              trigger: 'incident',
+              status: 'queued',
+              baseVersionId: integ?.implementationVersionId ?? null,
+            })
             .returning();
-          await noteIncident(db, a.incidentId, 'Internal maintenance task created: an engineer-agent will investigate in an isolated environment. No production changes are made without validation and human approval.', { customerVisible: true });
+          await noteIncident(
+            db,
+            a.incidentId,
+            'Internal maintenance task created: an engineer-agent will investigate in an isolated environment. No production changes are made without validation and human approval.',
+            { customerVisible: true },
+          );
           await boss.send(QUEUES.maintenance, { maintenanceRunId: mr!.id });
           break;
         }
@@ -136,21 +192,39 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     async tick(): Promise<void> {
       const interrupted = await recoverInterruptedRuns(db);
       if (interrupted.length) logger.warn({ interrupted }, 'marked interrupted sync runs');
-      const active = await db.select().from(integrations).where(and(eq(integrations.enabled, true), eq(integrations.lifecycle, 'active')));
+      const active = await db
+        .select()
+        .from(integrations)
+        .where(and(eq(integrations.enabled, true), eq(integrations.lifecycle, 'active')));
       for (const integ of active) {
         await withCorrelation({ integrationId: integ.id, tenantId: integ.tenantId }, async () => {
           const syncDue = new Date(Date.now() - config.env.SYNC_INTERVAL_MINUTES * 60_000);
-          const recent = await db.select({ id: syncRuns.id }).from(syncRuns).where(and(eq(syncRuns.integrationId, integ.id), gt(syncRuns.createdAt, syncDue))).limit(1);
-          if (!recent.length) await boss.send(QUEUES.sync, { integrationId: integ.id, trigger: 'schedule', mode: 'auto' }, { singletonKey: `sync:${integ.id}` });
+          const recent = await db
+            .select({ id: syncRuns.id })
+            .from(syncRuns)
+            .where(and(eq(syncRuns.integrationId, integ.id), gt(syncRuns.createdAt, syncDue)))
+            .limit(1);
+          if (!recent.length)
+            await boss.send(
+              QUEUES.sync,
+              { integrationId: integ.id, trigger: 'schedule', mode: 'auto' },
+              { singletonKey: `sync:${integ.id}` },
+            );
 
           const reconDue = new Date(Date.now() - config.env.RECONCILE_INTERVAL_MINUTES * 60_000);
           const recentRecon = await db
             .select({ id: reconciliationRuns.id })
             .from(reconciliationRuns)
-            .where(and(eq(reconciliationRuns.integrationId, integ.id), gt(reconciliationRuns.startedAt, reconDue)))
+            .where(
+              and(eq(reconciliationRuns.integrationId, integ.id), gt(reconciliationRuns.startedAt, reconDue)),
+            )
             .limit(1);
           if (!recentRecon.length && integ.backfillCompletedAt) {
-            await boss.send(QUEUES.reconcile, { integrationId: integ.id, incidentId: null, trigger: 'schedule' }, { singletonKey: `reconcile:${integ.id}:sched` });
+            await boss.send(
+              QUEUES.reconcile,
+              { integrationId: integ.id, incidentId: null, trigger: 'schedule' },
+              { singletonKey: `reconcile:${integ.id}:sched` },
+            );
           }
           await evaluateAndAct(integ.id);
         });
@@ -183,9 +257,19 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
       const job = ReconcileJobSchema.parse(raw);
       return withCorrelation({ integrationId: job.integrationId }, async () => {
         const rt = await buildRuntime(runtimeDeps(), job.integrationId);
-        const result = await reconcile({ db, shopify: rt.shopify, netsuite: rt.netsuite, integrationId: job.integrationId, trigger: job.trigger, incidentId: job.incidentId, ...(deps.retry ? { retry: deps.retry } : {}) });
+        const result = await reconcile({
+          db,
+          shopify: rt.shopify,
+          netsuite: rt.netsuite,
+          integrationId: job.integrationId,
+          trigger: job.trigger,
+          incidentId: job.incidentId,
+          ...(deps.retry ? { retry: deps.retry } : {}),
+        });
         const follow = await applyReconciliationResult(db, job.integrationId, job.incidentId, result);
-        const redeliveries = follow.filter((a) => a.type === 'redeliver').reduce((n, a) => n + (a.type === 'redeliver' ? a.legacyIds.length : 0), 0);
+        const redeliveries = follow
+          .filter((a) => a.type === 'redeliver')
+          .reduce((n, a) => n + (a.type === 'redeliver' ? a.legacyIds.length : 0), 0);
         if (redeliveries) await markRecoveryEnqueued(db, result.runId, redeliveries);
         await executeActions(follow);
         await evaluateAndAct(job.integrationId);
@@ -200,12 +284,19 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
       if (!inc || !integ) return;
       const rt = await buildRuntime(runtimeDeps(), job.integrationId);
       const from = new Date(integ.cursorWatermark ?? (integ.config as { backfillFrom: string }).backfillFrom);
-      const orders = await readSourceIdentities(rt.shopify, from, new Date(), deps.retry ? { retry: deps.retry } : {});
+      const orders = await readSourceIdentities(
+        rt.shopify,
+        from,
+        new Date(),
+        deps.retry ? { retry: deps.retry } : {},
+      );
       // Orders at or before the watermark that are already delivered are not part of the backlog.
       await recordAffectedOrders(
         db,
         inc,
-        orders.filter((o) => Date.parse(o.updatedAt) > from.getTime() || !integ.cursorWatermark).map((o) => ({ name: o.name, legacyId: o.legacyId, updatedAt: o.updatedAt })),
+        orders
+          .filter((o) => Date.parse(o.updatedAt) > from.getTime() || !integ.cursorWatermark)
+          .map((o) => ({ name: o.name, legacyId: o.legacyId, updatedAt: o.updatedAt })),
       );
     },
 
@@ -254,4 +345,3 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
 
   return { start, handlers, executeActions, evaluateAndAct };
 }
-

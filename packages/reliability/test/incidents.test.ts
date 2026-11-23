@@ -2,7 +2,12 @@ import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { incidentEvents, incidents, integrations, syncRuns } from '@mi/database';
 import { applyReconciliationResult, evaluateIntegration } from '../src/checks.ts';
-import { canTransition, InvalidIncidentTransition, openIncident, transitionIncident } from '../src/incidents.ts';
+import {
+  canTransition,
+  InvalidIncidentTransition,
+  openIncident,
+  transitionIncident,
+} from '../src/incidents.ts';
 import { reconcile } from '../src/reconciliation.ts';
 import { createHarness, FAST_RETRY, type Harness } from '../../../test/support/harness.ts';
 
@@ -23,7 +28,9 @@ describe('incident detection and lifecycle (durable)', () => {
   afterEach(() => h.close());
 
   const timeline = async (id: string) =>
-    (await h.dbh.db.select().from(incidentEvents).where(eq(incidentEvents.incidentId, id))).map((e) => e.toStatus);
+    (await h.dbh.db.select().from(incidentEvents).where(eq(incidentEvents.incidentId, id))).map(
+      (e) => e.toStatus,
+    );
 
   it('dedupes open incidents and rejects invalid transitions durably', async () => {
     const input = {
@@ -43,11 +50,19 @@ describe('incident detection and lifecycle (durable)', () => {
     expect(createdB).toBe(false);
     expect(b.id).toBe(a.id);
     expect(await timeline(a.id)).toEqual(['detected', 'classified', 'recoverable']);
-    await expect(transitionIncident(h.dbh.db, a.id, 'resolved', { actor: 'system', note: 'x', verification: {} })).rejects.toBeInstanceOf(InvalidIncidentTransition);
+    await expect(
+      transitionIncident(h.dbh.db, a.id, 'resolved', { actor: 'system', note: 'x', verification: {} }),
+    ).rejects.toBeInstanceOf(InvalidIncidentTransition);
     await transitionIncident(h.dbh.db, a.id, 'recovery', { actor: 'system', note: 'x' });
     await transitionIncident(h.dbh.db, a.id, 'verification', { actor: 'system', note: 'x' });
-    await expect(transitionIncident(h.dbh.db, a.id, 'resolved', { actor: 'system', note: 'x' })).rejects.toThrow(/verification evidence/);
-    const r = await transitionIncident(h.dbh.db, a.id, 'resolved', { actor: 'system', note: 'ok', verification: { checked: true } });
+    await expect(
+      transitionIncident(h.dbh.db, a.id, 'resolved', { actor: 'system', note: 'x' }),
+    ).rejects.toThrow(/verification evidence/);
+    const r = await transitionIncident(h.dbh.db, a.id, 'resolved', {
+      actor: 'system',
+      note: 'ok',
+      verification: { checked: true },
+    });
     expect(r.resolvedAt).not.toBeNull();
   });
 
@@ -80,7 +95,14 @@ describe('incident detection and lifecycle (durable)', () => {
     await evaluateIntegration(h.dbh.db, h.integrationId);
     const [after] = await h.dbh.db.select().from(incidents);
     expect(after!.status).toBe('resolved');
-    expect(await timeline(after!.id)).toEqual(['detected', 'classified', 'requires_action', 'recovery', 'verification', 'resolved']);
+    expect(await timeline(after!.id)).toEqual([
+      'detected',
+      'classified',
+      'requires_action',
+      'recovery',
+      'verification',
+      'resolved',
+    ]);
   });
 
   it('transient failures: incident after 2 consecutive failures, resolved only after reconciliation verifies', async () => {
@@ -91,7 +113,9 @@ describe('incident detection and lifecycle (durable)', () => {
     expect((await evaluateIntegration(h.dbh.db, h.integrationId)).openIncidents).toHaveLength(0);
     await engine.run({ integrationId: h.integrationId, trigger: 'schedule' });
     const ev = await evaluateIntegration(h.dbh.db, h.integrationId);
-    expect(ev.openIncidents).toEqual([expect.objectContaining({ kind: 'sync_failure', status: 'recoverable' })]);
+    expect(ev.openIncidents).toEqual([
+      expect.objectContaining({ kind: 'sync_failure', status: 'recoverable' }),
+    ]);
     expect(ev.actions.some((a) => a.type === 'sync')).toBe(true);
 
     h.netsuite.state.faults.clear();
@@ -103,7 +127,16 @@ describe('incident detection and lifecycle (durable)', () => {
     expect(inc!.status).toBe('verification');
 
     const c = await h.clients();
-    const result = await reconcile({ db: h.dbh.db, shopify: c.shopify, netsuite: c.netsuite, integrationId: h.integrationId, trigger: 'incident', incidentId: inc!.id, windowFrom: new Date('2026-11-19T00:00:00Z'), retry: FAST_RETRY });
+    const result = await reconcile({
+      db: h.dbh.db,
+      shopify: c.shopify,
+      netsuite: c.netsuite,
+      integrationId: h.integrationId,
+      trigger: 'incident',
+      incidentId: inc!.id,
+      windowFrom: new Date('2026-11-19T00:00:00Z'),
+      retry: FAST_RETRY,
+    });
     await applyReconciliationResult(h.dbh.db, h.integrationId, inc!.id, result);
     const [done] = await h.dbh.db.select().from(incidents);
     expect(done!.status).toBe('resolved');
@@ -111,9 +144,15 @@ describe('incident detection and lifecycle (durable)', () => {
   });
 
   it('freshness breach opens and resolves on catch-up', async () => {
-    await h.dbh.db.update(integrations).set({ lastSuccessfulSyncAt: new Date(Date.now() - 3 * 3600_000) }).where(eq(integrations.id, h.integrationId));
+    await h.dbh.db
+      .update(integrations)
+      .set({ lastSuccessfulSyncAt: new Date(Date.now() - 3 * 3600_000) })
+      .where(eq(integrations.id, h.integrationId));
     await evaluateIntegration(h.dbh.db, h.integrationId);
-    expect((await h.dbh.db.select().from(incidents))[0]).toMatchObject({ kind: 'freshness_breach', status: 'recoverable' });
+    expect((await h.dbh.db.select().from(incidents))[0]).toMatchObject({
+      kind: 'freshness_breach',
+      status: 'recoverable',
+    });
     await (await h.engine()).run({ integrationId: h.integrationId, trigger: 'schedule' });
     const ev = await evaluateIntegration(h.dbh.db, h.integrationId);
     expect(ev.openIncidents).toHaveLength(0);
@@ -121,27 +160,56 @@ describe('incident detection and lifecycle (durable)', () => {
   });
 
   it('rejected records → requires_action naming the unmapped SKU; resolves after redelivery', async () => {
-    h.shopify.control.upsertOrder({ createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', lineItems: [{ sku: 'SKU-GREEN', title: 'G', quantity: 1, unitPrice: '3.00' }] });
+    h.shopify.control.upsertOrder({
+      createdAt: '2026-11-01T00:00:00Z',
+      updatedAt: '2026-11-01T00:00:00Z',
+      lineItems: [{ sku: 'SKU-GREEN', title: 'G', quantity: 1, unitPrice: '3.00' }],
+    });
     await (await h.engine()).run({ integrationId: h.integrationId, trigger: 'schedule' });
     await evaluateIntegration(h.dbh.db, h.integrationId);
     const [inc] = await h.dbh.db.select().from(incidents);
     expect(inc!.customerAction).toContain('SKU-GREEN');
     const cfg = (await h.dbh.db.select().from(integrations))[0]!.config as { skuMap: Record<string, string> };
-    await h.dbh.db.update(integrations).set({ config: { ...cfg, skuMap: { ...cfg.skuMap, 'SKU-GREEN': '103' } } });
+    await h.dbh.db
+      .update(integrations)
+      .set({ config: { ...cfg, skuMap: { ...cfg.skuMap, 'SKU-GREEN': '103' } } });
     const order = [...h.shopify.state.orders.values()][0]!;
-    await (await h.engine()).run({ integrationId: h.integrationId, trigger: 'recovery', mode: 'redelivery', sourceLegacyIds: [order.legacyId] });
+    await (
+      await h.engine()
+    ).run({
+      integrationId: h.integrationId,
+      trigger: 'recovery',
+      mode: 'redelivery',
+      sourceLegacyIds: [order.legacyId],
+    });
     await evaluateIntegration(h.dbh.db, h.integrationId);
     expect((await h.dbh.db.select().from(incidents))[0]!.status).toBe('resolved');
   });
 
   it('interrupted runs count toward sync failure detection', async () => {
-    await h.dbh.db.insert(syncRuns).values([
-      { integrationId: h.integrationId, mode: 'incremental', status: 'interrupted', trigger: 'schedule', errorClass: 'transient' },
-    ]);
+    await h.dbh.db
+      .insert(syncRuns)
+      .values([
+        {
+          integrationId: h.integrationId,
+          mode: 'incremental',
+          status: 'interrupted',
+          trigger: 'schedule',
+          errorClass: 'transient',
+        },
+      ]);
     await new Promise((r) => setTimeout(r, 5));
-    await h.dbh.db.insert(syncRuns).values([
-      { integrationId: h.integrationId, mode: 'incremental', status: 'interrupted', trigger: 'schedule', errorClass: 'transient' },
-    ]);
+    await h.dbh.db
+      .insert(syncRuns)
+      .values([
+        {
+          integrationId: h.integrationId,
+          mode: 'incremental',
+          status: 'interrupted',
+          trigger: 'schedule',
+          errorClass: 'transient',
+        },
+      ]);
     const ev = await evaluateIntegration(h.dbh.db, h.integrationId);
     expect(ev.openIncidents.map((i) => i.kind)).toContain('sync_failure');
   });

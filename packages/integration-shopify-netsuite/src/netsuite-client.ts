@@ -19,7 +19,11 @@ export interface NetSuiteAuth {
 }
 
 /** Builds the signed JWT client assertion for the client credentials grant. */
-export function buildClientAssertion(creds: NetSuiteM2MCredentials, audience: string, nowSec = Math.floor(Date.now() / 1000)): string {
+export function buildClientAssertion(
+  creds: NetSuiteM2MCredentials,
+  audience: string,
+  nowSec = Math.floor(Date.now() / 1000),
+): string {
   const header = { alg: creds.algorithm, typ: 'JWT', kid: creds.certificateId };
   const payload = {
     iss: creds.clientId,
@@ -74,16 +78,23 @@ export class NetSuiteM2MAuth implements NetSuiteAuth {
     });
     if (res.status === 400 || res.status === 401) {
       const body = safeJson(res) as { error?: string };
-      throw new ProviderError(`NetSuite token request rejected: ${body?.error ?? res.status}`, 'authentication', {
-        provider: 'netsuite',
-        status: res.status,
-        code: body?.error ?? 'TOKEN_REJECTED',
-      });
+      throw new ProviderError(
+        `NetSuite token request rejected: ${body?.error ?? res.status}`,
+        'authentication',
+        {
+          provider: 'netsuite',
+          status: res.status,
+          code: body?.error ?? 'TOKEN_REJECTED',
+        },
+      );
     }
-    if (res.status !== 200) throw errorFromResponse('netsuite', res, `NetSuite token endpoint HTTP ${res.status}`);
+    if (res.status !== 200)
+      throw errorFromResponse('netsuite', res, `NetSuite token endpoint HTTP ${res.status}`);
     const body = res.json() as { access_token?: string; expires_in?: number };
     if (!body.access_token) {
-      throw new ProviderError('NetSuite token response missing access_token', 'unknown', { provider: 'netsuite' });
+      throw new ProviderError('NetSuite token response missing access_token', 'unknown', {
+        provider: 'netsuite',
+      });
     }
     this.cached = { token: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000 };
     return body.access_token;
@@ -99,9 +110,13 @@ function safeJson(res: HttpResponse): unknown {
 }
 
 export function netsuiteErrorCode(res: HttpResponse): { code?: string; detail?: string } {
-  const body = safeJson(res) as { 'o:errorDetails'?: { detail?: string; 'o:errorCode'?: string }[] } | undefined;
+  const body = safeJson(res) as
+    { 'o:errorDetails'?: { detail?: string; 'o:errorCode'?: string }[] } | undefined;
   const d = body?.['o:errorDetails']?.[0];
-  return { ...(d?.['o:errorCode'] ? { code: d['o:errorCode'] } : {}), ...(d?.detail ? { detail: d.detail } : {}) };
+  return {
+    ...(d?.['o:errorCode'] ? { code: d['o:errorCode'] } : {}),
+    ...(d?.detail ? { detail: d.detail } : {}),
+  };
 }
 
 /** Simple counting semaphore to stay under NetSuite account concurrency governance. */
@@ -130,7 +145,12 @@ export interface SuiteqlPage<T> {
 export class NetSuiteClient {
   private readonly sem: Semaphore;
   constructor(
-    private readonly opts: { baseUrl: string; auth: NetSuiteAuth; timeoutMs?: number; maxConcurrency?: number },
+    private readonly opts: {
+      baseUrl: string;
+      auth: NetSuiteAuth;
+      timeoutMs?: number;
+      maxConcurrency?: number;
+    },
   ) {
     this.sem = new Semaphore(opts.maxConcurrency ?? 2);
   }
@@ -162,14 +182,26 @@ export class NetSuiteClient {
     const { code, detail } = netsuiteErrorCode(res);
     const msg = `NetSuite ${op} HTTP ${res.status}${code ? ` ${code}` : ''}${detail ? `: ${detail}` : ''}`;
     if (res.status === 429 || code === 'CONCURRENCY_LIMIT_EXCEEDED') {
-      return errorFromResponse('netsuite', res, msg, { errorClass: 'rate_limited', code: code ?? 'RATE_LIMIT' });
+      return errorFromResponse('netsuite', res, msg, {
+        errorClass: 'rate_limited',
+        code: code ?? 'RATE_LIMIT',
+      });
     }
-    if (res.status === 401) return errorFromResponse('netsuite', res, msg, { errorClass: 'authentication', ...(code ? { code } : {}) });
-    if (res.status === 403) return errorFromResponse('netsuite', res, msg, { errorClass: 'authorization', ...(code ? { code } : {}) });
+    if (res.status === 401)
+      return errorFromResponse('netsuite', res, msg, {
+        errorClass: 'authentication',
+        ...(code ? { code } : {}),
+      });
+    if (res.status === 403)
+      return errorFromResponse('netsuite', res, msg, {
+        errorClass: 'authorization',
+        ...(code ? { code } : {}),
+      });
     if (res.status === 400 && (code === 'USER_ERROR' || code === 'INVALID_KEY_OR_REF')) {
       return errorFromResponse('netsuite', res, msg, { errorClass: 'invalid_data', code });
     }
-    if (res.status === 400) return errorFromResponse('netsuite', res, msg, { errorClass: 'permanent', ...(code ? { code } : {}) });
+    if (res.status === 400)
+      return errorFromResponse('netsuite', res, msg, { errorClass: 'permanent', ...(code ? { code } : {}) });
     return errorFromResponse('netsuite', res, msg, code ? { code } : undefined);
   }
 
@@ -178,7 +210,9 @@ export class NetSuiteClient {
    * record with the external id is updated, never duplicated.
    * Returns the internal id when NetSuite reports it via the Location header.
    */
-  async upsertSalesOrder(payload: NetSuiteSalesOrderPayload): Promise<{ destinationId: string | null; status: number }> {
+  async upsertSalesOrder(
+    payload: NetSuiteSalesOrderPayload,
+  ): Promise<{ destinationId: string | null; status: number }> {
     const { externalId, ...body } = payload;
     const res = await this.send(`/record/v1/salesOrder/eid:${encodeURIComponent(externalId)}`, {
       method: 'PUT',
@@ -192,7 +226,9 @@ export class NetSuiteClient {
   }
 
   async getSalesOrderByExternalId(externalId: string): Promise<Record<string, unknown> | null> {
-    const res = await this.send(`/record/v1/salesOrder/eid:${encodeURIComponent(externalId)}`, { method: 'GET' });
+    const res = await this.send(`/record/v1/salesOrder/eid:${encodeURIComponent(externalId)}`, {
+      method: 'GET',
+    });
     if (res.status === 404) return null;
     if (res.status !== 200) throw this.toError(res, 'salesOrder get');
     return res.json() as Record<string, unknown>;
@@ -211,7 +247,11 @@ export class NetSuiteClient {
   }
 
   /** Reads all pages; bounded by maxRows to guarantee termination. */
-  async suiteqlAll<T>(q: string, params: unknown[], opts: { limit?: number; maxRows?: number } = {}): Promise<T[]> {
+  async suiteqlAll<T>(
+    q: string,
+    params: unknown[],
+    opts: { limit?: number; maxRows?: number } = {},
+  ): Promise<T[]> {
     const limit = opts.limit ?? 1000;
     const maxRows = opts.maxRows ?? 100_000;
     const out: T[] = [];
@@ -219,7 +259,8 @@ export class NetSuiteClient {
       const page = await this.suiteqlPage<T>(q, params, limit, offset);
       out.push(...page.items);
       if (!page.hasMore || page.items.length === 0) return out;
-      if (out.length >= maxRows) throw new ProviderError('SuiteQL result exceeded maxRows', 'permanent', { provider: 'netsuite' });
+      if (out.length >= maxRows)
+        throw new ProviderError('SuiteQL result exceeded maxRows', 'permanent', { provider: 'netsuite' });
     }
   }
 }

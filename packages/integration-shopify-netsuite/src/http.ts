@@ -24,10 +24,14 @@ export async function httpRequest(
     res = await fetch(url, { ...init, signal: controller.signal, redirect: 'manual' });
   } catch (err) {
     const aborted = (err as Error).name === 'AbortError';
-    throw new ProviderError(aborted ? 'Request timed out' : `Network error: ${(err as Error).message}`, 'transient', {
-      provider,
-      code: aborted ? 'TIMEOUT' : 'NETWORK',
-    });
+    throw new ProviderError(
+      aborted ? 'Request timed out' : `Network error: ${(err as Error).message}`,
+      'transient',
+      {
+        provider,
+        code: aborted ? 'TIMEOUT' : 'NETWORK',
+      },
+    );
   } finally {
     clearTimeout(timer);
   }
@@ -55,7 +59,8 @@ export function classifyStatus(status: number): ErrorClass {
   if (status === 429) return 'rate_limited';
   if (status === 401) return 'authentication';
   if (status === 403) return 'authorization';
-  if (status === 408 || status === 502 || status === 503 || status === 504 || status === 500) return 'transient';
+  if (status === 408 || status === 502 || status === 503 || status === 504 || status === 500)
+    return 'transient';
   if (status === 400 || status === 404 || status === 409 || status === 422) return 'invalid_data';
   if (status >= 500) return 'transient';
   if (status >= 400) return 'permanent';

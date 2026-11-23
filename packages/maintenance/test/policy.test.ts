@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { assertEditable, assertReadable, isAgentEditable, normalizeRepoPath, PolicyViolation } from '../src/policy.ts';
+import {
+  assertEditable,
+  assertReadable,
+  isAgentEditable,
+  normalizeRepoPath,
+  PolicyViolation,
+} from '../src/policy.ts';
 import { parseFieldChanges } from '../src/planners.ts';
 
 describe('repair workspace policy', () => {
@@ -27,7 +33,10 @@ describe('repair workspace policy', () => {
     expect(assertReadable('packages/contracts/src/index.ts')).toBe('packages/contracts/src/index.ts');
   });
   it('parses provider field-change tables', () => {
-    const doc = '| Type | Removed field | Replacement field | Notes |\n|---|---|---|---|\n| LineItem | oldField | newField | x |';
-    expect(parseFieldChanges(doc)).toEqual([{ type: 'LineItem', removed: 'oldField', replacement: 'newField' }]);
+    const doc =
+      '| Type | Removed field | Replacement field | Notes |\n|---|---|---|---|\n| LineItem | oldField | newField | x |';
+    expect(parseFieldChanges(doc)).toEqual([
+      { type: 'LineItem', removed: 'oldField', replacement: 'newField' },
+    ]);
   });
 });

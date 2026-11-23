@@ -102,7 +102,13 @@ export async function openIncident(db: Db, input: OpenIncidentInput): Promise<[I
     const inc = inserted[0];
     await tx.insert(incidentEvents).values([
       { incidentId: inc.id, fromStatus: null, toStatus: 'detected', actor: 'system', note: input.reason },
-      { incidentId: inc.id, fromStatus: 'detected', toStatus: 'classified', actor: 'system', note: input.classificationNote },
+      {
+        incidentId: inc.id,
+        fromStatus: 'detected',
+        toStatus: 'classified',
+        actor: 'system',
+        note: input.classificationNote,
+      },
     ]);
     await tx.update(incidents).set({ status: 'classified' }).where(eq(incidents.id, inc.id));
     await tx.insert(incidentEvents).values({
@@ -110,14 +116,25 @@ export async function openIncident(db: Db, input: OpenIncidentInput): Promise<[I
       fromStatus: 'classified',
       toStatus: input.classifyAs,
       actor: 'system',
-      note: input.classifyAs === 'requires_action' ? (input.customerAction ?? 'Action required') : input.classificationNote,
+      note:
+        input.classifyAs === 'requires_action'
+          ? (input.customerAction ?? 'Action required')
+          : input.classificationNote,
     });
-    const [final] = await tx.update(incidents).set({ status: input.classifyAs, updatedAt: new Date() }).where(eq(incidents.id, inc.id)).returning();
+    const [final] = await tx
+      .update(incidents)
+      .set({ status: input.classifyAs, updatedAt: new Date() })
+      .where(eq(incidents.id, inc.id))
+      .returning();
     return [final!, true] as [IncidentRow, boolean];
   });
 }
 
-export async function findOpenIncident(db: Db, integrationId: string, kind: IncidentKind): Promise<IncidentRow | undefined> {
+export async function findOpenIncident(
+  db: Db,
+  integrationId: string,
+  kind: IncidentKind,
+): Promise<IncidentRow | undefined> {
   const [row] = await db
     .select()
     .from(incidents)
@@ -130,22 +147,33 @@ export async function transitionIncident(
   db: Db,
   incidentId: string,
   to: IncidentStatus,
-  p: { actor: string; note: string; evidence?: Record<string, unknown>; customerVisible?: boolean; resolution?: string; verification?: Record<string, unknown> },
+  p: {
+    actor: string;
+    note: string;
+    evidence?: Record<string, unknown>;
+    customerVisible?: boolean;
+    resolution?: string;
+    verification?: Record<string, unknown>;
+  },
 ): Promise<IncidentRow> {
   return db.transaction(async (tx) => {
     const [cur] = await tx.select().from(incidents).where(eq(incidents.id, incidentId)).for('update');
     if (!cur) throw new Error(`Incident ${incidentId} not found`);
     const from = cur.status as IncidentStatus;
     if (from === to) return cur;
-    if (!canTransition(from, to)) throw new InvalidIncidentTransition(`Incident ${incidentId}: ${from} → ${to} is not permitted`);
-    if (to === 'resolved' && !p.verification) throw new InvalidIncidentTransition('Resolving an incident requires verification evidence');
+    if (!canTransition(from, to))
+      throw new InvalidIncidentTransition(`Incident ${incidentId}: ${from} → ${to} is not permitted`);
+    if (to === 'resolved' && !p.verification)
+      throw new InvalidIncidentTransition('Resolving an incident requires verification evidence');
     const now = new Date();
     const [updated] = await tx
       .update(incidents)
       .set({
         status: to,
         updatedAt: now,
-        ...(to === 'resolved' ? { resolvedAt: now, resolution: p.resolution ?? p.note, verification: p.verification as object } : {}),
+        ...(to === 'resolved'
+          ? { resolvedAt: now, resolution: p.resolution ?? p.note, verification: p.verification as object }
+          : {}),
       })
       .where(eq(incidents.id, incidentId))
       .returning();
@@ -163,7 +191,12 @@ export async function transitionIncident(
 }
 
 /** Appends a timeline note without changing status (e.g. "maintenance candidate submitted"). */
-export async function noteIncident(db: Db, incidentId: string, note: string, opts: { actor?: string; customerVisible?: boolean; evidence?: Record<string, unknown> } = {}) {
+export async function noteIncident(
+  db: Db,
+  incidentId: string,
+  note: string,
+  opts: { actor?: string; customerVisible?: boolean; evidence?: Record<string, unknown> } = {},
+) {
   const [cur] = await db.select().from(incidents).where(eq(incidents.id, incidentId));
   if (!cur) return;
   await db.insert(incidentEvents).values({
@@ -183,20 +216,25 @@ export async function resolveWithVerification(
   incidentId: string,
   p: { actor: string; resolution: string; verification: Record<string, unknown> },
 ): Promise<IncidentRow> {
-  let [cur] = await db.select().from(incidents).where(eq(incidents.id, incidentId));
+  const [cur] = await db.select().from(incidents).where(eq(incidents.id, incidentId));
   if (!cur) throw new Error('incident not found');
   const path: IncidentStatus[] = [];
-  let s = cur.status as IncidentStatus;
+  const s = cur.status as IncidentStatus;
   if (s === 'resolved') return cur;
-  if (s === 'classified' || s === 'investigating' || s === 'recoverable' || s === 'requires_action') path.push('recovery', 'verification');
+  if (s === 'classified' || s === 'investigating' || s === 'recoverable' || s === 'requires_action')
+    path.push('recovery', 'verification');
   else if (s === 'recovery') path.push('verification');
   else if (s === 'detected') path.push('classified', 'recoverable', 'recovery', 'verification');
   for (const step of path) {
-    cur = await transitionIncident(db, incidentId, step, {
+    await transitionIncident(db, incidentId, step, {
       actor: p.actor,
       note: step === 'recovery' ? 'Recovery in progress' : 'Verifying recovery against durable evidence',
     });
-    s = step;
   }
-  return transitionIncident(db, incidentId, 'resolved', { actor: p.actor, note: p.resolution, resolution: p.resolution, verification: p.verification });
+  return transitionIncident(db, incidentId, 'resolved', {
+    actor: p.actor,
+    note: p.resolution,
+    resolution: p.resolution,
+    verification: p.verification,
+  });
 }

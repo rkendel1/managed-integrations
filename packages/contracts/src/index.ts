@@ -197,7 +197,14 @@ export const CONTRACT_V1: IntegrationContractDefinition = {
 /* ------------------------------------------------------------------------------------------
  * Shared enums for durable lifecycle state.
  * ---------------------------------------------------------------------------------------- */
-export const SYNC_RUN_STATUSES = ['queued', 'running', 'succeeded', 'partial', 'failed', 'interrupted'] as const;
+export const SYNC_RUN_STATUSES = [
+  'queued',
+  'running',
+  'succeeded',
+  'partial',
+  'failed',
+  'interrupted',
+] as const;
 export type SyncRunStatus = (typeof SYNC_RUN_STATUSES)[number];
 
 export const DELIVERY_OUTCOMES = ['pending', 'delivered', 'skipped', 'rejected', 'failed'] as const;

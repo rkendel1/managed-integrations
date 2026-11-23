@@ -1,7 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { deliveries, integrations, reconciliationRuns } from '@mi/database';
-import { classifyReconciliation, outcomeOf, reconcile, type DeliveryEvidence, type SourceIdentity } from '../src/reconciliation.ts';
+import {
+  classifyReconciliation,
+  outcomeOf,
+  reconcile,
+  type DeliveryEvidence,
+  type SourceIdentity,
+} from '../src/reconciliation.ts';
 import { createHarness, FAST_RETRY, type Harness } from '../../../test/support/harness.ts';
 
 const src = (legacyId: string, over: Partial<SourceIdentity> = {}): SourceIdentity => ({
@@ -23,7 +29,15 @@ const ev = (legacyId: string, over: Partial<DeliveryEvidence> = {}): DeliveryEvi
   summary: { lineCount: 1, computedTotalMinor: 1000, lines: [{ itemId: '1', quantity: 2, rateMinor: 500 }] },
   ...over,
 });
-const dst = (id: string, legacyId: string, over: Partial<{ externalId: string | null; otherRefNum: string | null; lines: { itemId: string; quantity: number; rateMinor: number }[] }> = {}) => ({
+const dst = (
+  id: string,
+  legacyId: string,
+  over: Partial<{
+    externalId: string | null;
+    otherRefNum: string | null;
+    lines: { itemId: string; quantity: number; rateMinor: number }[];
+  }> = {},
+) => ({
   id,
   externalId: `shopify-${legacyId}`,
   otherRefNum: `#${legacyId}`,
@@ -45,7 +59,13 @@ describe('classifyReconciliation (pure)', () => {
       src('8', { cancelledAt: '2026-11-01T00:00:00Z' }), // cancelled & never delivered → out of scope
     ];
     const evidence = new Map(
-      [ev('1'), ev('3'), ev('4'), ev('5'), ev('6', { outcome: 'rejected', lastError: 'SKU X is not mapped' })].map((e) => [e.sourceId, e]),
+      [
+        ev('1'),
+        ev('3'),
+        ev('4'),
+        ev('5'),
+        ev('6', { outcome: 'rejected', lastError: 'SKU X is not mapped' }),
+      ].map((e) => [e.sourceId, e]),
     );
     const destination = [
       dst('101', '1'),
@@ -87,7 +107,15 @@ describe('reconcile (against fixtures)', () => {
 
   const run = async () => {
     const c = await h.clients();
-    return reconcile({ db: h.dbh.db, shopify: c.shopify, netsuite: c.netsuite, integrationId: h.integrationId, trigger: 'manual', windowFrom: new Date('2026-11-19T00:00:00Z'), retry: FAST_RETRY });
+    return reconcile({
+      db: h.dbh.db,
+      shopify: c.shopify,
+      netsuite: c.netsuite,
+      integrationId: h.integrationId,
+      trigger: 'manual',
+      windowFrom: new Date('2026-11-19T00:00:00Z'),
+      retry: FAST_RETRY,
+    });
   };
 
   it('is consistent after a clean sync and persists the run', async () => {

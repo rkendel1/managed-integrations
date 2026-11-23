@@ -22,9 +22,15 @@ import {
   type ProviderEndpointConfig,
   type RetryPolicy,
 } from '@mi/integration-shopify-netsuite';
-import { createNetSuiteFixture, createShopifyFixture, type NetSuiteFixture, type ShopifyFixture } from '@mi/test-fixtures';
+import {
+  createNetSuiteFixture,
+  createShopifyFixture,
+  type NetSuiteFixture,
+  type ShopifyFixture,
+} from '@mi/test-fixtures';
 
-export const TEST_DB_URL = process.env.DATABASE_URL_TEST ?? 'postgres://mi:mi_dev_password@localhost:5432/managed_integrations_test';
+export const TEST_DB_URL =
+  process.env.DATABASE_URL_TEST ?? 'postgres://mi:mi_dev_password@localhost:5432/managed_integrations_test';
 
 let migrated = false;
 
@@ -38,7 +44,9 @@ export async function freshDb(): Promise<DbHandle> {
     `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`,
   );
   if (rows.length) {
-    await handle.pool.query(`TRUNCATE ${rows.map((r) => `"${r.tablename}"`).join(', ')} RESTART IDENTITY CASCADE`);
+    await handle.pool.query(
+      `TRUNCATE ${rows.map((r) => `"${r.tablename}"`).join(', ')} RESTART IDENTITY CASCADE`,
+    );
   }
   await bootstrapReferenceData(handle.db);
   return handle;
@@ -47,7 +55,13 @@ export async function freshDb(): Promise<DbHandle> {
 export const testCipher = new CredentialCipher(parseKeyRing(`test:${randomBytes(32).toString('base64')}`)!);
 
 /** Fast, deterministic retry policy for tests (no real sleeping). */
-export const FAST_RETRY: RetryPolicy = { maxAttempts: 4, baseDelayMs: 1, maxDelayMs: 2, random: () => 0.5, sleep: async () => {} };
+export const FAST_RETRY: RetryPolicy = {
+  maxAttempts: 4,
+  baseDelayMs: 1,
+  maxDelayMs: 2,
+  random: () => 0.5,
+  sleep: async () => {},
+};
 
 export const DEFAULT_CONFIG: IntegrationConfig = {
   backfillFrom: '2026-01-01T00:00:00Z',
@@ -68,12 +82,18 @@ export interface Harness {
   integrationId: string;
   endpoints: ProviderEndpointConfig;
   creds: ConnectionCredentials;
-  engine(opts?: { implementation?: IntegrationImplementation; workerId?: string; retry?: RetryPolicy }): Promise<SyncEngine>;
+  engine(opts?: {
+    implementation?: IntegrationImplementation;
+    workerId?: string;
+    retry?: RetryPolicy;
+  }): Promise<SyncEngine>;
   clients(apiVersion?: string): Promise<{ shopify: ShopifyClient; netsuite: NetSuiteClient }>;
   close(): Promise<void>;
 }
 
-export async function createHarness(opts: { config?: Partial<IntegrationConfig>; implementationVersionId?: string | null } = {}): Promise<Harness> {
+export async function createHarness(
+  opts: { config?: Partial<IntegrationConfig>; implementationVersionId?: string | null } = {},
+): Promise<Harness> {
   const dbh = await freshDb();
   const shopify = createShopifyFixture();
   const netsuite = createNetSuiteFixture();
@@ -93,14 +113,24 @@ export async function createHarness(opts: { config?: Partial<IntegrationConfig>;
     production: false,
   };
 
-  const [tenant] = await dbh.db.insert(tenants).values({ name: 'Acme Outdoor', slug: `acme-${randomBytes(3).toString('hex')}`, lifecycle: 'active' }).returning();
+  const [tenant] = await dbh.db
+    .insert(tenants)
+    .values({ name: 'Acme Outdoor', slug: `acme-${randomBytes(3).toString('hex')}`, lifecycle: 'active' })
+    .returning();
   const tenantId = tenant!.id;
 
   // Shopify connection with fixture-issued expiring tokens (encrypted at rest).
   const tok = shopify.control.issueToken('read_orders');
   const [sc] = await dbh.db
     .insert(connections)
-    .values({ tenantId, providerId: 'shopify', status: 'verified', externalAccount: shopify.shopDomain, baseUrl: shopifyUrl, grantedScopes: ['read_orders'] })
+    .values({
+      tenantId,
+      providerId: 'shopify',
+      status: 'verified',
+      externalAccount: shopify.shopDomain,
+      baseUrl: shopifyUrl,
+      grantedScopes: ['read_orders'],
+    })
     .returning();
   const now = Date.now();
   await dbh.db
@@ -125,13 +155,25 @@ export async function createHarness(opts: { config?: Partial<IntegrationConfig>;
   netsuite.control.registerPublicKey(kp.publicKeyPem);
   const [nc] = await dbh.db
     .insert(connections)
-    .values({ tenantId, providerId: 'netsuite', status: 'verified', externalAccount: netsuite.accountId, baseUrl: netsuiteUrl, grantedScopes: ['rest_webservices'] })
+    .values({
+      tenantId,
+      providerId: 'netsuite',
+      status: 'verified',
+      externalAccount: netsuite.accountId,
+      baseUrl: netsuiteUrl,
+      grantedScopes: ['rest_webservices'],
+    })
     .returning();
   await dbh.db
     .update(connections)
     .set({
       credentialsCiphertext: testCipher.encrypt(
-        { clientId: netsuite.clientId, certificateId: netsuite.certificateId, privateKeyPem: kp.privateKeyPem, algorithm: 'PS256' },
+        {
+          clientId: netsuite.clientId,
+          certificateId: netsuite.certificateId,
+          privateKeyPem: kp.privateKeyPem,
+          algorithm: 'PS256',
+        },
         `connection:${nc!.id}`,
       ),
       credentialsKeyId: testCipher.keyId,
@@ -157,7 +199,12 @@ export async function createHarness(opts: { config?: Partial<IntegrationConfig>;
     const s = await creds.load(tenantId, 'shopify');
     const n = await creds.load(tenantId, 'netsuite');
     return {
-      shopify: new ShopifyClient({ baseUrl: s!.baseUrl!, apiVersion, auth: creds.shopifyAuth(s!), timeoutMs: 2000 }),
+      shopify: new ShopifyClient({
+        baseUrl: s!.baseUrl!,
+        apiVersion,
+        auth: creds.shopifyAuth(s!),
+        timeoutMs: 2000,
+      }),
       netsuite: new NetSuiteClient({ baseUrl: n!.baseUrl!, auth: creds.netsuiteAuth(n!), timeoutMs: 2000 }),
     };
   }

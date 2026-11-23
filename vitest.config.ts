@@ -8,7 +8,9 @@ export default defineConfig({
     testTimeout: 30_000,
     hookTimeout: 60_000,
     env: {
-      DATABASE_URL_TEST: process.env.DATABASE_URL_TEST ?? 'postgres://mi:mi_dev_password@localhost:5432/managed_integrations_test',
+      DATABASE_URL_TEST:
+        process.env.DATABASE_URL_TEST ??
+        'postgres://mi:mi_dev_password@localhost:5432/managed_integrations_test',
     },
   },
 });

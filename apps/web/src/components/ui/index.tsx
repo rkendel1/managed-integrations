@@ -19,14 +19,29 @@ const buttonVariants = cva(
   },
 );
 
-export function Button({ className, variant, size, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof buttonVariants>) {
+export function Button({
+  className,
+  variant,
+  size,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & VariantProps<typeof buttonVariants>) {
   return <button className={cn(buttonVariants({ variant, size }), className)} {...props} />;
 }
 
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('rounded-lg border border-slate-200 bg-white shadow-sm', className)} {...props} />;
+  return (
+    <div className={cn('rounded-lg border border-slate-200 bg-white shadow-sm', className)} {...props} />
+  );
 }
-export function CardHeader({ title, description, actions }: { title: ReactNode; description?: ReactNode; actions?: ReactNode }) {
+export function CardHeader({
+  title,
+  description,
+  actions,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  actions?: ReactNode;
+}) {
   return (
     <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-3">
       <div>
@@ -55,13 +70,54 @@ const badgeVariants = cva('inline-flex items-center rounded px-2 py-0.5 text-xs 
 });
 
 const TONES: Record<string, VariantProps<typeof badgeVariants>['tone']> = {
-  healthy: 'good', verified: 'good', authorized: 'good', succeeded: 'good', delivered: 'good', consistent: 'good', resolved: 'good', passed: 'good', released: 'good', validated: 'good', candidate_submitted: 'good',
-  degraded: 'warn', partial: 'warn', pending: 'warn', skipped: 'neutral', recoverable: 'warn', recovery: 'info', verification: 'info', investigating: 'info', canary: 'info', approved: 'info', validating: 'info', submitted: 'info', running: 'info', interrupted: 'warn', discrepancies: 'warn', medium: 'warn',
-  failing: 'bad', failed: 'bad', error: 'bad', revoked: 'bad', rejected: 'bad', requires_action: 'bad', rolled_back: 'bad', validation_failed: 'bad', no_candidate: 'bad', high: 'bad', critical: 'bad', unknown: 'neutral', disconnected: 'neutral',
+  healthy: 'good',
+  verified: 'good',
+  authorized: 'good',
+  succeeded: 'good',
+  delivered: 'good',
+  consistent: 'good',
+  resolved: 'good',
+  passed: 'good',
+  released: 'good',
+  validated: 'good',
+  candidate_submitted: 'good',
+  degraded: 'warn',
+  partial: 'warn',
+  pending: 'warn',
+  skipped: 'neutral',
+  recoverable: 'warn',
+  recovery: 'info',
+  verification: 'info',
+  investigating: 'info',
+  canary: 'info',
+  approved: 'info',
+  validating: 'info',
+  submitted: 'info',
+  running: 'info',
+  interrupted: 'warn',
+  discrepancies: 'warn',
+  medium: 'warn',
+  failing: 'bad',
+  failed: 'bad',
+  error: 'bad',
+  revoked: 'bad',
+  rejected: 'bad',
+  requires_action: 'bad',
+  rolled_back: 'bad',
+  validation_failed: 'bad',
+  no_candidate: 'bad',
+  high: 'bad',
+  critical: 'bad',
+  unknown: 'neutral',
+  disconnected: 'neutral',
 };
 export function StatusBadge({ value }: { value: string | null | undefined }) {
   const v = value ?? 'unknown';
-  return <span data-status={v} className={badgeVariants({ tone: TONES[v] ?? 'neutral' })}>{v.replace(/_/g, ' ')}</span>;
+  return (
+    <span data-status={v} className={badgeVariants({ tone: TONES[v] ?? 'neutral' })}>
+      {v.replace(/_/g, ' ')}
+    </span>
+  );
 }
 
 export function Table({ head, children }: { head: string[]; children: ReactNode }) {
@@ -69,7 +125,13 @@ export function Table({ head, children }: { head: string[]; children: ReactNode 
     <div className="overflow-x-auto">
       <table className="w-full text-left text-sm">
         <thead className="border-b border-slate-200 text-xs uppercase text-slate-500">
-          <tr>{head.map((h) => <th key={h} className="px-3 py-2 font-medium">{h}</th>)}</tr>
+          <tr>
+            {head.map((h) => (
+              <th key={h} className="px-3 py-2 font-medium">
+                {h}
+              </th>
+            ))}
+          </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">{children}</tbody>
       </table>
@@ -88,11 +150,16 @@ export function Field({ label, children }: { label: string; children: ReactNode 
     </label>
   );
 }
-export const inputClass = 'w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400';
+export const inputClass =
+  'w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-400';
 
 export function ErrorNote({ error }: { error: unknown }) {
   if (!error) return null;
-  return <p role="alert" className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">{error instanceof Error ? error.message : String(error)}</p>;
+  return (
+    <p role="alert" className="rounded bg-red-50 px-3 py-2 text-sm text-red-700">
+      {error instanceof Error ? error.message : String(error)}
+    </p>
+  );
 }
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="py-6 text-center text-sm text-slate-500">{children}</p>;

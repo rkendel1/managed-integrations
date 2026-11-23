@@ -12,7 +12,13 @@ import { and, eq, gte, inArray, lte } from 'drizzle-orm';
 import { IntegrationConfigSchema, ProviderError, type ReconciliationOutcome } from '@mi/contracts';
 import { deliveries, integrations, reconciliationRuns, type Db } from '@mi/database';
 import { describeError, redact } from '@mi/observability';
-import { DEFAULT_RETRY, withRetry, type NetSuiteClient, type RetryPolicy, type ShopifyClient } from '@mi/integration-shopify-netsuite';
+import {
+  DEFAULT_RETRY,
+  withRetry,
+  type NetSuiteClient,
+  type RetryPolicy,
+  type ShopifyClient,
+} from '@mi/integration-shopify-netsuite';
 
 export const EXTERNAL_ID_PREFIX = 'shopify-';
 
@@ -26,9 +32,17 @@ export const RECON_SOURCE_QUERY = /* GraphQL */ `
         name
         updatedAt
         cancelledAt
-        lineItems(first: 100) { nodes { sku quantity } }
+        lineItems(first: 100) {
+          nodes {
+            sku
+            quantity
+          }
+        }
       }
-      pageInfo { hasNextPage endCursor }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
     }
   }
 `;
@@ -61,7 +75,11 @@ export interface DeliveryEvidence {
   sourceUpdatedAt: Date;
   latestSourceUpdatedAt: Date;
   lastError: string | null;
-  summary: { lineCount?: number; computedTotalMinor?: number; lines?: { itemId: string; quantity: number; rateMinor: number }[] };
+  summary: {
+    lineCount?: number;
+    computedTotalMinor?: number;
+    lines?: { itemId: string; quantity: number; rateMinor: number }[];
+  };
 }
 
 export interface ReconItem {
@@ -95,7 +113,16 @@ export function classifyReconciliation(
   skuMap: Record<string, string>,
   deliveredInWindow: DeliveryEvidence[] = [],
 ): ReconClassification {
-  const out: ReconClassification = { expected: 0, matched: 0, missing: [], duplicates: [], inconsistent: [], stale: [], unexpected: [], unresolved: [] };
+  const out: ReconClassification = {
+    expected: 0,
+    matched: 0,
+    missing: [],
+    duplicates: [],
+    inconsistent: [],
+    stale: [],
+    unexpected: [],
+    unresolved: [],
+  };
   const byExt = new Map<string, DestinationRecord[]>();
   const byRef = new Map<string, DestinationRecord[]>();
   for (const d of destination) {
@@ -110,7 +137,13 @@ export function classifyReconciliation(
     const matches = new Map<string, DestinationRecord>();
     for (const d of [...(byExt.get(ext) ?? []), ...(byRef.get(s.name) ?? [])]) matches.set(d.id, d);
     const found = [...matches.values()];
-    const item = (reason: string): ReconItem => ({ sourceId: s.sourceId, legacyId: s.legacyId, name: s.name, reason, ...(found.length ? { destinationIds: found.map((f) => f.id) } : {}) });
+    const item = (reason: string): ReconItem => ({
+      sourceId: s.sourceId,
+      legacyId: s.legacyId,
+      name: s.name,
+      reason,
+      ...(found.length ? { destinationIds: found.map((f) => f.id) } : {}),
+    });
 
     if (s.cancelledAt && ev?.outcome !== 'delivered' && found.length === 0) continue; // out of scope
     out.expected++;
@@ -120,25 +153,41 @@ export function classifyReconciliation(
       continue;
     }
     if (found.length === 0) {
-      if (ev?.outcome === 'rejected') out.unresolved.push(item(`Rejected: ${ev.lastError ?? 'invalid data'}`));
-      else out.missing.push(item(ev ? `Delivery outcome "${ev.outcome}" but no NetSuite record found` : 'No delivery evidence and no NetSuite record'));
+      if (ev?.outcome === 'rejected')
+        out.unresolved.push(item(`Rejected: ${ev.lastError ?? 'invalid data'}`));
+      else
+        out.missing.push(
+          item(
+            ev
+              ? `Delivery outcome "${ev.outcome}" but no NetSuite record found`
+              : 'No delivery evidence and no NetSuite record',
+          ),
+        );
       continue;
     }
     const d = found[0]!;
     if (d.externalId !== ext) {
-      out.unresolved.push(item(`NetSuite order ${d.id} references ${s.name} but lacks our externalId (created outside the integration?)`));
+      out.unresolved.push(
+        item(
+          `NetSuite order ${d.id} references ${s.name} but lacks our externalId (created outside the integration?)`,
+        ),
+      );
       continue;
     }
     if (!ev || ev.outcome !== 'delivered') {
-      out.unresolved.push(item(`NetSuite record exists but delivery evidence is "${ev?.outcome ?? 'absent'}"`));
+      out.unresolved.push(
+        item(`NetSuite record exists but delivery evidence is "${ev?.outcome ?? 'absent'}"`),
+      );
       continue;
     }
     // Correctness: destination lines vs what we sent, and vs source quantities.
     const sent = ev.summary;
     const destTotal = d.lines.reduce((t, l) => t + l.quantity * l.rateMinor, 0);
     const problems: string[] = [];
-    if (sent.lineCount != null && sent.lineCount !== d.lines.length) problems.push(`line count ${d.lines.length} ≠ delivered ${sent.lineCount}`);
-    if (sent.computedTotalMinor != null && sent.computedTotalMinor !== destTotal) problems.push(`total ${destTotal / 100} ≠ delivered ${sent.computedTotalMinor / 100}`);
+    if (sent.lineCount != null && sent.lineCount !== d.lines.length)
+      problems.push(`line count ${d.lines.length} ≠ delivered ${sent.lineCount}`);
+    if (sent.computedTotalMinor != null && sent.computedTotalMinor !== destTotal)
+      problems.push(`total ${destTotal / 100} ≠ delivered ${sent.computedTotalMinor / 100}`);
     const srcQty = new Map<string, number>();
     for (const l of s.lines) {
       const itemId = l.sku ? skuMap[l.sku] : undefined;
@@ -146,13 +195,17 @@ export function classifyReconciliation(
     }
     const dstQty = new Map<string, number>();
     for (const l of d.lines) dstQty.set(l.itemId, (dstQty.get(l.itemId) ?? 0) + l.quantity);
-    for (const [itemId, q] of srcQty) if (dstQty.get(itemId) !== q) problems.push(`item ${itemId} quantity ${dstQty.get(itemId) ?? 0} ≠ source ${q}`);
+    for (const [itemId, q] of srcQty)
+      if (dstQty.get(itemId) !== q)
+        problems.push(`item ${itemId} quantity ${dstQty.get(itemId) ?? 0} ≠ source ${q}`);
     if (problems.length) {
       out.inconsistent.push(item(problems.join('; ')));
       continue;
     }
     if (Date.parse(s.updatedAt) > ev.sourceUpdatedAt.getTime()) {
-      out.stale.push(item('Source order changed after delivery (edits are not propagated under contract 1.0.0)'));
+      out.stale.push(
+        item('Source order changed after delivery (edits are not propagated under contract 1.0.0)'),
+      );
       continue;
     }
     out.matched++;
@@ -160,16 +213,30 @@ export function classifyReconciliation(
 
   for (const ev of deliveredInWindow) {
     if (!sourceIds.has(ev.sourceId)) {
-      out.unexpected.push({ sourceId: ev.sourceId, legacyId: ev.sourceLegacyId, name: `#${ev.sourceLegacyId}`, reason: 'Delivered, but the source no longer returns this order in the window' });
+      out.unexpected.push({
+        sourceId: ev.sourceId,
+        legacyId: ev.sourceLegacyId,
+        name: `#${ev.sourceLegacyId}`,
+        reason: 'Delivered, but the source no longer returns this order in the window',
+      });
     }
   }
   return out;
 }
 
-export function outcomeOf(c: ReconClassification, complete: { source: boolean; destination: boolean }): ReconciliationOutcome {
+export function outcomeOf(
+  c: ReconClassification,
+  complete: { source: boolean; destination: boolean },
+): ReconciliationOutcome {
   if (!complete.source && !complete.destination) return 'unknown';
   if (!complete.source || !complete.destination) return 'partial';
-  const issues = c.missing.length + c.duplicates.length + c.inconsistent.length + c.stale.length + c.unexpected.length + c.unresolved.length;
+  const issues =
+    c.missing.length +
+    c.duplicates.length +
+    c.inconsistent.length +
+    c.stale.length +
+    c.unexpected.length +
+    c.unresolved.length;
   return issues === 0 ? 'consistent' : 'discrepancies';
 }
 
@@ -185,39 +252,95 @@ export async function readSourceIdentities(
   let after: string | null = null;
   const query = `updated_at:>='${from.toISOString()}'`;
   for (let page = 0; page < (opts.maxPages ?? 1000); page++) {
-    const r = await withRetry(() => shopify.graphql(RECON_SOURCE_QUERY, { first: opts.pageSize ?? 100, after, query }), opts.retry ?? DEFAULT_RETRY);
-    const conn = (r.data as { orders?: { nodes?: unknown[]; pageInfo?: { hasNextPage?: boolean; endCursor?: string | null } } })?.orders;
-    if (!conn?.nodes || !conn.pageInfo) throw new ProviderError('Unexpected reconciliation response shape', 'schema', { provider: 'shopify' });
-    for (const n of conn.nodes as { id: string; legacyResourceId: string; name: string; updatedAt: string; cancelledAt: string | null; lineItems?: { nodes?: { sku: string | null; quantity: number }[] } }[]) {
+    const r = await withRetry(
+      () => shopify.graphql(RECON_SOURCE_QUERY, { first: opts.pageSize ?? 100, after, query }),
+      opts.retry ?? DEFAULT_RETRY,
+    );
+    const conn = (
+      r.data as {
+        orders?: { nodes?: unknown[]; pageInfo?: { hasNextPage?: boolean; endCursor?: string | null } };
+      }
+    )?.orders;
+    if (!conn?.nodes || !conn.pageInfo)
+      throw new ProviderError('Unexpected reconciliation response shape', 'schema', { provider: 'shopify' });
+    for (const n of conn.nodes as {
+      id: string;
+      legacyResourceId: string;
+      name: string;
+      updatedAt: string;
+      cancelledAt: string | null;
+      lineItems?: { nodes?: { sku: string | null; quantity: number }[] };
+    }[]) {
       if (Date.parse(n.updatedAt) > to.getTime()) continue;
-      out.push({ sourceId: n.id, legacyId: n.legacyResourceId, name: n.name, updatedAt: n.updatedAt, cancelledAt: n.cancelledAt, lines: n.lineItems?.nodes ?? [] });
+      out.push({
+        sourceId: n.id,
+        legacyId: n.legacyResourceId,
+        name: n.name,
+        updatedAt: n.updatedAt,
+        cancelledAt: n.cancelledAt,
+        lines: n.lineItems?.nodes ?? [],
+      });
     }
     if (!conn.pageInfo.hasNextPage) return out;
-    if (!conn.pageInfo.endCursor || conn.pageInfo.endCursor === after) throw new ProviderError('Reconciliation pagination did not advance', 'transient', { provider: 'shopify', code: 'PAGINATION' });
+    if (!conn.pageInfo.endCursor || conn.pageInfo.endCursor === after)
+      throw new ProviderError('Reconciliation pagination did not advance', 'transient', {
+        provider: 'shopify',
+        code: 'PAGINATION',
+      });
     after = conn.pageInfo.endCursor;
   }
   throw new ProviderError('Reconciliation page limit reached', 'permanent', { provider: 'shopify' });
 }
 
-export async function readDestination(netsuite: NetSuiteClient, source: SourceIdentity[], retry: RetryPolicy = DEFAULT_RETRY): Promise<DestinationRecord[]> {
+export async function readDestination(
+  netsuite: NetSuiteClient,
+  source: SourceIdentity[],
+  retry: RetryPolicy = DEFAULT_RETRY,
+): Promise<DestinationRecord[]> {
   const records = new Map<string, DestinationRecord>();
   const CHUNK = 200;
   for (let i = 0; i < source.length; i += CHUNK) {
     const chunk = source.slice(i, i + CHUNK);
     const ext = chunk.map((s) => `${EXTERNAL_ID_PREFIX}${s.legacyId}`);
     const refs = chunk.map((s) => s.name);
-    const q = SUITEQL_RECON.replace('__EXT__', ext.map(() => '?').join(', ')).replace('__REF__', refs.map(() => '?').join(', '));
-    const rows = await withRetry(() => netsuite.suiteqlAll<{ id: string; externalid: string | null; otherrefnum: string | null }>(q, [...ext, ...refs]), retry);
-    for (const r of rows) records.set(String(r.id), { id: String(r.id), externalId: r.externalid, otherRefNum: r.otherrefnum, lines: [] });
+    const q = SUITEQL_RECON.replace('__EXT__', ext.map(() => '?').join(', ')).replace(
+      '__REF__',
+      refs.map(() => '?').join(', '),
+    );
+    const rows = await withRetry(
+      () =>
+        netsuite.suiteqlAll<{ id: string; externalid: string | null; otherrefnum: string | null }>(q, [
+          ...ext,
+          ...refs,
+        ]),
+      retry,
+    );
+    for (const r of rows)
+      records.set(String(r.id), {
+        id: String(r.id),
+        externalId: r.externalid,
+        otherRefNum: r.otherrefnum,
+        lines: [],
+      });
   }
   const ids = [...records.keys()];
   for (let i = 0; i < ids.length; i += CHUNK) {
     const chunk = ids.slice(i, i + CHUNK);
     const q = SUITEQL_LINES.replace('__IDS__', chunk.map(() => '?').join(', '));
-    const rows = await withRetry(() => netsuite.suiteqlAll<{ transaction: string; item: string; quantity: string; rate: string }>(q, chunk), retry);
+    const rows = await withRetry(
+      () =>
+        netsuite.suiteqlAll<{ transaction: string; item: string; quantity: string; rate: string }>(q, chunk),
+      retry,
+    );
     for (const l of rows) {
       // SuiteQL transactionline quantities on sales transactions may be stored negated; compare magnitudes.
-      records.get(String(l.transaction))?.lines.push({ itemId: String(l.item), quantity: Math.abs(Number(l.quantity)), rateMinor: Math.abs(minor(l.rate)) });
+      records
+        .get(String(l.transaction))
+        ?.lines.push({
+          itemId: String(l.item),
+          quantity: Math.abs(Number(l.quantity)),
+          rateMinor: Math.abs(minor(l.rate)),
+        });
     }
   }
   return [...records.values()];
@@ -255,11 +378,19 @@ export async function reconcile(p: ReconcileParams): Promise<ReconcileResult> {
   const config = IntegrationConfigSchema.parse(integration.config);
   const watermark = integration.cursorWatermark ? new Date(integration.cursorWatermark) : null;
   const windowTo = p.windowTo ?? watermark ?? new Date(config.backfillFrom);
-  const windowFrom = p.windowFrom ?? new Date(Math.max(Date.parse(config.backfillFrom), Date.now() - 7 * 24 * 3600 * 1000));
+  const windowFrom =
+    p.windowFrom ?? new Date(Math.max(Date.parse(config.backfillFrom), Date.now() - 7 * 24 * 3600 * 1000));
 
   const [run] = await p.db
     .insert(reconciliationRuns)
-    .values({ integrationId: p.integrationId, incidentId: p.incidentId ?? null, trigger: p.trigger, windowFrom, windowTo, status: 'running' })
+    .values({
+      integrationId: p.integrationId,
+      incidentId: p.incidentId ?? null,
+      trigger: p.trigger,
+      windowFrom,
+      windowTo,
+      status: 'running',
+    })
     .returning();
 
   let source: SourceIdentity[] = [];
@@ -268,7 +399,9 @@ export async function reconcile(p: ReconcileParams): Promise<ReconcileResult> {
   let destinationComplete = false;
   const errors: string[] = [];
   try {
-    source = await readSourceIdentities(p.shopify, windowFrom, windowTo, { ...(p.retry ? { retry: p.retry } : {}) });
+    source = await readSourceIdentities(p.shopify, windowFrom, windowTo, {
+      ...(p.retry ? { retry: p.retry } : {}),
+    });
     sourceComplete = true;
   } catch (err) {
     errors.push(`source: ${describeError(err).message}`);
@@ -286,9 +419,19 @@ export async function reconcile(p: ReconcileParams): Promise<ReconcileResult> {
     ? await p.db
         .select()
         .from(deliveries)
-        .where(and(eq(deliveries.integrationId, p.integrationId), inArray(deliveries.sourceId, source.map((s) => s.sourceId))))
+        .where(
+          and(
+            eq(deliveries.integrationId, p.integrationId),
+            inArray(
+              deliveries.sourceId,
+              source.map((s) => s.sourceId),
+            ),
+          ),
+        )
     : [];
-  const evidence = new Map<string, DeliveryEvidence>(evRows.map((r) => [r.sourceId, r as unknown as DeliveryEvidence]));
+  const evidence = new Map<string, DeliveryEvidence>(
+    evRows.map((r) => [r.sourceId, r as unknown as DeliveryEvidence]),
+  );
   const inWindow = sourceComplete
     ? ((await p.db
         .select()
@@ -306,7 +449,16 @@ export async function reconcile(p: ReconcileParams): Promise<ReconcileResult> {
   const classification =
     sourceComplete && destinationComplete
       ? classifyReconciliation(source, evidence, destination, config.skuMap, inWindow)
-      : { expected: source.length, matched: 0, missing: [], duplicates: [], inconsistent: [], stale: [], unexpected: [], unresolved: [] };
+      : {
+          expected: source.length,
+          matched: 0,
+          missing: [],
+          duplicates: [],
+          inconsistent: [],
+          stale: [],
+          unexpected: [],
+          unresolved: [],
+        };
   const outcome = outcomeOf(classification, { source: sourceComplete, destination: destinationComplete });
   const recoverableLegacyIds = classification.missing.map((m) => m.legacyId);
 
@@ -331,9 +483,19 @@ export async function reconcile(p: ReconcileParams): Promise<ReconcileResult> {
     })
     .where(eq(reconciliationRuns.id, run!.id));
 
-  return { runId: run!.id, outcome, classification, sourceComplete, destinationComplete, recoverableLegacyIds };
+  return {
+    runId: run!.id,
+    outcome,
+    classification,
+    sourceComplete,
+    destinationComplete,
+    recoverableLegacyIds,
+  };
 }
 
 export async function markRecoveryEnqueued(db: Db, runId: string, count: number) {
-  await db.update(reconciliationRuns).set({ recoveryEnqueued: count }).where(eq(reconciliationRuns.id, runId));
+  await db
+    .update(reconciliationRuns)
+    .set({ recoveryEnqueued: count })
+    .where(eq(reconciliationRuns.id, runId));
 }

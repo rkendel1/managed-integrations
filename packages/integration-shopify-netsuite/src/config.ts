@@ -38,7 +38,9 @@ export function loadServiceConfig(role: ServiceRole, source: NodeJS.ProcessEnv =
   const cleaned = Object.fromEntries(Object.entries(source).filter(([, v]) => v !== undefined && v !== ''));
   const parsed = EnvSchema.safeParse(cleaned);
   if (!parsed.success) {
-    throw new Error(`Invalid configuration: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
+    throw new Error(
+      `Invalid configuration: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`,
+    );
   }
   const env = parsed.data;
   const production = env.NODE_ENV === 'production';

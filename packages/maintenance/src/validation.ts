@@ -17,7 +17,13 @@ import { describeError, type Logger } from '@mi/observability';
 import { noteIncident } from '@mi/reliability';
 import { buildImplementationArtifact, registerVersion } from './artifacts.ts';
 import { git } from './exec.ts';
-import { AGENT_EDITABLE_PREFIXES, isAgentEditable, PROTECTED_SUITE_PREFIXES, type FixtureProfile, type TestTarget } from './policy.ts';
+import {
+  AGENT_EDITABLE_PREFIXES,
+  isAgentEditable,
+  PROTECTED_SUITE_PREFIXES,
+  type FixtureProfile,
+  type TestTarget,
+} from './policy.ts';
 import { installOffline, runTestsInSandbox, type SandboxConfig } from './sandbox.ts';
 
 export interface ValidationDeps {
@@ -54,21 +60,33 @@ async function hashSuiteInTree(repoDir: string, commit: string, tree: string): P
 
 /** Determines the provider profile that reproduces the failure, from the agent's recorded evidence. */
 function reproductionProfile(agentResults: unknown): FixtureProfile {
-  const runs = (agentResults as { runs?: { target: string; profile: FixtureProfile; passed: boolean }[] })?.runs ?? [];
+  const runs =
+    (agentResults as { runs?: { target: string; profile: FixtureProfile; passed: boolean }[] })?.runs ?? [];
   const failedFirst = runs.find((r) => !r.passed);
   return failedFirst?.profile ?? 'baseline';
 }
 
-export async function validateCandidate(deps: ValidationDeps, candidateId: string): Promise<{ status: 'passed' | 'failed' | 'error'; validationRunId: string }> {
+export async function validateCandidate(
+  deps: ValidationDeps,
+  candidateId: string,
+): Promise<{ status: 'passed' | 'failed' | 'error'; validationRunId: string }> {
   const { db } = deps;
   const [cand] = await db.select().from(repairCandidates).where(eq(repairCandidates.id, candidateId));
   if (!cand || !cand.commitSha) throw new Error('candidate not found or not committed');
   const [mr] = await db.select().from(maintenanceRuns).where(eq(maintenanceRuns.id, cand.maintenanceRunId));
-  const [integ] = mr?.integrationId ? await db.select().from(integrations).where(eq(integrations.id, mr.integrationId)) : [];
+  const [integ] = mr?.integrationId
+    ? await db.select().from(integrations).where(eq(integrations.id, mr.integrationId))
+    : [];
   const suiteSha = await hashSuiteAtCommit(deps.repoDir, cand.baseCommit);
   const [vr] = await db
     .insert(validationRuns)
-    .values({ repairCandidateId: cand.id, contractVersion: integ?.contractVersion ?? 'unknown', testSuiteSha256: suiteSha, candidateCommit: cand.commitSha, status: 'running' })
+    .values({
+      repairCandidateId: cand.id,
+      contractVersion: integ?.contractVersion ?? 'unknown',
+      testSuiteSha256: suiteSha,
+      candidateCommit: cand.commitSha,
+      status: 'running',
+    })
     .returning();
   await db.update(repairCandidates).set({ status: 'validating' }).where(eq(repairCandidates.id, cand.id));
 
@@ -76,7 +94,9 @@ export async function validateCandidate(deps: ValidationDeps, candidateId: strin
   const results: Record<string, unknown> = {};
   let status: 'passed' | 'failed' | 'error' = 'failed';
   try {
-    const changed = (await git(deps.repoDir, ['diff', '--name-only', cand.baseCommit, cand.commitSha])).split('\n').filter(Boolean);
+    const changed = (await git(deps.repoDir, ['diff', '--name-only', cand.baseCommit, cand.commitSha]))
+      .split('\n')
+      .filter(Boolean);
     const violations = changed.filter((f) => !isAgentEditable(f));
     results.changedFiles = changed;
     if (violations.length) {
@@ -86,7 +106,14 @@ export async function validateCandidate(deps: ValidationDeps, candidateId: strin
     }
 
     await git(deps.repoDir, ['worktree', 'add', '-q', '--detach', tree, cand.baseCommit]);
-    const patch = await git(deps.repoDir, ['diff', '--binary', cand.baseCommit, cand.commitSha, '--', ...AGENT_EDITABLE_PREFIXES]);
+    const patch = await git(deps.repoDir, [
+      'diff',
+      '--binary',
+      cand.baseCommit,
+      cand.commitSha,
+      '--',
+      ...AGENT_EDITABLE_PREFIXES,
+    ]);
     if (patch.trim()) await git(tree, ['apply', '--whitespace=nowarn', '-'], patch);
     const treeSha = await hashSuiteInTree(deps.repoDir, cand.baseCommit, tree);
     const protectedOk = treeSha === suiteSha;
@@ -96,7 +123,8 @@ export async function validateCandidate(deps: ValidationDeps, candidateId: strin
       return { status: 'failed', validationRunId: vr!.id };
     }
     const install = await installOffline(tree);
-    if (install.code !== 0) throw new Error(`offline install failed: ${(install.stdout + install.stderr).slice(-800)}`);
+    if (install.code !== 0)
+      throw new Error(`offline install failed: ${(install.stdout + install.stderr).slice(-800)}`);
 
     const profile = reproductionProfile(cand.agentTestResults);
     results.reproductionProfile = profile;
@@ -105,7 +133,14 @@ export async function validateCandidate(deps: ValidationDeps, candidateId: strin
     let allPassed = true;
     for (const s of suites) {
       const r = await runTestsInSandbox(tree, s, profile, deps.sandbox);
-      suiteResults[s] = { passed: r.passed, isolated: r.isolated, durationMs: r.durationMs, summary: r.summary, exitCode: r.exitCode, timedOut: r.timedOut };
+      suiteResults[s] = {
+        passed: r.passed,
+        isolated: r.isolated,
+        durationMs: r.durationMs,
+        summary: r.summary,
+        exitCode: r.exitCode,
+        timedOut: r.timedOut,
+      };
       if (!r.passed) allPassed = false;
     }
     results.suites = suiteResults;
@@ -113,9 +148,18 @@ export async function validateCandidate(deps: ValidationDeps, candidateId: strin
 
     if (allPassed) {
       const art = await buildImplementationArtifact(tree, deps.artifactDir, cand.commitSha);
-      const versionId = await registerVersion(db, { sourceCommit: cand.commitSha, artifactPath: art.path, artifactSha256: art.sha256, releaseState: 'validated', parentVersionId: cand.baseVersionId });
+      const versionId = await registerVersion(db, {
+        sourceCommit: cand.commitSha,
+        artifactPath: art.path,
+        artifactSha256: art.sha256,
+        releaseState: 'validated',
+        parentVersionId: cand.baseVersionId,
+      });
       results.artifact = { versionId, sha256: art.sha256 };
-      await db.update(repairCandidates).set({ integrationVersionId: versionId }).where(eq(repairCandidates.id, cand.id));
+      await db
+        .update(repairCandidates)
+        .set({ integrationVersionId: versionId })
+        .where(eq(repairCandidates.id, cand.id));
       await finish('passed', true);
     } else {
       await finish('failed', true);
@@ -131,10 +175,29 @@ export async function validateCandidate(deps: ValidationDeps, candidateId: strin
 
   async function finish(s: 'passed' | 'failed' | 'error', protectedOk: boolean | null) {
     status = s;
-    await db.update(validationRuns).set({ status: s, protectedPathsOk: protectedOk, results, finishedAt: new Date(), sandbox: { mode: deps.sandbox.mode, image: deps.sandbox.nodeImage } }).where(eq(validationRuns.id, vr!.id));
-    await db.update(repairCandidates).set({ status: s === 'passed' ? 'validated' : 'validation_failed' }).where(eq(repairCandidates.id, cand!.id));
+    await db
+      .update(validationRuns)
+      .set({
+        status: s,
+        protectedPathsOk: protectedOk,
+        results,
+        finishedAt: new Date(),
+        sandbox: { mode: deps.sandbox.mode, image: deps.sandbox.nodeImage },
+      })
+      .where(eq(validationRuns.id, vr!.id));
+    await db
+      .update(repairCandidates)
+      .set({ status: s === 'passed' ? 'validated' : 'validation_failed' })
+      .where(eq(repairCandidates.id, cand!.id));
     if (mr?.incidentId) {
-      await noteIncident(db, mr.incidentId, s === 'passed' ? 'Repair candidate passed independent validation; awaiting human approval.' : `Repair candidate failed independent validation (${s}).`, { customerVisible: false });
+      await noteIncident(
+        db,
+        mr.incidentId,
+        s === 'passed'
+          ? 'Repair candidate passed independent validation; awaiting human approval.'
+          : `Repair candidate failed independent validation (${s}).`,
+        { customerVisible: false },
+      );
     }
   }
 }

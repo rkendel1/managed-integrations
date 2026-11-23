@@ -60,7 +60,8 @@ export async function withRetry<T>(
       const pe = err instanceof ProviderError ? err : undefined;
       const retryable = pe?.retryable ?? false;
       const last = attempt >= policy.maxAttempts;
-      const delayMs = retryable && !last ? computeBackoffMs(attempt, policy, pe?.details.retryAfterMs) : undefined;
+      const delayMs =
+        retryable && !last ? computeBackoffMs(attempt, policy, pe?.details.retryAfterMs) : undefined;
       await onAttempt?.({
         attempt,
         error: {

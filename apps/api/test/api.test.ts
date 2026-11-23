@@ -47,7 +47,11 @@ afterAll(async () => {
 });
 
 async function login(email: string) {
-  const res = await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email, password: 'correct horse battery' } });
+  const res = await app.inject({
+    method: 'POST',
+    url: '/api/auth/login',
+    payload: { email, password: 'correct horse battery' },
+  });
   expect(res.statusCode).toBe(200);
   const cookie = res.cookies.find((c) => c.name === 'mi_session')!;
   expect(cookie.httpOnly).toBe(true);
@@ -56,15 +60,38 @@ async function login(email: string) {
 
 describe('authentication', () => {
   it('rejects bad credentials and unauthenticated access', async () => {
-    expect((await app.inject({ method: 'POST', url: '/api/auth/login', payload: { email: 'customer@acme.test', password: 'nope' } })).statusCode).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/auth/login',
+          payload: { email: 'customer@acme.test', password: 'nope' },
+        })
+      ).statusCode,
+    ).toBe(401);
     expect((await app.inject({ method: 'GET', url: '/api/customer/overview' })).statusCode).toBe(401);
   });
 
   it('enforces roles and CSRF on mutations', async () => {
     const c = await login('customer@acme.test');
-    expect((await app.inject({ method: 'GET', url: '/api/operator/inbox', headers: { cookie: c.cookie } })).statusCode).toBe(403);
-    expect((await app.inject({ method: 'POST', url: '/api/customer/integration/sync', headers: { cookie: c.cookie } })).statusCode).toBe(403);
-    const ok = await app.inject({ method: 'POST', url: '/api/customer/integration/sync', headers: { cookie: c.cookie, 'x-csrf-token': c.csrf } });
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/operator/inbox', headers: { cookie: c.cookie } }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/customer/integration/sync',
+          headers: { cookie: c.cookie },
+        })
+      ).statusCode,
+    ).toBe(403);
+    const ok = await app.inject({
+      method: 'POST',
+      url: '/api/customer/integration/sync',
+      headers: { cookie: c.cookie, 'x-csrf-token': c.csrf },
+    });
     expect(ok.statusCode).toBe(200);
   });
 });
@@ -72,28 +99,56 @@ describe('authentication', () => {
 describe('customer views', () => {
   it('returns overview and connections without any secret material', async () => {
     const c = await login('customer@acme.test');
-    const overview = await app.inject({ method: 'GET', url: '/api/customer/overview', headers: { cookie: c.cookie } });
+    const overview = await app.inject({
+      method: 'GET',
+      url: '/api/customer/overview',
+      headers: { cookie: c.cookie },
+    });
     expect(overview.statusCode).toBe(200);
     expect(overview.json().connections).toHaveLength(2);
-    const conns = await app.inject({ method: 'GET', url: '/api/customer/connections', headers: { cookie: c.cookie } });
+    const conns = await app.inject({
+      method: 'GET',
+      url: '/api/customer/connections',
+      headers: { cookie: c.cookie },
+    });
     const text = conns.body;
     expect(text).not.toMatch(/ciphertext|shpat_|shprt_|PRIVATE KEY|v1\.test\./);
-    expect(conns.json().find((x: { provider: string }) => x.provider === 'shopify').scopes).toEqual(['read_orders']);
+    expect(conns.json().find((x: { provider: string }) => x.provider === 'shopify').scopes).toEqual([
+      'read_orders',
+    ]);
   });
 
   it('isolates tenants', async () => {
     const other = await login('other@other.test');
-    const res = await app.inject({ method: 'GET', url: '/api/customer/integration', headers: { cookie: other.cookie } });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/customer/integration',
+      headers: { cookie: other.cookie },
+    });
     expect(res.statusCode).toBe(404);
-    const conns = await app.inject({ method: 'GET', url: '/api/customer/connections', headers: { cookie: other.cookie } });
+    const conns = await app.inject({
+      method: 'GET',
+      url: '/api/customer/connections',
+      headers: { cookie: other.cookie },
+    });
     expect(conns.json()).toEqual([]);
   });
 
   it('validates configuration updates with the contract schema', async () => {
     const c = await login('customer@acme.test');
-    const bad = await app.inject({ method: 'PATCH', url: '/api/customer/integration', headers: { cookie: c.cookie, 'x-csrf-token': c.csrf }, payload: { config: { skuMap: { 'SKU-X': 'not-a-number' } } } });
+    const bad = await app.inject({
+      method: 'PATCH',
+      url: '/api/customer/integration',
+      headers: { cookie: c.cookie, 'x-csrf-token': c.csrf },
+      payload: { config: { skuMap: { 'SKU-X': 'not-a-number' } } },
+    });
     expect(bad.statusCode).toBe(400);
-    const good = await app.inject({ method: 'PATCH', url: '/api/customer/integration', headers: { cookie: c.cookie, 'x-csrf-token': c.csrf }, payload: { config: { skuMap: { 'SKU-RED': '101', 'SKU-BLUE': '102', 'SKU-X': '103' } } } });
+    const good = await app.inject({
+      method: 'PATCH',
+      url: '/api/customer/integration',
+      headers: { cookie: c.cookie, 'x-csrf-token': c.csrf },
+      payload: { config: { skuMap: { 'SKU-RED': '101', 'SKU-BLUE': '102', 'SKU-X': '103' } } },
+    });
     expect(good.statusCode).toBe(200);
     expect(good.json().config.skuMap['SKU-X']).toBe('103');
   });
@@ -103,7 +158,12 @@ describe('Shopify OAuth (authorization code grant, expiring offline tokens)', ()
   it('completes the flow against the fixture, verifying HMAC + state and encrypting tokens', async () => {
     await h.dbh.db.delete(connections).where(eq(connections.providerId, 'shopify'));
     const c = await login('customer@acme.test');
-    const start = await app.inject({ method: 'POST', url: '/api/customer/connections/shopify/authorize', headers: { cookie: c.cookie, 'x-csrf-token': c.csrf }, payload: { shop: h.shopify.shopDomain } });
+    const start = await app.inject({
+      method: 'POST',
+      url: '/api/customer/connections/shopify/authorize',
+      headers: { cookie: c.cookie, 'x-csrf-token': c.csrf },
+      payload: { shop: h.shopify.shopDomain },
+    });
     expect(start.statusCode).toBe(200);
     const authorizeUrl = new URL(start.json().url);
     expect(authorizeUrl.searchParams.get('scope')).toBe('read_orders');
@@ -129,13 +189,22 @@ describe('Shopify OAuth (authorization code grant, expiring offline tokens)', ()
     const replay = await app.inject({ method: 'GET', url: `${callback.pathname}${callback.search}` });
     expect(replay.headers.location).toContain('error=');
 
-    const verify = await app.inject({ method: 'POST', url: '/api/customer/connections/shopify/verify', headers: { cookie: c.cookie, 'x-csrf-token': c.csrf } });
+    const verify = await app.inject({
+      method: 'POST',
+      url: '/api/customer/connections/shopify/verify',
+      headers: { cookie: c.cookie, 'x-csrf-token': c.csrf },
+    });
     expect(verify.json().status).toBe('verified');
   });
 
   it('rejects shop domains outside myshopify.com (SSRF guard)', async () => {
     const c = await login('customer@acme.test');
-    const res = await app.inject({ method: 'POST', url: '/api/customer/connections/shopify/authorize', headers: { cookie: c.cookie, 'x-csrf-token': c.csrf }, payload: { shop: 'http://169.254.169.254/latest' } });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/customer/connections/shopify/authorize',
+      headers: { cookie: c.cookie, 'x-csrf-token': c.csrf },
+      payload: { shop: 'http://169.254.169.254/latest' },
+    });
     expect(res.statusCode).toBe(400);
   });
 });
@@ -143,24 +212,54 @@ describe('Shopify OAuth (authorization code grant, expiring offline tokens)', ()
 describe('operator decisions', () => {
   it('refuses to approve a candidate that has not passed independent validation', async () => {
     const op = await login('operator@mi.test');
-    const [mr] = await h.dbh.db.insert(maintenanceRuns).values({ integrationId: h.integrationId, trigger: 'operator', status: 'candidate_submitted' }).returning();
+    const [mr] = await h.dbh.db
+      .insert(maintenanceRuns)
+      .values({ integrationId: h.integrationId, trigger: 'operator', status: 'candidate_submitted' })
+      .returning();
     const [cand] = await h.dbh.db
       .insert(repairCandidates)
-      .values({ maintenanceRunId: mr!.id, baseVersionId: 'impl-x', baseCommit: 'abc', branch: 'repair/x', commitSha: 'def', diff: '', changedFiles: [], hypothesis: 'h', status: 'submitted' })
+      .values({
+        maintenanceRunId: mr!.id,
+        baseVersionId: 'impl-x',
+        baseCommit: 'abc',
+        branch: 'repair/x',
+        commitSha: 'def',
+        diff: '',
+        changedFiles: [],
+        hypothesis: 'h',
+        status: 'submitted',
+      })
       .returning();
-    const res = await app.inject({ method: 'POST', url: `/api/operator/candidates/${cand!.id}/approve`, headers: { cookie: op.cookie, 'x-csrf-token': op.csrf }, payload: {} });
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/operator/candidates/${cand!.id}/approve`,
+      headers: { cookie: op.cookie, 'x-csrf-token': op.csrf },
+      payload: {},
+    });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toMatch(/validated/);
-    const inbox = await app.inject({ method: 'GET', url: '/api/operator/inbox', headers: { cookie: op.cookie } });
+    const inbox = await app.inject({
+      method: 'GET',
+      url: '/api/operator/inbox',
+      headers: { cookie: op.cookie },
+    });
     expect(inbox.statusCode).toBe(200);
     expect(inbox.json().some((i: { kind: string }) => i.kind === 'candidate')).toBe(true);
-    const metrics = await app.inject({ method: 'GET', url: '/api/operator/metrics', headers: { cookie: op.cookie } });
+    const metrics = await app.inject({
+      method: 'GET',
+      url: '/api/operator/metrics',
+      headers: { cookie: op.cookie },
+    });
     expect(metrics.json().maintenance.runs).toBe(1);
   });
 
   it('hides internal errors behind a request id', async () => {
     const op = await login('operator@mi.test');
-    const res = await app.inject({ method: 'GET', url: '/api/operator/incidents/not-a-uuid', headers: { cookie: op.cookie } });
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/operator/incidents/not-a-uuid',
+      headers: { cookie: op.cookie },
+    });
     expect(res.statusCode).toBe(404);
   });
 });

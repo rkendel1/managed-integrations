@@ -16,7 +16,8 @@ afterEach(async () => {
   await h.close();
 });
 
-const integrationRow = async () => (await h.dbh.db.select().from(integrations).where(eq(integrations.id, h.integrationId)))[0]!;
+const integrationRow = async () =>
+  (await h.dbh.db.select().from(integrations).where(eq(integrations.id, h.integrationId)))[0]!;
 
 describe('historical backfill and pagination', () => {
   it('delivers every in-scope order across multiple pages and records the cursor', async () => {
@@ -43,14 +44,22 @@ describe('historical backfill and pagination', () => {
 
   it('records delivery evidence with destination ids and attempt history', async () => {
     h.shopify.control.seedOrders(3, { start: new Date('2026-11-01T00:00:00Z') });
-    const r = await (await h.engine({ implementation })).run({ integrationId: h.integrationId, trigger: 'manual' });
-    const rows = await h.dbh.db.select().from(deliveries).where(eq(deliveries.integrationId, h.integrationId));
+    const r = await (
+      await h.engine({ implementation })
+    ).run({ integrationId: h.integrationId, trigger: 'manual' });
+    const rows = await h.dbh.db
+      .select()
+      .from(deliveries)
+      .where(eq(deliveries.integrationId, h.integrationId));
     expect(rows).toHaveLength(3);
     for (const d of rows) {
       expect(d.outcome).toBe('delivered');
       expect(d.destinationId).toMatch(/^\d+$/);
       expect((d.summary as { lineCount: number }).lineCount).toBe(1);
-      const attempts = await h.dbh.db.select().from(deliveryAttempts).where(eq(deliveryAttempts.deliveryId, d.id));
+      const attempts = await h.dbh.db
+        .select()
+        .from(deliveryAttempts)
+        .where(eq(deliveryAttempts.deliveryId, d.id));
       expect(attempts.map((a) => a.outcome)).toEqual(['delivered']);
       expect(attempts[0]!.syncRunId).toBe(r.syncRunId);
     }
@@ -59,7 +68,9 @@ describe('historical backfill and pagination', () => {
   it('does not deliver orders updated before the configured backfill start', async () => {
     h.shopify.control.seedOrders(2, { start: new Date('2025-06-01T00:00:00Z') });
     h.shopify.control.seedOrders(2, { start: new Date('2026-11-01T00:00:00Z') });
-    const r = await (await h.engine({ implementation })).run({ integrationId: h.integrationId, trigger: 'manual' });
+    const r = await (
+      await h.engine({ implementation })
+    ).run({ integrationId: h.integrationId, trigger: 'manual' });
     expect(r.counts.delivered).toBe(2);
   });
 });
@@ -80,7 +91,11 @@ describe('incremental sync', () => {
     const [o] = h.shopify.control.seedOrders(1, { start: new Date('2026-11-01T00:00:00Z') });
     const engine = await h.engine({ implementation });
     await engine.run({ integrationId: h.integrationId, trigger: 'manual' });
-    h.shopify.control.upsertOrder({ ...o!, updatedAt: '2026-11-03T00:00:00.000Z', lineItems: [{ sku: 'SKU-RED', title: 'Widget', quantity: 9, unitPrice: '19.99' }] });
+    h.shopify.control.upsertOrder({
+      ...o!,
+      updatedAt: '2026-11-03T00:00:00.000Z',
+      lineItems: [{ sku: 'SKU-RED', title: 'Widget', quantity: 9, unitPrice: '19.99' }],
+    });
     const r2 = await engine.run({ integrationId: h.integrationId, trigger: 'schedule' });
     expect(r2.counts.delivered).toBe(0);
     expect(r2.counts.alreadyDelivered).toBe(1);
@@ -94,7 +109,10 @@ describe('idempotency', () => {
     h.shopify.control.seedOrders(12, { start: new Date('2026-11-01T00:00:00Z') });
     const engine = await h.engine({ implementation });
     await engine.run({ integrationId: h.integrationId, trigger: 'manual' });
-    await h.dbh.db.update(integrations).set({ cursorWatermark: null, backfillCompletedAt: null }).where(eq(integrations.id, h.integrationId));
+    await h.dbh.db
+      .update(integrations)
+      .set({ cursorWatermark: null, backfillCompletedAt: null })
+      .where(eq(integrations.id, h.integrationId));
     const r2 = await engine.run({ integrationId: h.integrationId, trigger: 'manual' });
     expect(r2.counts.delivered).toBe(0);
     expect(r2.counts.alreadyDelivered).toBe(12);
@@ -108,7 +126,10 @@ describe('idempotency', () => {
     // Simulate lost local evidence: destination records exist, delivery rows do not.
     await h.dbh.db.delete(deliveryAttempts);
     await h.dbh.db.delete(deliveries);
-    await h.dbh.db.update(integrations).set({ cursorWatermark: null, backfillCompletedAt: null }).where(eq(integrations.id, h.integrationId));
+    await h.dbh.db
+      .update(integrations)
+      .set({ cursorWatermark: null, backfillCompletedAt: null })
+      .where(eq(integrations.id, h.integrationId));
     const r2 = await engine.run({ integrationId: h.integrationId, trigger: 'manual' });
     expect(r2.counts.delivered).toBe(4);
     expect(h.netsuite.state.salesOrders.size).toBe(4); // updated in place, not duplicated
@@ -130,8 +151,14 @@ describe('idempotency', () => {
 describe('record-level outcomes', () => {
   it('rejects invalid records, delivers the rest, and reports partial', async () => {
     h.shopify.control.seedOrders(3, { start: new Date('2026-11-01T00:00:00Z') });
-    h.shopify.control.upsertOrder({ createdAt: '2026-11-01T01:00:00Z', updatedAt: '2026-11-01T01:00:00Z', lineItems: [{ sku: 'SKU-UNMAPPED', title: 'Mystery', quantity: 1, unitPrice: '5.00' }] });
-    const r = await (await h.engine({ implementation })).run({ integrationId: h.integrationId, trigger: 'manual' });
+    h.shopify.control.upsertOrder({
+      createdAt: '2026-11-01T01:00:00Z',
+      updatedAt: '2026-11-01T01:00:00Z',
+      lineItems: [{ sku: 'SKU-UNMAPPED', title: 'Mystery', quantity: 1, unitPrice: '5.00' }],
+    });
+    const r = await (
+      await h.engine({ implementation })
+    ).run({ integrationId: h.integrationId, trigger: 'manual' });
     expect(r.status).toBe('partial');
     expect(r.counts.delivered).toBe(3);
     expect(r.counts.rejected).toBe(1);
@@ -141,8 +168,15 @@ describe('record-level outcomes', () => {
   });
 
   it('skips orders cancelled before delivery', async () => {
-    h.shopify.control.upsertOrder({ createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', cancelledAt: '2026-11-01T00:00:00Z', lineItems: [{ sku: 'SKU-RED', title: 'W', quantity: 1, unitPrice: '1.00' }] });
-    const r = await (await h.engine({ implementation })).run({ integrationId: h.integrationId, trigger: 'manual' });
+    h.shopify.control.upsertOrder({
+      createdAt: '2026-11-01T00:00:00Z',
+      updatedAt: '2026-11-01T00:00:00Z',
+      cancelledAt: '2026-11-01T00:00:00Z',
+      lineItems: [{ sku: 'SKU-RED', title: 'W', quantity: 1, unitPrice: '1.00' }],
+    });
+    const r = await (
+      await h.engine({ implementation })
+    ).run({ integrationId: h.integrationId, trigger: 'manual' });
     expect(r.counts.skipped).toBe(1);
     expect(h.netsuite.state.salesOrders.size).toBe(0);
   });
@@ -150,7 +184,9 @@ describe('record-level outcomes', () => {
   it('records a destination rejection (mandatory NetSuite field) as invalid data, not a crash', async () => {
     h.shopify.control.seedOrders(2, { start: new Date('2026-11-01T00:00:00Z') });
     h.netsuite.control.setMandatoryBodyFields(['custbody_sales_channel']);
-    const r = await (await h.engine({ implementation })).run({ integrationId: h.integrationId, trigger: 'manual' });
+    const r = await (
+      await h.engine({ implementation })
+    ).run({ integrationId: h.integrationId, trigger: 'manual' });
     expect(r.status).toBe('partial');
     expect(r.counts.rejected).toBe(2);
     const rows = await h.dbh.db.select().from(deliveries);
@@ -158,14 +194,28 @@ describe('record-level outcomes', () => {
   });
 
   it('re-attempts rejected records after the configuration is corrected', async () => {
-    h.shopify.control.upsertOrder({ createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', lineItems: [{ sku: 'SKU-NEW', title: 'New', quantity: 1, unitPrice: '5.00' }] });
+    h.shopify.control.upsertOrder({
+      createdAt: '2026-11-01T00:00:00Z',
+      updatedAt: '2026-11-01T00:00:00Z',
+      lineItems: [{ sku: 'SKU-NEW', title: 'New', quantity: 1, unitPrice: '5.00' }],
+    });
     const engine = await h.engine({ implementation });
     expect((await engine.run({ integrationId: h.integrationId, trigger: 'manual' })).counts.rejected).toBe(1);
     const row = await integrationRow();
     const cfg = row.config as { skuMap: Record<string, string> };
-    await h.dbh.db.update(integrations).set({ config: { ...cfg, skuMap: { ...cfg.skuMap, 'SKU-NEW': '103' } } }).where(eq(integrations.id, h.integrationId));
+    await h.dbh.db
+      .update(integrations)
+      .set({ config: { ...cfg, skuMap: { ...cfg.skuMap, 'SKU-NEW': '103' } } })
+      .where(eq(integrations.id, h.integrationId));
     const order = [...h.shopify.state.orders.values()][0]!;
-    const r = await (await h.engine({ implementation })).run({ integrationId: h.integrationId, trigger: 'recovery', mode: 'redelivery', sourceLegacyIds: [order.legacyId] });
+    const r = await (
+      await h.engine({ implementation })
+    ).run({
+      integrationId: h.integrationId,
+      trigger: 'recovery',
+      mode: 'redelivery',
+      sourceLegacyIds: [order.legacyId],
+    });
     expect(r.counts.delivered).toBe(1);
   });
 });
@@ -173,9 +223,17 @@ describe('record-level outcomes', () => {
 describe('sync run history', () => {
   it('persists counts, cursor before/after and status for every run', async () => {
     h.shopify.control.seedOrders(5, { start: new Date('2026-11-01T00:00:00Z') });
-    const r = await (await h.engine({ implementation })).run({ integrationId: h.integrationId, trigger: 'manual' });
+    const r = await (
+      await h.engine({ implementation })
+    ).run({ integrationId: h.integrationId, trigger: 'manual' });
     const [run] = await h.dbh.db.select().from(syncRuns).where(eq(syncRuns.id, r.syncRunId!));
-    expect(run).toMatchObject({ status: 'succeeded', deliveredCount: 5, observedCount: 5, pagesFetched: 1, cursorBefore: '2026-01-01T00:00:00Z' });
+    expect(run).toMatchObject({
+      status: 'succeeded',
+      deliveredCount: 5,
+      observedCount: 5,
+      pagesFetched: 1,
+      cursorBefore: '2026-01-01T00:00:00Z',
+    });
     expect(run!.cursorAfter).toBe(r.cursorAfter);
     expect(run!.finishedAt).not.toBeNull();
   });

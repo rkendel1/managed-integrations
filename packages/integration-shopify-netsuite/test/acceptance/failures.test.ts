@@ -18,7 +18,8 @@ afterEach(async () => {
 });
 const run = async (o: Partial<Parameters<Awaited<ReturnType<Harness['engine']>>['run']>[0]> = {}) =>
   (await h.engine({ implementation })).run({ integrationId: h.integrationId, trigger: 'manual', ...o });
-const integrationRow = async () => (await h.dbh.db.select().from(integrations).where(eq(integrations.id, h.integrationId)))[0]!;
+const integrationRow = async () =>
+  (await h.dbh.db.select().from(integrations).where(eq(integrations.id, h.integrationId)))[0]!;
 
 describe('transient provider failures', () => {
   it('retries a NetSuite 500 and records the failed attempt as evidence', async () => {
@@ -26,7 +27,10 @@ describe('transient provider failures', () => {
     const r = await run();
     expect(r.status).toBe('succeeded');
     expect(r.counts.delivered).toBe(6);
-    const failed = await h.dbh.db.select().from(deliveryAttempts).where(eq(deliveryAttempts.outcome, 'failed'));
+    const failed = await h.dbh.db
+      .select()
+      .from(deliveryAttempts)
+      .where(eq(deliveryAttempts.outcome, 'failed'));
     expect(failed).toHaveLength(2);
     expect(failed.every((a) => a.errorClass === 'transient' && a.httpStatus === 500)).toBe(true);
   });
@@ -62,7 +66,10 @@ describe('rate limits', () => {
     h.netsuite.state.faults.add({ target: 'record.put', type: 'http429', count: 2, retryAfterSeconds: 1 });
     const r = await run();
     expect(r.status).toBe('succeeded');
-    const attempts = await h.dbh.db.select().from(deliveryAttempts).where(eq(deliveryAttempts.errorClass, 'rate_limited'));
+    const attempts = await h.dbh.db
+      .select()
+      .from(deliveryAttempts)
+      .where(eq(deliveryAttempts.errorClass, 'rate_limited'));
     expect(attempts).toHaveLength(2);
     // Retry-After (1s) is a floor on the backoff even though the test policy's base delay is 1ms.
     expect(attempts.every((a) => (a.evidence as { retryDelayMs: number }).retryDelayMs >= 1000)).toBe(true);
@@ -90,7 +97,8 @@ describe('pagination anomalies', () => {
     const engine = await h.engine({ implementation });
     let calls = 0;
     const orig = h.shopify.state.faults.take.bind(h.shopify.state.faults);
-    h.shopify.state.faults.take = (t: string) => (t === 'graphql' && ++calls === 2 ? { target: 'graphql', type: 'repeat_page', count: 0 } : orig(t));
+    h.shopify.state.faults.take = (t: string) =>
+      t === 'graphql' && ++calls === 2 ? { target: 'graphql', type: 'repeat_page', count: 0 } : orig(t);
     const r = await engine.run({ integrationId: h.integrationId, trigger: 'manual' });
     expect(r.status).toBe('succeeded');
     expect(r.counts.delivered).toBe(21);
@@ -103,7 +111,8 @@ describe('pagination anomalies', () => {
     const engine = await h.engine({ implementation });
     let calls = 0;
     const orig = h.shopify.state.faults.take.bind(h.shopify.state.faults);
-    h.shopify.state.faults.take = (t: string) => (t === 'graphql' && ++calls >= 2 ? { target: 'graphql', type: 'repeat_page', count: 0 } : orig(t));
+    h.shopify.state.faults.take = (t: string) =>
+      t === 'graphql' && ++calls >= 2 ? { target: 'graphql', type: 'repeat_page', count: 0 } : orig(t);
     const r = await engine.run({ integrationId: h.integrationId, trigger: 'manual' });
     expect(r.status).toBe('failed');
     // the first page is durable; nothing beyond it is claimed
@@ -129,11 +138,15 @@ describe('pagination anomalies', () => {
 
 describe('authentication and authorization', () => {
   it('refreshes an expired Shopify access token and persists the rotated pair', async () => {
-    const before = (await h.dbh.db.select().from(connections).where(eq(connections.providerId, 'shopify')))[0]!;
+    const before = (
+      await h.dbh.db.select().from(connections).where(eq(connections.providerId, 'shopify'))
+    )[0]!;
     h.shopify.control.expireAccessTokens();
     const r = await run();
     expect(r.status).toBe('succeeded');
-    const after = (await h.dbh.db.select().from(connections).where(eq(connections.providerId, 'shopify')))[0]!;
+    const after = (
+      await h.dbh.db.select().from(connections).where(eq(connections.providerId, 'shopify'))
+    )[0]!;
     expect(after.credentialsCiphertext).not.toBe(before.credentialsCiphertext);
     expect(h.shopify.state.requestLog.some((l) => l.kind === 'token_refresh')).toBe(true);
   });

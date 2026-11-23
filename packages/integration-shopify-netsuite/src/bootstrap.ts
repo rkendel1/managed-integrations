@@ -27,7 +27,10 @@ export async function bootstrapReferenceData(db: Db): Promise<void> {
         id: 'shopify',
         displayName: 'Shopify',
         apiVersion: SHOPIFY_API_VERSION,
-        capabilities: ['orders.read (GraphQL Admin API)', 'oauth.authorization_code (expiring offline tokens)'],
+        capabilities: [
+          'orders.read (GraphQL Admin API)',
+          'oauth.authorization_code (expiring offline tokens)',
+        ],
         documentation: [
           'https://shopify.dev/docs/api/admin-graphql/latest/queries/orders',
           'https://shopify.dev/docs/apps/build/authentication-authorization/access-tokens/offline-access-tokens',
@@ -50,6 +53,11 @@ export async function bootstrapReferenceData(db: Db): Promise<void> {
   const sha = contractSha256(CONTRACT_V1);
   await db
     .insert(integrationContracts)
-    .values({ version: CONTRACT_V1.version, flowType: CONTRACT_V1.flowType, definition: CONTRACT_V1, definitionSha256: sha })
+    .values({
+      version: CONTRACT_V1.version,
+      flowType: CONTRACT_V1.flowType,
+      definition: CONTRACT_V1,
+      definitionSha256: sha,
+    })
     .onConflictDoNothing();
 }

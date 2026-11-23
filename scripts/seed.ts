@@ -8,7 +8,11 @@ import { join, resolve } from 'node:path';
 import { and, eq, isNull } from 'drizzle-orm';
 import { CONTRACT_V1, FLOW_TYPE } from '@mi/contracts';
 import { connections, createDb, integrations, migrate, tenants, users } from '@mi/database';
-import { bootstrapReferenceData, generateNetSuiteKeyPair, loadServiceConfig } from '@mi/integration-shopify-netsuite';
+import {
+  bootstrapReferenceData,
+  generateNetSuiteKeyPair,
+  loadServiceConfig,
+} from '@mi/integration-shopify-netsuite';
 import { registerVersion } from '@mi/maintenance';
 import { hashPassword } from '../apps/api/src/auth.ts';
 
@@ -21,15 +25,26 @@ await bootstrapReferenceData(db);
 let baselineVersion: string | null = null;
 const baselineDir = resolve(process.env.BASELINE_ARTIFACT_DIR ?? 'baseline-artifact');
 try {
-  const manifest = JSON.parse(await readFile(join(baselineDir, 'manifest.json'), 'utf8')) as { sourceCommit: string; file: string; sha256: string };
+  const manifest = JSON.parse(await readFile(join(baselineDir, 'manifest.json'), 'utf8')) as {
+    sourceCommit: string;
+    file: string;
+    sha256: string;
+  };
   const artifactDir = resolve(config.env.ARTIFACT_DIR);
   await mkdir(artifactDir, { recursive: true });
   const target = join(artifactDir, manifest.file);
   await copyFile(join(baselineDir, manifest.file), target);
-  baselineVersion = await registerVersion(db, { sourceCommit: manifest.sourceCommit, artifactPath: target, artifactSha256: manifest.sha256, releaseState: 'released' });
+  baselineVersion = await registerVersion(db, {
+    sourceCommit: manifest.sourceCommit,
+    artifactPath: target,
+    artifactSha256: manifest.sha256,
+    releaseState: 'released',
+  });
   console.log(`baseline implementation version ${baselineVersion}`);
 } catch (err) {
-  console.warn(`no baseline artifact registered (${(err as Error).message}); run scripts/build-baseline-artifact.ts`);
+  console.warn(
+    `no baseline artifact registered (${(err as Error).message}); run scripts/build-baseline-artifact.ts`,
+  );
 }
 
 /* pilot tenant and users */
@@ -41,13 +56,31 @@ if (!customerPw || !operatorPw || customerPw.length < 12 || operatorPw.length < 
 }
 const slug = process.env.SEED_TENANT_SLUG ?? 'acme-outdoor';
 let [tenant] = await db.select().from(tenants).where(eq(tenants.slug, slug));
-if (!tenant) [tenant] = await db.insert(tenants).values({ name: process.env.SEED_TENANT_NAME ?? 'Acme Outdoor', slug, lifecycle: 'active' }).returning();
+if (!tenant)
+  [tenant] = await db
+    .insert(tenants)
+    .values({ name: process.env.SEED_TENANT_NAME ?? 'Acme Outdoor', slug, lifecycle: 'active' })
+    .returning();
 const customerEmail = (process.env.SEED_CUSTOMER_EMAIL ?? 'customer@acme.test').toLowerCase();
 const operatorEmail = (process.env.SEED_OPERATOR_EMAIL ?? 'operator@managed-integrations.test').toLowerCase();
-await db.insert(users).values({ email: customerEmail, passwordHash: await hashPassword(customerPw), role: 'customer', tenantId: tenant!.id }).onConflictDoNothing();
-await db.insert(users).values({ email: operatorEmail, passwordHash: await hashPassword(operatorPw), role: 'operator' }).onConflictDoNothing();
+await db
+  .insert(users)
+  .values({
+    email: customerEmail,
+    passwordHash: await hashPassword(customerPw),
+    role: 'customer',
+    tenantId: tenant!.id,
+  })
+  .onConflictDoNothing();
+await db
+  .insert(users)
+  .values({ email: operatorEmail, passwordHash: await hashPassword(operatorPw), role: 'operator' })
+  .onConflictDoNothing();
 
-let [integ] = await db.select().from(integrations).where(and(eq(integrations.tenantId, tenant!.id), eq(integrations.flowType, FLOW_TYPE)));
+let [integ] = await db
+  .select()
+  .from(integrations)
+  .where(and(eq(integrations.tenantId, tenant!.id), eq(integrations.flowType, FLOW_TYPE)));
 if (!integ) {
   [integ] = await db
     .insert(integrations)
@@ -59,7 +92,8 @@ if (!integ) {
       enabled: false,
       lifecycle: 'setup',
       config: {
-        backfillFrom: process.env.SEED_BACKFILL_FROM ?? new Date(Date.now() - 30 * 24 * 3600_000).toISOString(),
+        backfillFrom:
+          process.env.SEED_BACKFILL_FROM ?? new Date(Date.now() - 30 * 24 * 3600_000).toISOString(),
         netsuiteCustomerId: '501',
         netsuiteSubsidiaryId: '1',
         currencyCode: 'USD',
@@ -69,25 +103,44 @@ if (!integ) {
     })
     .returning();
 }
-if (baselineVersion) await db.update(integrations).set({ implementationVersionId: baselineVersion }).where(and(eq(integrations.id, integ!.id), isNull(integrations.implementationVersionId)));
+if (baselineVersion)
+  await db
+    .update(integrations)
+    .set({ implementationVersionId: baselineVersion })
+    .where(and(eq(integrations.id, integ!.id), isNull(integrations.implementationVersionId)));
 
 /* demo: connect to the deterministic fixtures */
 if (process.env.DEMO_FIXTURES === 'true') {
   if (prod) throw new Error('DEMO_FIXTURES is not permitted in production');
   const shopUrl = config.endpoints.shopifyBaseUrlOverride;
   const nsUrl = config.endpoints.netsuiteBaseUrlOverride;
-  if (!shopUrl || !nsUrl) throw new Error('DEMO_FIXTURES requires SHOPIFY_BASE_URL_OVERRIDE and NETSUITE_BASE_URL_OVERRIDE');
+  if (!shopUrl || !nsUrl)
+    throw new Error('DEMO_FIXTURES requires SHOPIFY_BASE_URL_OVERRIDE and NETSUITE_BASE_URL_OVERRIDE');
   const existing = await db.select().from(connections).where(eq(connections.tenantId, tenant!.id));
   if (!existing.some((c) => c.status === 'verified')) {
     const post = async (url: string, body: unknown) => {
-      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
       if (!r.ok) throw new Error(`fixture ${url} → ${r.status}`);
       return r.json();
     };
-    const tok = (await post(`${shopUrl}/__fixture/token`, {})) as { access_token: string; refresh_token: string; expires_in: number; refresh_token_expires_in: number; scope: string };
+    const tok = (await post(`${shopUrl}/__fixture/token`, {})) as {
+      access_token: string;
+      refresh_token: string;
+      expires_in: number;
+      refresh_token_expires_in: number;
+      scope: string;
+    };
     const kp = generateNetSuiteKeyPair();
     await post(`${nsUrl}/__fixture/public-key`, { pem: kp.publicKeyPem });
-    await post(`${shopUrl}/__fixture/seed`, { count: 30, start: new Date(Date.now() - 6 * 3600_000).toISOString(), stepMs: 10 * 60_000 });
+    await post(`${shopUrl}/__fixture/seed`, {
+      count: 30,
+      start: new Date(Date.now() - 6 * 3600_000).toISOString(),
+      stepMs: 10 * 60_000,
+    });
     const now = Date.now();
     for (const [providerId, account, baseUrl, scopes] of [
       ['shopify', 'fixture-shop.myshopify.com', shopUrl, ['read_orders']],
@@ -95,23 +148,53 @@ if (process.env.DEMO_FIXTURES === 'true') {
     ] as const) {
       const [c] = await db
         .insert(connections)
-        .values({ tenantId: tenant!.id, providerId, status: 'verified', externalAccount: account, baseUrl, grantedScopes: [...scopes], lastVerifiedAt: new Date() })
-        .onConflictDoUpdate({ target: [connections.tenantId, connections.providerId], set: { status: 'verified', baseUrl, lastVerifiedAt: new Date() } })
+        .values({
+          tenantId: tenant!.id,
+          providerId,
+          status: 'verified',
+          externalAccount: account,
+          baseUrl,
+          grantedScopes: [...scopes],
+          lastVerifiedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [connections.tenantId, connections.providerId],
+          set: { status: 'verified', baseUrl, lastVerifiedAt: new Date() },
+        })
         .returning();
       const secret =
         providerId === 'shopify'
-          ? { accessToken: tok.access_token, refreshToken: tok.refresh_token, accessTokenExpiresAt: new Date(now + tok.expires_in * 1000).toISOString(), refreshTokenExpiresAt: new Date(now + tok.refresh_token_expires_in * 1000).toISOString(), scope: tok.scope }
-          : { clientId: 'fixture-netsuite-client-id', certificateId: 'fixture-cert-id', privateKeyPem: kp.privateKeyPem, algorithm: 'PS256' };
+          ? {
+              accessToken: tok.access_token,
+              refreshToken: tok.refresh_token,
+              accessTokenExpiresAt: new Date(now + tok.expires_in * 1000).toISOString(),
+              refreshTokenExpiresAt: new Date(now + tok.refresh_token_expires_in * 1000).toISOString(),
+              scope: tok.scope,
+            }
+          : {
+              clientId: 'fixture-netsuite-client-id',
+              certificateId: 'fixture-cert-id',
+              privateKeyPem: kp.privateKeyPem,
+              algorithm: 'PS256',
+            };
       await db
         .update(connections)
         .set({
           credentialsCiphertext: config.cipher!.encrypt(secret, `connection:${c!.id}`),
           credentialsKeyId: config.cipher!.keyId,
-          ...(providerId === 'shopify' ? { accessTokenExpiresAt: new Date(now + tok.expires_in * 1000), refreshTokenExpiresAt: new Date(now + tok.refresh_token_expires_in * 1000) } : {}),
+          ...(providerId === 'shopify'
+            ? {
+                accessTokenExpiresAt: new Date(now + tok.expires_in * 1000),
+                refreshTokenExpiresAt: new Date(now + tok.refresh_token_expires_in * 1000),
+              }
+            : {}),
         })
         .where(eq(connections.id, c!.id));
     }
-    await db.update(integrations).set({ enabled: true, lifecycle: 'active' }).where(eq(integrations.id, integ!.id));
+    await db
+      .update(integrations)
+      .set({ enabled: true, lifecycle: 'active' })
+      .where(eq(integrations.id, integ!.id));
     console.log('demo: connected to deterministic fixtures and seeded 30 fixture orders');
   }
 }

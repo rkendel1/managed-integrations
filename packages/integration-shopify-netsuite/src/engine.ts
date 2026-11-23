@@ -159,7 +159,12 @@ export class SyncEngine {
       .set({ leaseExpiresAt: new Date(Date.now() + this.leaseMs) })
       .where(and(eq(integrations.id, integrationId), eq(integrations.leaseOwner, this.deps.workerId)))
       .returning({ id: integrations.id });
-    if (!rows.length) throw new RunAbort('unknown', 'Lease lost to another worker; stopping without advancing cursor', 'LEASE_LOST');
+    if (!rows.length)
+      throw new RunAbort(
+        'unknown',
+        'Lease lost to another worker; stopping without advancing cursor',
+        'LEASE_LOST',
+      );
   }
 
   async releaseLease(integrationId: string): Promise<void> {
@@ -224,7 +229,10 @@ export class SyncEngine {
             ? 'incremental'
             : 'backfill';
     const cursorBefore = integration.cursorWatermark ?? config.backfillFrom;
-    const traceId = createHash('sha256').update(`${opts.integrationId}${Date.now()}${Math.random()}`).digest('hex').slice(0, 32);
+    const traceId = createHash('sha256')
+      .update(`${opts.integrationId}${Date.now()}${Math.random()}`)
+      .digest('hex')
+      .slice(0, 32);
     const startedAt = new Date();
     const [run] = await this.db
       .insert(syncRuns)
@@ -265,7 +273,12 @@ export class SyncEngine {
         await this.runRedelivery(ctx, opts.sourceLegacyIds ?? []);
         caughtUp = false;
       } else {
-        const r = await this.runPaged(ctx, cursorBefore, watermark, mode === 'canary' ? (opts.canaryLimit ?? 5) : undefined);
+        const r = await this.runPaged(
+          ctx,
+          cursorBefore,
+          watermark,
+          mode === 'canary' ? (opts.canaryLimit ?? 5) : undefined,
+        );
         watermark = r.watermark;
         caughtUp = r.caughtUp;
       }
@@ -289,19 +302,28 @@ export class SyncEngine {
         provider: err instanceof ProviderError ? err.details.provider : 'internal',
         kind: errorClass === 'schema' ? 'schema_change' : 'error',
         errorClass,
-        code: err instanceof ProviderError ? (err.details.code ?? null) : err instanceof RunAbort ? (err.code ?? null) : null,
+        code:
+          err instanceof ProviderError
+            ? (err.details.code ?? null)
+            : err instanceof RunAbort
+              ? (err.code ?? null)
+              : null,
         message: errorMessage ?? 'unknown error',
-        data: err instanceof ProviderError ? { status: err.details.status, context: err.details.context } : {},
+        data:
+          err instanceof ProviderError ? { status: err.details.status, context: err.details.context } : {},
         traceId,
       });
       this.deps.logger?.warn({ syncRunId: runId, errorClass, errorMessage }, 'sync run failed');
     }
 
     const finishedAt = new Date();
-    const currentWatermark = (await this.db
-      .select({ w: integrations.cursorWatermark })
-      .from(integrations)
-      .where(eq(integrations.id, integration.id)))[0]?.w ?? null;
+    const currentWatermark =
+      (
+        await this.db
+          .select({ w: integrations.cursorWatermark })
+          .from(integrations)
+          .where(eq(integrations.id, integration.id))
+      )[0]?.w ?? null;
     await this.db
       .update(syncRuns)
       .set({
@@ -355,8 +377,9 @@ export class SyncEngine {
     initialWatermark: string | null,
     canaryLimit: number | undefined,
   ): Promise<{ watermark: string | null; caughtUp: boolean }> {
-    const impl = this.deps.implementation;
-    const from = new Date(Math.max(Date.parse(cursorBefore) - (initialWatermark ? WATERMARK_OVERLAP_MS : 0), 0)).toISOString();
+    const from = new Date(
+      Math.max(Date.parse(cursorBefore) - (initialWatermark ? WATERMARK_OVERLAP_MS : 0), 0),
+    ).toISOString();
     const query = shopifyUpdatedAtQuery(from);
     const maxPages = ctx.opts.maxPages ?? DEFAULT_MAX_PAGES;
     const seen = new Set<string>();
@@ -366,11 +389,19 @@ export class SyncEngine {
 
     for (;;) {
       if (ctx.counts.pages >= maxPages) {
-        throw new RunAbort('permanent', `Page limit ${maxPages} reached without completing pagination`, 'PAGE_LIMIT');
+        throw new RunAbort(
+          'permanent',
+          `Page limit ${maxPages} reached without completing pagination`,
+          'PAGE_LIMIT',
+        );
       }
       const page = await this.fetchPage(ctx, query, after, seen);
       ctx.counts.pages++;
-      ctx.evidence.pages.push({ n: ctx.counts.pages, records: page.orders.length, hasNextPage: page.hasNextPage });
+      ctx.evidence.pages.push({
+        n: ctx.counts.pages,
+        records: page.orders.length,
+        hasNextPage: page.hasNextPage,
+      });
 
       this.assertNotSystemicParseFailure(page);
       let pageMax: string | null = null;
@@ -412,7 +443,8 @@ export class SyncEngine {
       });
       watermark = next;
 
-      if (canaryLimit != null && newDeliveries >= canaryLimit) return { watermark, caughtUp: !page.hasNextPage };
+      if (canaryLimit != null && newDeliveries >= canaryLimit)
+        return { watermark, caughtUp: !page.hasNextPage };
       if (!page.hasNextPage) return { watermark, caughtUp: true };
       after = page.endCursor;
     }
@@ -422,24 +454,41 @@ export class SyncEngine {
   private assertNotSystemicParseFailure(page: OrdersPage): void {
     if (page.orders.length >= 2 && page.orders.every((o) => !o.ok)) {
       const sample = (page.orders[0] as Extract<ParsedOrder, { ok: false }>).errors.slice(0, 3).join('; ');
-      throw new RunAbort('schema', `No order on the page could be parsed; response shape changed: ${sample}`, 'PARSE_SYSTEMIC');
+      throw new RunAbort(
+        'schema',
+        `No order on the page could be parsed; response shape changed: ${sample}`,
+        'PARSE_SYSTEMIC',
+      );
     }
   }
 
-  private async fetchPage(ctx: RunCtx, query: string, after: string | null, seen: Set<string>): Promise<OrdersPage> {
+  private async fetchPage(
+    ctx: RunCtx,
+    query: string,
+    after: string | null,
+    seen: Set<string>,
+  ): Promise<OrdersPage> {
     const impl = this.deps.implementation;
     return withRetry(
       async () => {
-        const r = await this.deps.shopify.graphql(impl.ordersQuery, { first: ctx.config.pageSize, after, query });
+        const r = await this.deps.shopify.graphql(impl.ordersQuery, {
+          first: ctx.config.pageSize,
+          after,
+          query,
+        });
         await this.pace(ctx, r.cost);
         let page: OrdersPage;
         try {
           page = impl.parseOrdersPage(r.data);
         } catch (err) {
-          throw new ProviderError(`Shopify response could not be parsed: ${describeError(err).message}`, 'schema', {
-            provider: 'shopify',
-            code: 'PARSE',
-          });
+          throw new ProviderError(
+            `Shopify response could not be parsed: ${describeError(err).message}`,
+            'schema',
+            {
+              provider: 'shopify',
+              code: 'PARSE',
+            },
+          );
         }
         if (page.hasNextPage && !page.endCursor) {
           ctx.evidence.anomalies.push({ code: 'PAGINATION_MISSING_CURSOR', after });
@@ -465,7 +514,12 @@ export class SyncEngine {
   }
 
   /** Proactive pacing on Shopify's calculated-cost bucket. */
-  private async pace(ctx: RunCtx, cost: { requestedQueryCost?: number; throttleStatus?: { currentlyAvailable: number; restoreRate: number } } | undefined) {
+  private async pace(
+    ctx: RunCtx,
+    cost:
+      | { requestedQueryCost?: number; throttleStatus?: { currentlyAvailable: number; restoreRate: number } }
+      | undefined,
+  ) {
     const ts = cost?.throttleStatus;
     if (!ts || !cost?.requestedQueryCost) return;
     if (ts.currentlyAvailable < cost.requestedQueryCost && ts.restoreRate > 0) {
@@ -478,7 +532,12 @@ export class SyncEngine {
   private async recordProviderAttempt(ctx: RunCtx, provider: string, a: AttemptRecord): Promise<void> {
     if (!a.error) return;
     ctx.evidence.retries++;
-    const kind = a.error.class === 'rate_limited' ? 'rate_limit' : /pagination anomaly/i.test(a.error.message) ? 'anomaly' : 'error';
+    const kind =
+      a.error.class === 'rate_limited'
+        ? 'rate_limit'
+        : /pagination anomaly/i.test(a.error.message)
+          ? 'anomaly'
+          : 'error';
     await this.observe({
       tenantId: ctx.tenantId,
       integrationId: ctx.integrationId,
@@ -501,15 +560,21 @@ export class SyncEngine {
       if (!/^\d+$/.test(legacyId)) continue;
       const parsed = await withRetry(
         async () => {
-          const r = await this.deps.shopify.graphql(impl.orderByIdQuery, { id: `gid://shopify/Order/${legacyId}` });
+          const r = await this.deps.shopify.graphql(impl.orderByIdQuery, {
+            id: `gid://shopify/Order/${legacyId}`,
+          });
           await this.pace(ctx, r.cost);
           try {
             return impl.parseOrder(r.data);
           } catch (err) {
-            throw new ProviderError(`Order response could not be parsed: ${describeError(err).message}`, 'schema', {
-              provider: 'shopify',
-              code: 'PARSE',
-            });
+            throw new ProviderError(
+              `Order response could not be parsed: ${describeError(err).message}`,
+              'schema',
+              {
+                provider: 'shopify',
+                code: 'PARSE',
+              },
+            );
           }
         },
         this.retry,
@@ -535,18 +600,29 @@ export class SyncEngine {
 
   /* -------------------------------- per-record processing -------------------------------- */
 
-  private async processParsed(ctx: RunCtx, parsed: ParsedOrder, o: { force?: boolean } = {}): Promise<RecordOutcome> {
+  private async processParsed(
+    ctx: RunCtx,
+    parsed: ParsedOrder,
+    o: { force?: boolean } = {},
+  ): Promise<RecordOutcome> {
     ctx.counts.observed++;
     if (!parsed.ok) {
       if (!parsed.legacyId || !parsed.updatedAt) {
-        throw new RunAbort('schema', `Order ${parsed.sourceId} lacks identity fields: ${parsed.errors.join('; ')}`, 'PARSE_IDENTITY');
+        throw new RunAbort(
+          'schema',
+          `Order ${parsed.sourceId} lacks identity fields: ${parsed.errors.join('; ')}`,
+          'PARSE_IDENTITY',
+        );
       }
       return this.rejectUnparseable(ctx, parsed);
     }
     return this.processOrder(ctx, parsed.order, o.force ?? false);
   }
 
-  private async upsertDeliveryRow(ctx: RunCtx, ident: { sourceId: string; legacyId: string; name: string; createdAt: string; updatedAt: string }) {
+  private async upsertDeliveryRow(
+    ctx: RunCtx,
+    ident: { sourceId: string; legacyId: string; name: string; createdAt: string; updatedAt: string },
+  ) {
     const key = idempotencyKey(ctx.integrationId, ident.sourceId);
     const updatedAt = new Date(ident.updatedAt);
     const [row] = await this.db
@@ -576,7 +652,10 @@ export class SyncEngine {
     return row!;
   }
 
-  private async rejectUnparseable(ctx: RunCtx, parsed: Extract<ParsedOrder, { ok: false }>): Promise<RecordOutcome> {
+  private async rejectUnparseable(
+    ctx: RunCtx,
+    parsed: Extract<ParsedOrder, { ok: false }>,
+  ): Promise<RecordOutcome> {
     const row = await this.upsertDeliveryRow(ctx, {
       sourceId: parsed.sourceId,
       legacyId: parsed.legacyId!,
@@ -610,7 +689,11 @@ export class SyncEngine {
           kind: 'anomaly',
           code: 'SOURCE_CHANGED_AFTER_DELIVERY',
           message: `Order ${order.name} changed after delivery; edits are not propagated under contract 1.0.0`,
-          data: { sourceId: order.sourceId, deliveredVersion: row.sourceUpdatedAt.toISOString(), latest: order.updatedAt },
+          data: {
+            sourceId: order.sourceId,
+            deliveredVersion: row.sourceUpdatedAt.toISOString(),
+            latest: order.updatedAt,
+          },
           traceId: ctx.traceId,
         });
       }
@@ -729,7 +812,11 @@ export class SyncEngine {
         })
         .where(eq(deliveries.id, row.id));
       ctx.counts.failed++;
-      throw new RunAbort(cls, `Delivery of ${order.name} failed (${cls}): ${pe?.message ?? describeError(err).message}`, pe?.details.code);
+      throw new RunAbort(
+        cls,
+        `Delivery of ${order.name} failed (${cls}): ${pe?.message ?? describeError(err).message}`,
+        pe?.details.code,
+      );
     }
   }
 
@@ -813,7 +900,8 @@ export async function recoverInterruptedRuns(db: Db, staleMs = DEFAULT_LEASE_MS)
       status: 'interrupted',
       finishedAt: new Date(),
       errorClass: 'transient',
-      errorMessage: 'Worker stopped before completing the run (no heartbeat). Resumed from last durable cursor.',
+      errorMessage:
+        'Worker stopped before completing the run (no heartbeat). Resumed from last durable cursor.',
     })
     .where(and(eq(syncRuns.status, 'running'), lt(syncRuns.heartbeatAt, cutoff)))
     .returning({ id: syncRuns.id, integrationId: syncRuns.integrationId });
@@ -821,7 +909,15 @@ export async function recoverInterruptedRuns(db: Db, staleMs = DEFAULT_LEASE_MS)
     await db
       .update(integrations)
       .set({ leaseOwner: null, leaseExpiresAt: null })
-      .where(and(sql`${integrations.id} IN (${sql.join(rows.map((r) => sql`${r.integrationId}`), sql`, `)})`, lt(integrations.leaseExpiresAt, new Date())));
+      .where(
+        and(
+          sql`${integrations.id} IN (${sql.join(
+            rows.map((r) => sql`${r.integrationId}`),
+            sql`, `,
+          )})`,
+          lt(integrations.leaseExpiresAt, new Date()),
+        ),
+      );
   }
   return rows.map((r) => r.id);
 }

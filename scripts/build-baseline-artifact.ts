@@ -13,5 +13,8 @@ if (!/^[0-9a-f]{40}$/.test(commit)) {
 }
 const outDir = resolve(process.argv[2] ?? 'baseline-artifact');
 const art = await buildImplementationArtifact(resolve('.'), outDir, commit);
-await writeFile(resolve(outDir, 'manifest.json'), JSON.stringify({ sourceCommit: commit, file: basename(art.path), sha256: art.sha256 }, null, 2));
+await writeFile(
+  resolve(outDir, 'manifest.json'),
+  JSON.stringify({ sourceCommit: commit, file: basename(art.path), sha256: art.sha256 }, null, 2),
+);
 console.log(`built ${art.path} sha256=${art.sha256}`);

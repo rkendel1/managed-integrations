@@ -13,6 +13,7 @@ export const AGENT_EDITABLE_PREFIXES = [
 /** Files that define "correct": hashed at validation time to prove they were not altered. */
 export const PROTECTED_SUITE_PREFIXES = [
   'packages/integration-shopify-netsuite/test/acceptance/',
+  'packages/integration-shopify-netsuite/test/unit/',
   'packages/test-fixtures/src/',
   'test/support/',
   'packages/contracts/src/',
@@ -21,14 +22,23 @@ export const PROTECTED_SUITE_PREFIXES = [
 ] as const;
 
 /** Paths never readable by the agent (secrets, local env, VCS internals). */
-const READ_DENY = [/(^|\/)\.env(\..*)?$/, /(^|\/)\.git(\/|$)/, /(^|\/)node_modules(\/|$)/, /\.pem$/, /\.key$/, /(^|\/)var\//, /(^|\/)\.maintenance\//];
+const READ_DENY = [
+  /(^|\/)\.env(\..*)?$/,
+  /(^|\/)\.git(\/|$)/,
+  /(^|\/)node_modules(\/|$)/,
+  /\.pem$/,
+  /\.key$/,
+  /(^|\/)var\//,
+  /(^|\/)\.maintenance\//,
+];
 
 export class PolicyViolation extends Error {}
 
 /** Normalises a repo-relative path and rejects traversal / absolute paths. */
 export function normalizeRepoPath(p: string): string {
   if (typeof p !== 'string' || !p.length || p.includes('\0')) throw new PolicyViolation('Invalid path');
-  if (p.startsWith('/') || /^[A-Za-z]:/.test(p)) throw new PolicyViolation('Absolute paths are not permitted');
+  if (p.startsWith('/') || /^[A-Za-z]:/.test(p))
+    throw new PolicyViolation('Absolute paths are not permitted');
   const n = posix.normalize(p.replace(/\\/g, '/'));
   if (n.startsWith('../') || n === '..') throw new PolicyViolation('Path traversal is not permitted');
   return n;
@@ -52,15 +62,33 @@ export function assertReadable(p: string): string {
 
 export function assertEditable(p: string): string {
   const n = normalizeRepoPath(p);
-  if (!isAgentEditable(n)) throw new PolicyViolation(`Editing ${n} is not permitted: only ${AGENT_EDITABLE_PREFIXES.join(', ')}`);
+  if (!isAgentEditable(n))
+    throw new PolicyViolation(`Editing ${n} is not permitted: only ${AGENT_EDITABLE_PREFIXES.join(', ')}`);
   return n;
 }
 
 /** Test targets the agent may run. Commands are fixed; the agent chooses only the target and profile. */
 export const TEST_TARGETS = {
-  acceptance: ['node', 'node_modules/vitest/vitest.mjs', 'run', 'packages/integration-shopify-netsuite/test/acceptance'],
-  regression: ['node', 'node_modules/vitest/vitest.mjs', 'run', 'packages/integration-shopify-netsuite/test/regression', '--passWithNoTests'],
-  unit: ['node', 'node_modules/vitest/vitest.mjs', 'run', 'packages/integration-shopify-netsuite/test/unit', '--passWithNoTests'],
+  acceptance: [
+    'node',
+    'node_modules/vitest/vitest.mjs',
+    'run',
+    'packages/integration-shopify-netsuite/test/acceptance',
+  ],
+  regression: [
+    'node',
+    'node_modules/vitest/vitest.mjs',
+    'run',
+    'packages/integration-shopify-netsuite/test/regression',
+    '--passWithNoTests',
+  ],
+  unit: [
+    'node',
+    'node_modules/vitest/vitest.mjs',
+    'run',
+    'packages/integration-shopify-netsuite/test/unit',
+    '--passWithNoTests',
+  ],
   typecheck: ['node', 'node_modules/typescript/bin/tsc', '-p', 'tsconfig.json'],
 } as const;
 export type TestTarget = keyof typeof TEST_TARGETS;

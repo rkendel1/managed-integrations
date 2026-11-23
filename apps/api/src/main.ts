@@ -13,7 +13,12 @@ const boss = new PgBoss({ connectionString: config.env.DATABASE_URL, schema: 'pg
 await boss.start();
 await ensureQueues(boss);
 
-const app = await buildApp({ db: dbh.db, boss, config, webDir: resolve(process.env.WEB_DIST_DIR ?? 'apps/web/dist') });
+const app = await buildApp({
+  db: dbh.db,
+  boss,
+  config,
+  webDir: resolve(process.env.WEB_DIST_DIR ?? 'apps/web/dist'),
+});
 const port = Number(process.env.PORT ?? 3000);
 await app.listen({ port, host: process.env.HOST ?? '0.0.0.0' });
 

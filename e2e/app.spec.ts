@@ -1,7 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const CUSTOMER = { email: 'customer@acme.test', password: process.env.SEED_CUSTOMER_PASSWORD || 'customer-demo-password' };
-const OPERATOR = { email: 'operator@managed-integrations.test', password: process.env.SEED_OPERATOR_PASSWORD || 'operator-demo-password' };
+const CUSTOMER = {
+  email: 'customer@acme.test',
+  password: process.env.SEED_CUSTOMER_PASSWORD || 'customer-demo-password',
+};
+const OPERATOR = {
+  email: 'operator@managed-integrations.test',
+  password: process.env.SEED_OPERATOR_PASSWORD || 'operator-demo-password',
+};
 
 async function login(page: Page, who: { email: string; password: string }) {
   await page.goto('/login');
@@ -57,9 +63,16 @@ test('customer: overview, connections, integration, history, reliability, incide
   expect(consoleErrors).toEqual([]);
 });
 
-test('customer: action required for an unmapped SKU, resolved by adding the mapping', async ({ page, request }) => {
+test('customer: action required for an unmapped SKU, resolved by adding the mapping', async ({
+  page,
+  request,
+}) => {
   await request.post('http://localhost:4010/__fixture/orders', {
-    data: { createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), lineItems: [{ sku: 'SKU-E2E-NEW', title: 'New product', quantity: 1, unitPrice: '9.99' }] },
+    data: {
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lineItems: [{ sku: 'SKU-E2E-NEW', title: 'New product', quantity: 1, unitPrice: '9.99' }],
+    },
   });
   await login(page, CUSTOMER);
   await page.getByRole('button', { name: 'Sync now' }).click();

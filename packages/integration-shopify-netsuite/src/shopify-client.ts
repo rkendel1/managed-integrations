@@ -23,20 +23,26 @@ interface GraphqlError {
   extensions?: { code?: string };
 }
 
-const SCHEMA_ERROR_CODES = new Set(['undefinedField', 'argumentNotAccepted', 'undefinedType', 'GRAPHQL_VALIDATION_FAILED']);
+const SCHEMA_ERROR_CODES = new Set([
+  'undefinedField',
+  'argumentNotAccepted',
+  'undefinedType',
+  'GRAPHQL_VALIDATION_FAILED',
+]);
 
 /** Classifies a GraphQL error list returned with HTTP 200. Exported for unit tests. */
-export function classifyGraphqlErrors(
-  errors: GraphqlError[],
-  cost?: GraphqlResult['cost'],
-): ProviderError {
+export function classifyGraphqlErrors(errors: GraphqlError[], cost?: GraphqlResult['cost']): ProviderError {
   const first = errors[0] ?? {};
   const code = first.extensions?.code ?? '';
-  const message = errors.map((e) => e.message ?? '').join('; ').slice(0, 1000);
+  const message = errors
+    .map((e) => e.message ?? '')
+    .join('; ')
+    .slice(0, 1000);
   if (code === 'THROTTLED') {
     const ts = cost?.throttleStatus;
     const need = (cost?.requestedQueryCost ?? 0) - (ts?.currentlyAvailable ?? 0);
-    const retryAfterMs = ts && ts.restoreRate > 0 ? Math.max(1000, Math.ceil((need / ts.restoreRate) * 1000)) : 1000;
+    const retryAfterMs =
+      ts && ts.restoreRate > 0 ? Math.max(1000, Math.ceil((need / ts.restoreRate) * 1000)) : 1000;
     return new ProviderError('Shopify GraphQL throttled', 'rate_limited', {
       provider: 'shopify',
       code,
@@ -45,12 +51,21 @@ export function classifyGraphqlErrors(
     });
   }
   if (code === 'ACCESS_DENIED') {
-    return new ProviderError(`Shopify access denied: ${message}`, 'authorization', { provider: 'shopify', code });
+    return new ProviderError(`Shopify access denied: ${message}`, 'authorization', {
+      provider: 'shopify',
+      code,
+    });
   }
   if (code === 'MAX_COST_EXCEEDED') {
-    return new ProviderError(`Shopify query cost exceeded: ${message}`, 'permanent', { provider: 'shopify', code });
+    return new ProviderError(`Shopify query cost exceeded: ${message}`, 'permanent', {
+      provider: 'shopify',
+      code,
+    });
   }
-  if (SCHEMA_ERROR_CODES.has(code) || /Cannot query field|doesn't exist on type|Unknown argument|Unknown type/i.test(message)) {
+  if (
+    SCHEMA_ERROR_CODES.has(code) ||
+    /Cannot query field|doesn't exist on type|Unknown argument|Unknown type/i.test(message)
+  ) {
     return new ProviderError(`Shopify GraphQL schema mismatch: ${message}`, 'schema', {
       provider: 'shopify',
       code: code || 'SCHEMA',
@@ -58,7 +73,10 @@ export function classifyGraphqlErrors(
     });
   }
   if (code === 'INTERNAL_SERVER_ERROR') {
-    return new ProviderError(`Shopify internal error: ${message}`, 'transient', { provider: 'shopify', code });
+    return new ProviderError(`Shopify internal error: ${message}`, 'transient', {
+      provider: 'shopify',
+      code,
+    });
   }
   return new ProviderError(`Shopify GraphQL error: ${message}`, 'unknown', { provider: 'shopify', code });
 }
@@ -98,10 +116,17 @@ export class ShopifyClient {
         });
       }
       if (res.status === 423) {
-        throw errorFromResponse('shopify', res, 'Shopify shop is locked', { errorClass: 'authorization', code: 'LOCKED' });
+        throw errorFromResponse('shopify', res, 'Shopify shop is locked', {
+          errorClass: 'authorization',
+          code: 'LOCKED',
+        });
       }
       if (res.status !== 200) throw errorFromResponse('shopify', res, `Shopify HTTP ${res.status}`);
-      const body = res.json() as { data?: unknown; errors?: GraphqlError[] | string; extensions?: { cost?: GraphqlResult['cost'] } };
+      const body = res.json() as {
+        data?: unknown;
+        errors?: GraphqlError[] | string;
+        extensions?: { cost?: GraphqlResult['cost'] };
+      };
       const cost = body.extensions?.cost;
       if (typeof body.errors === 'string') {
         throw new ProviderError(`Shopify error: ${body.errors}`, 'unknown', { provider: 'shopify' });

@@ -41,7 +41,10 @@ declare module 'fastify' {
   }
 }
 
-export async function createSession(db: Db, userId: string): Promise<{ token: string; csrfToken: string; expiresAt: Date }> {
+export async function createSession(
+  db: Db,
+  userId: string,
+): Promise<{ token: string; csrfToken: string; expiresAt: Date }> {
   const token = randomBytes(32).toString('base64url');
   const csrfToken = randomBytes(24).toString('base64url');
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
@@ -57,7 +60,13 @@ export async function loadSession(db: Db, token: string | undefined): Promise<Se
     .innerJoin(users, eq(users.id, sessions.userId))
     .where(and(eq(sessions.id, sha256Hex(token)), gt(sessions.expiresAt, new Date())));
   if (!row) return undefined;
-  return { id: row.u.id, email: row.u.email, role: row.u.role as SessionUser['role'], tenantId: row.u.tenantId, csrfToken: row.s.csrfToken };
+  return {
+    id: row.u.id,
+    email: row.u.email,
+    role: row.u.role as SessionUser['role'],
+    tenantId: row.u.tenantId,
+    csrfToken: row.s.csrfToken,
+  };
 }
 
 export async function destroySession(db: Db, token: string | undefined) {
@@ -77,7 +86,8 @@ export function requireRole(db: Db, role: 'customer' | 'operator') {
       const header = req.headers['x-csrf-token'];
       const a = Buffer.from(String(header ?? ''));
       const b = Buffer.from(user.csrfToken);
-      if (a.length !== b.length || !timingSafeEqual(a, b)) return reply.code(403).send({ error: 'Invalid CSRF token' });
+      if (a.length !== b.length || !timingSafeEqual(a, b))
+        return reply.code(403).send({ error: 'Invalid CSRF token' });
     }
     req.user = user;
   };

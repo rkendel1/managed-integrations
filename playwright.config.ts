@@ -6,6 +6,10 @@ export default defineConfig({
   timeout: 60_000,
   retries: 0,
   workers: 1,
-  use: { baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000', screenshot: 'only-on-failure', trace: 'off' },
+  use: {
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3000',
+    screenshot: 'only-on-failure',
+    trace: 'off',
+  },
   reporter: [['list']],
 });

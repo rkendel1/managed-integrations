@@ -4,8 +4,25 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router';
 import { Button, Card, CardBody, ErrorNote, Field, inputClass } from '@/components/ui';
 import { api, setCsrf } from '@/lib/api';
-import { CustomerConnections, CustomerIncident, CustomerIncidents, CustomerIntegration, CustomerOverview, CustomerReliability, CustomerRun, CustomerRuns } from '@/pages/customer';
-import { OpsCandidate, OpsInbox, OpsIncident, OpsMaintenance, OpsMetrics, OpsReleases, OpsTenants } from '@/pages/ops';
+import {
+  CustomerConnections,
+  CustomerIncident,
+  CustomerIncidents,
+  CustomerIntegration,
+  CustomerOverview,
+  CustomerReliability,
+  CustomerRun,
+  CustomerRuns,
+} from '@/pages/customer';
+import {
+  OpsCandidate,
+  OpsInbox,
+  OpsIncident,
+  OpsMaintenance,
+  OpsMetrics,
+  OpsReleases,
+  OpsTenants,
+} from '@/pages/ops';
 import './index.css';
 
 interface Me {
@@ -13,7 +30,9 @@ interface Me {
   csrfToken: string;
 }
 
-const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, refetchInterval: 5000, refetchOnWindowFocus: true } } });
+const queryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false, refetchInterval: 5000, refetchOnWindowFocus: true } },
+});
 
 function useMe() {
   return useQuery({
@@ -52,18 +71,36 @@ function Login() {
   return (
     <div className="mx-auto mt-24 max-w-sm px-4">
       <h1 className="mb-1 text-lg font-semibold">Managed Integrations</h1>
-      <p className="mb-6 text-sm text-slate-500">Your application stays connected. We keep the integrations working.</p>
+      <p className="mb-6 text-sm text-slate-500">
+        Your application stays connected. We keep the integrations working.
+      </p>
       <Card>
         <CardBody>
           <form onSubmit={submit} className="space-y-4">
             <Field label="Email">
-              <input name="email" className={inputClass} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              <input
+                name="email"
+                className={inputClass}
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
             </Field>
             <Field label="Password">
-              <input name="password" className={inputClass} type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+              <input
+                name="password"
+                className={inputClass}
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
             </Field>
             <ErrorNote error={error} />
-            <Button type="submit" className="w-full">Sign in</Button>
+            <Button type="submit" className="w-full">
+              Sign in
+            </Button>
           </form>
         </CardBody>
       </Card>
@@ -84,17 +121,28 @@ function Shell({ me, nav, children }: { me: Me; nav: [string, string][]; childre
     <div className="min-h-screen">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
-          <Link to="/" className="text-sm font-semibold">Managed Integrations{me.user.role === 'operator' ? ' · Operator' : ''}</Link>
+          <Link to="/" className="text-sm font-semibold">
+            Managed Integrations{me.user.role === 'operator' ? ' · Operator' : ''}
+          </Link>
           <nav className="flex flex-wrap gap-1">
             {nav.map(([to, label]) => (
-              <NavLink key={to} to={to} end className={({ isActive }) => `rounded px-2 py-1 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+              <NavLink
+                key={to}
+                to={to}
+                end
+                className={({ isActive }) =>
+                  `rounded px-2 py-1 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`
+                }
+              >
                 {label}
               </NavLink>
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-xs text-slate-500">
             {me.user.email}
-            <Button size="sm" variant="outline" onClick={logout}>Sign out</Button>
+            <Button size="sm" variant="outline" onClick={logout}>
+              Sign out
+            </Button>
           </div>
         </div>
       </header>
@@ -107,7 +155,8 @@ function Guard({ role, children }: { role: 'customer' | 'operator'; children: (m
   const me = useMe();
   if (me.isLoading) return null;
   if (!me.data) return <Navigate to="/login" replace />;
-  if (me.data.user.role !== role) return <Navigate to={me.data.user.role === 'operator' ? '/ops' : '/app'} replace />;
+  if (me.data.user.role !== role)
+    return <Navigate to={me.data.user.role === 'operator' ? '/ops' : '/app'} replace />;
   return <>{children(me.data)}</>;
 }
 

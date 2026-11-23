@@ -15,7 +15,13 @@ export interface ExecResult {
 export function run(
   file: string,
   args: string[],
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv; timeoutMs?: number; input?: string; maxBuffer?: number } = {},
+  opts: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    timeoutMs?: number;
+    input?: string;
+    maxBuffer?: number;
+  } = {},
 ): Promise<ExecResult> {
   const started = Date.now();
   return new Promise((resolve) => {
@@ -47,11 +53,15 @@ export function run(
 }
 
 export async function git(cwd: string, args: string[], input?: string): Promise<string> {
-  const r = await run('git', ['-c', 'user.name=maintenance-agent', '-c', 'user.email=maintenance-agent@localhost', ...args], {
-    cwd,
-    timeoutMs: 60_000,
-    ...(input != null ? { input } : {}),
-  });
+  const r = await run(
+    'git',
+    ['-c', 'user.name=maintenance-agent', '-c', 'user.email=maintenance-agent@localhost', ...args],
+    {
+      cwd,
+      timeoutMs: 60_000,
+      ...(input != null ? { input } : {}),
+    },
+  );
   if (r.code !== 0) throw new Error(`git ${args[0]} failed: ${r.stderr.trim() || r.stdout.trim()}`);
   return r.stdout;
 }

@@ -17,7 +17,10 @@ export function parseKeyRing(spec: string | undefined): KeyRing | undefined {
   if (!spec) return undefined;
   const keys = new Map<string, Buffer>();
   let primary: string | undefined;
-  for (const part of spec.split(',').map((s) => s.trim()).filter(Boolean)) {
+  for (const part of spec
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)) {
     const idx = part.indexOf(':');
     if (idx <= 0) throw new Error('CREDENTIAL_ENCRYPTION_KEYS entries must be keyId:base64key');
     const id = part.slice(0, idx);
@@ -45,7 +48,13 @@ export class CredentialCipher {
     cipher.setAAD(Buffer.from(aad));
     const ct = Buffer.concat([cipher.update(JSON.stringify(plaintext), 'utf8'), cipher.final()]);
     const tag = cipher.getAuthTag();
-    return ['v1', this.ring.primaryKeyId, iv.toString('base64url'), tag.toString('base64url'), ct.toString('base64url')].join('.');
+    return [
+      'v1',
+      this.ring.primaryKeyId,
+      iv.toString('base64url'),
+      tag.toString('base64url'),
+      ct.toString('base64url'),
+    ].join('.');
   }
 
   /** `aad` binds the ciphertext to its row (e.g. connection id) so it cannot be swapped between rows. */

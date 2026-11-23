@@ -32,7 +32,11 @@ const SHOP_DOMAIN_RE = /^[a-z0-9][a-z0-9-]{0,60}\.myshopify\.com$/;
 const NETSUITE_HOST_RE = /^[a-z0-9][a-z0-9-]{0,40}\.suitetalk\.api\.netsuite\.com$/;
 
 export function normalizeShopDomain(input: string): string {
-  const d = input.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  const d = input
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
   if (!SHOP_DOMAIN_RE.test(d)) throw new Error('Shop domain must look like <store>.myshopify.com');
   return d;
 }
@@ -55,8 +59,13 @@ export function resolveNetSuiteBaseUrl(accountDomain: string, cfg: ProviderEndpo
     if (cfg.production) throw new Error('NETSUITE_BASE_URL_OVERRIDE is not permitted in production');
     return cfg.netsuiteBaseUrlOverride;
   }
-  const host = accountDomain.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-  if (!NETSUITE_HOST_RE.test(host)) throw new Error('NetSuite domain must look like <account>.suitetalk.api.netsuite.com');
+  const host = accountDomain
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/.*$/, '');
+  if (!NETSUITE_HOST_RE.test(host))
+    throw new Error('NetSuite domain must look like <account>.suitetalk.api.netsuite.com');
   return `https://${host}`;
 }
 
@@ -96,17 +105,25 @@ async function tokenRequest(baseUrl: string, body: Record<string, string>): Prom
     timeoutMs: 20_000,
   });
   if (res.status === 401 || res.status === 400) {
-    throw new ProviderError('Shopify rejected the token request; the merchant must re-authorize', 'authentication', {
-      provider: 'shopify',
-      status: res.status,
-      code: 'REAUTHORIZE',
-    });
+    throw new ProviderError(
+      'Shopify rejected the token request; the merchant must re-authorize',
+      'authentication',
+      {
+        provider: 'shopify',
+        status: res.status,
+        code: 'REAUTHORIZE',
+      },
+    );
   }
   if (res.status !== 200) {
-    throw new ProviderError(`Shopify token endpoint HTTP ${res.status}`, res.status >= 500 || res.status === 429 ? 'transient' : 'unknown', {
-      provider: 'shopify',
-      status: res.status,
-    });
+    throw new ProviderError(
+      `Shopify token endpoint HTTP ${res.status}`,
+      res.status >= 500 || res.status === 429 ? 'transient' : 'unknown',
+      {
+        provider: 'shopify',
+        status: res.status,
+      },
+    );
   }
   const b = res.json() as {
     access_token: string;
@@ -116,7 +133,9 @@ async function tokenRequest(baseUrl: string, body: Record<string, string>): Prom
     scope: string;
   };
   if (!b.access_token || !b.refresh_token) {
-    throw new ProviderError('Shopify token response missing expiring token fields', 'unknown', { provider: 'shopify' });
+    throw new ProviderError('Shopify token response missing expiring token fields', 'unknown', {
+      provider: 'shopify',
+    });
   }
   const now = Date.now();
   return {
@@ -193,10 +212,21 @@ export class ConnectionCredentials {
 
   /** Shopify auth with proactive refresh (5 min before expiry) and rotation-safe persistence. */
   shopifyAuth(row: ConnectionRow): ShopifyAuth {
-    const self = this;
+    const self = {
+      db: this.db,
+      cipher: this.cipher,
+      cfg: this.cfg,
+      aad: (r: Pick<ConnectionRow, 'id'>) => this.aad(r),
+      load: (t: string, p: 'shopify' | 'netsuite') => this.load(t, p),
+      markRevoked: (id: string, reason: string) => this.markRevoked(id, reason),
+    };
     let current = row;
     const usable = () => {
-      if (!current.credentialsCiphertext || current.status === 'revoked' || current.status === 'disconnected') {
+      if (
+        !current.credentialsCiphertext ||
+        current.status === 'revoked' ||
+        current.status === 'disconnected'
+      ) {
         throw new ProviderError('Shopify connection is not authorized', 'authentication', {
           provider: 'shopify',
           code: 'NOT_AUTHORIZED',
