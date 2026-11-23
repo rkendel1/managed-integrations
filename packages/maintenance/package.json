@@ -1,0 +1,8 @@
+{
+  "name": "@mi/maintenance",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "esbuild": "^0.28.2", "@mi/contracts": "workspace:*", "@mi/observability": "workspace:*", "@mi/database": "workspace:*", "@mi/integration-shopify-netsuite": "workspace:*", "@mi/reliability": "workspace:*", "drizzle-orm": "^0.45.4", "zod": "^4.6.7" }
+}

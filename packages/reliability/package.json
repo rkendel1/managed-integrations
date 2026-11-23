@@ -1,0 +1,8 @@
+{
+  "name": "@mi/reliability",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "@mi/contracts": "workspace:*", "@mi/observability": "workspace:*", "@mi/database": "workspace:*", "@mi/integration-shopify-netsuite": "workspace:*", "drizzle-orm": "^0.45.4" }
+}

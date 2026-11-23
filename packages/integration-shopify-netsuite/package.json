@@ -1,0 +1,8 @@
+{
+  "name": "@mi/integration-shopify-netsuite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "zod": "^4.6.7", "@mi/contracts": "workspace:*", "@mi/observability": "workspace:*", "@mi/database": "workspace:*", "drizzle-orm": "^0.45.4" }
+}

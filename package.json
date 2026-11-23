@@ -1,0 +1,48 @@
+{
+  "name": "managed-integrations",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -b tsconfig.json",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:acceptance": "vitest run packages/integration-shopify-netsuite/test/acceptance",
+    "db:generate": "pnpm --filter @mi/database generate",
+    "db:migrate": "pnpm --filter @mi/database migrate",
+    "db:seed": "tsx scripts/seed.ts",
+    "dev:api": "pnpm --filter @mi/api dev",
+    "dev:worker": "pnpm --filter @mi/worker dev",
+    "dev:web": "pnpm --filter @mi/web dev",
+    "dev:fixtures": "tsx packages/test-fixtures/src/cli.ts",
+    "build:web": "pnpm --filter @mi/web build",
+    "release:baseline": "tsx scripts/release-baseline.ts",
+    "demo:failure": "tsx scripts/demo-failure.ts",
+    "e2e": "playwright test --trace off"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "tsx": "^4.23.15",
+    "vitest": "^5.1.1",
+    "eslint": "^10.15.0",
+    "typescript-eslint": "^8.73.0",
+    "@eslint/js": "^10.0.0",
+    "prettier": "^3.10.1",
+    "@types/node": "^22.19.0",
+    "@types/pg": "^8.23.1",
+    "@playwright/test": "1.63.0",
+    "@mi/contracts": "workspace:*",
+    "@mi/database": "workspace:*",
+    "@mi/integration-shopify-netsuite": "workspace:*",
+    "@mi/test-fixtures": "workspace:*",
+    "@mi/observability": "workspace:*",
+    "@mi/reliability": "workspace:*",
+    "@mi/maintenance": "workspace:*",
+    "drizzle-orm": "^0.45.4"
+  }
+}

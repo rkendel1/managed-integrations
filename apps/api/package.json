@@ -1,0 +1,29 @@
+{
+  "name": "@mi/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "fastify": "^5.12.8",
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/static": "^10.1.12",
+    "@fastify/rate-limit": "^11.3.0",
+    "@fastify/swagger": "^9.9.5",
+    "pg-boss": "^12.39.0",
+    "zod": "^4.6.7",
+    "drizzle-orm": "^0.45.4",
+    "@mi/contracts": "workspace:*",
+    "@mi/observability": "workspace:*",
+    "@mi/database": "workspace:*",
+    "@mi/integration-shopify-netsuite": "workspace:*",
+    "@mi/reliability": "workspace:*",
+    "@mi/maintenance": "workspace:*"
+  },
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts"
+  }
+}

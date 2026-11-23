@@ -1,0 +1,21 @@
+{
+  "name": "@mi/database",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1",
+    "@mi/observability": "workspace:*"
+  },
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "migrate": "tsx src/migrate-cli.ts"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.11"
+  }
+}
