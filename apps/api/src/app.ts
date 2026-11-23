@@ -15,7 +15,14 @@ import { auditLogTelemetrySink } from '@mi/capabilities';
 import { auditLog, onboardings, tenants, users, type Db } from '@mi/database';
 import type { ServiceConfig } from '@mi/integration-shopify-netsuite';
 import { newCorrelationId, redact, withCorrelation } from '@mi/observability';
-import { createSession, destroySession, hashPassword, loadSession, SESSION_COOKIE, verifyPassword } from './auth.ts';
+import {
+  createSession,
+  destroySession,
+  hashPassword,
+  loadSession,
+  SESSION_COOKIE,
+  verifyPassword,
+} from './auth.ts';
 import { registerAdoptedWebhookRoutes } from './adopted-webhook-routes.ts';
 import { registerCustomerRoutes } from './customer-routes.ts';
 import { registerOperatorRoutes } from './operator-routes.ts';
@@ -111,10 +118,18 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
       await runDiscovery(deps.db, deps.config.cipher!, deps.config.endpoints, tenantId);
     },
     enqueueOnboardingActivation: async (tenantId) => {
-      await deps.boss.send(QUEUES.onboardingActivate, { tenantId }, { singletonKey: `onboarding:${tenantId}` });
+      await deps.boss.send(
+        QUEUES.onboardingActivate,
+        { tenantId },
+        { singletonKey: `onboarding:${tenantId}` },
+      );
     },
     enqueueAdaptationValidation: async (adaptationId) => {
-      await deps.boss.send(QUEUES.adoptedAdaptationValidate, { adaptationId }, { singletonKey: `adaptation:${adaptationId}` });
+      await deps.boss.send(
+        QUEUES.adoptedAdaptationValidate,
+        { adaptationId },
+        { singletonKey: `adaptation:${adaptationId}` },
+      );
     },
     enqueueRecovery: async (itemId) => {
       await deps.boss.send(QUEUES.adoptedRecover, { itemId }, { singletonKey: `adopted-recover:${itemId}` });
@@ -152,7 +167,9 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
     },
   );
   // Self-service signup (slice 5): a new customer gets a tenant, a user and an onboarding, then connects.
-  const signupAllowed = deps.config.env.ALLOW_SIGNUP ? deps.config.env.ALLOW_SIGNUP === 'true' : !deps.config.production;
+  const signupAllowed = deps.config.env.ALLOW_SIGNUP
+    ? deps.config.env.ALLOW_SIGNUP === 'true'
+    : !deps.config.production;
   app.post(
     '/api/auth/signup',
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
@@ -166,19 +183,34 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
         })
         .safeParse(req.body);
       if (!body.success)
-        return reply.code(400).send({ error: 'Company, e-mail and a password of at least 12 characters are required' });
+        return reply
+          .code(400)
+          .send({ error: 'Company, e-mail and a password of at least 12 characters are required' });
       const email = body.data.email.toLowerCase();
       const [exists] = await deps.db.select({ id: users.id }).from(users).where(eq(users.email, email));
-      if (exists) return reply.code(409).send({ error: 'An account with this e-mail already exists; sign in instead' });
-      const base = body.data.company.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'tenant';
+      if (exists)
+        return reply.code(409).send({ error: 'An account with this e-mail already exists; sign in instead' });
+      const base =
+        body.data.company
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-|-$/g, '')
+          .slice(0, 40) || 'tenant';
       const passwordHash = await hashPassword(body.data.password);
       const user = await deps.db.transaction(async (tx) => {
         const [t] = await tx
           .insert(tenants)
-          .values({ name: body.data.company, slug: `${base}-${randomBytes(3).toString('hex')}`, lifecycle: 'active' })
+          .values({
+            name: body.data.company,
+            slug: `${base}-${randomBytes(3).toString('hex')}`,
+            lifecycle: 'active',
+          })
           .returning();
         await tx.insert(onboardings).values({ tenantId: t!.id, status: 'connect' });
-        const [u] = await tx.insert(users).values({ email, passwordHash, role: 'customer', tenantId: t!.id }).returning();
+        const [u] = await tx
+          .insert(users)
+          .values({ email, passwordHash, role: 'customer', tenantId: t!.id })
+          .returning();
         await tx.insert(auditLog).values({
           actorUserId: u!.id,
           actorRole: 'customer',
@@ -190,7 +222,13 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
         return u!;
       });
       const s = await createSession(deps.db, user.id);
-      reply.setCookie(SESSION_COOKIE, s.token, { httpOnly: true, sameSite: 'lax', secure: secureCookie, path: '/', expires: s.expiresAt });
+      reply.setCookie(SESSION_COOKIE, s.token, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: secureCookie,
+        path: '/',
+        expires: s.expiresAt,
+      });
       return { user: { email: user.email, role: user.role }, csrfToken: s.csrfToken };
     },
   );

@@ -65,7 +65,9 @@ export function createAppPortRuntime(options: AppPortRuntimeOptions): AppPortRun
       ? { enqueueAdaptationValidation: options.enqueueAdaptationValidation }
       : {}),
     ...(options.runOnboardingDiscovery ? { runOnboardingDiscovery: options.runOnboardingDiscovery } : {}),
-    ...(options.enqueueOnboardingActivation ? { enqueueOnboardingActivation: options.enqueueOnboardingActivation } : {}),
+    ...(options.enqueueOnboardingActivation
+      ? { enqueueOnboardingActivation: options.enqueueOnboardingActivation }
+      : {}),
     ...(options.telemetry ? { telemetry: options.telemetry } : {}),
     ...(options.logger ? { logger: options.logger } : {}),
   });

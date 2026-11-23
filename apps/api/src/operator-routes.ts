@@ -286,11 +286,9 @@ export async function registerOperatorRoutes(app: FastifyInstance, deps: ApiDeps
       .where(eq(integrations.id, id));
     if (!target) return reply.code(404).send({ error: 'Not found' });
     if (target.flowType !== FLOW_TYPE) {
-      return reply
-        .code(409)
-        .send({
-          error: 'Adopted integrations are reconciled through the AppPort capability reconciliation.start',
-        });
+      return reply.code(409).send({
+        error: 'Adopted integrations are reconciled through the AppPort capability reconciliation.start',
+      });
     }
     await deps.boss.send(QUEUES.reconcile, { integrationId: id, incidentId: null, trigger: 'manual' });
     await db.insert(auditLog).values({

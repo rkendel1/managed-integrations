@@ -16,7 +16,16 @@
  * Every step is durable in `onboardings`, so an interrupted onboarding resumes.
  */
 import { and, eq, inArray } from 'drizzle-orm';
-import { auditLog, connections, deliveries, integrations, onboardings, reconciliationItems, reconciliationRuns, type Db } from '@mi/database';
+import {
+  auditLog,
+  connections,
+  deliveries,
+  integrations,
+  onboardings,
+  reconciliationItems,
+  reconciliationRuns,
+  type Db,
+} from '@mi/database';
 import {
   ConnectionCredentials,
   DEFAULT_RETRY,
@@ -34,7 +43,15 @@ import { ADOPTED_CONTRACT, ADOPTED_FLOW_TYPE, registerAdoptedContract } from './
 import { ReconciliationBusy, startReconciliation, type AdoptedClients } from './reconcile.ts';
 import { DISCOVERY_QUERY, discoveryFilter, type DiscoveredOrder } from './source.ts';
 
-export const ONBOARDING_STATUSES = ['connect', 'discovering', 'confirm', 'select', 'activating', 'managed', 'blocked'] as const;
+export const ONBOARDING_STATUSES = [
+  'connect',
+  'discovering',
+  'confirm',
+  'select',
+  'activating',
+  'managed',
+  'blocked',
+] as const;
 export type OnboardingStatus = (typeof ONBOARDING_STATUSES)[number];
 
 /** What the customer authorizes when they confirm (versioned: the confirmation records the version). */
@@ -93,18 +110,30 @@ async function ready(db: Db, tenantId: string) {
     .select()
     .from(connections)
     .where(and(eq(connections.tenantId, tenantId), inArray(connections.providerId, ['shopify', 'netsuite'])));
-  const ok = (p: string) => rows.some((c) => c.providerId === p && ['authorized', 'verified'].includes(c.status) && !!c.credentialsCiphertext);
+  const ok = (p: string) =>
+    rows.some(
+      (c) => c.providerId === p && ['authorized', 'verified'].includes(c.status) && !!c.credentialsCiphertext,
+    );
   return { shopify: ok('shopify'), netsuite: ok('netsuite'), rows };
 }
 
 /** Provider clients for a tenant, from its durable connections. */
-export async function tenantClients(db: Db, cipher: CredentialCipher, endpoints: ProviderEndpointConfig, tenantId: string): Promise<AdoptedClients> {
+export async function tenantClients(
+  db: Db,
+  cipher: CredentialCipher,
+  endpoints: ProviderEndpointConfig,
+  tenantId: string,
+): Promise<AdoptedClients> {
   const creds = new ConnectionCredentials(db, cipher, endpoints);
   const shop = await creds.load(tenantId, 'shopify');
   const ns = await creds.load(tenantId, 'netsuite');
   if (!shop?.baseUrl || !ns?.baseUrl) throw new OnboardingError('Connect Shopify and NetSuite first');
   return {
-    shopify: new ShopifyClient({ baseUrl: shop.baseUrl, apiVersion: sourceImplementation.shopifyApiVersion, auth: creds.shopifyAuth(shop) }),
+    shopify: new ShopifyClient({
+      baseUrl: shop.baseUrl,
+      apiVersion: sourceImplementation.shopifyApiVersion,
+      auth: creds.shopifyAuth(shop),
+    }),
     netsuite: new NetSuiteClient({ baseUrl: ns.baseUrl, auth: creds.netsuiteAuth(ns) }),
   };
 }
@@ -137,12 +166,24 @@ export async function discoverIntegration(
 ): Promise<Discovery> {
   const now = opts.now ?? new Date();
   const retry = opts.retry ?? DEFAULT_RETRY;
-  const window = { from: new Date(now.getTime() - DISCOVERY_DAYS * 86_400_000), to: new Date(now.getTime() - GRACE_MS) };
+  const window = {
+    from: new Date(now.getTime() - DISCOVERY_DAYS * 86_400_000),
+    to: new Date(now.getTime() - GRACE_MS),
+  };
   const managed = await db
     .select()
     .from(integrations)
-    .where(and(eq(integrations.tenantId, tenantId), eq(integrations.flowType, ADOPTED_FLOW_TYPE), eq(integrations.lifecycle, 'active')));
-  const base = { at: now.toISOString(), window: { from: window.from.toISOString(), to: window.to.toISOString() } };
+    .where(
+      and(
+        eq(integrations.tenantId, tenantId),
+        eq(integrations.flowType, ADOPTED_FLOW_TYPE),
+        eq(integrations.lifecycle, 'active'),
+      ),
+    );
+  const base = {
+    at: now.toISOString(),
+    window: { from: window.from.toISOString(), to: window.to.toISOString() },
+  };
   if (managed.length) return { ...base, outcome: 'already_managed', sampled: 0, candidates: [] };
 
   // 1. Shopify: recent orders (bounded sample).
@@ -150,14 +191,24 @@ export async function discoverIntegration(
   let after: string | null = null;
   do {
     const res = await withRetry(
-      () => clients.shopify.graphql(DISCOVERY_QUERY, { first: 50, after, query: discoveryFilter(window.from, window.to) }),
+      () =>
+        clients.shopify.graphql(DISCOVERY_QUERY, {
+          first: 50,
+          after,
+          query: discoveryFilter(window.from, window.to),
+        }),
       retry,
     );
-    const page = (res.data as { orders: { nodes: DiscoveredOrder[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } } }).orders;
+    const page = (
+      res.data as {
+        orders: { nodes: DiscoveredOrder[]; pageInfo: { hasNextPage: boolean; endCursor: string | null } };
+      }
+    ).orders;
     orders.push(...page.nodes.filter((o) => !o.cancelledAt));
     after = page.pageInfo.hasNextPage && orders.length < SAMPLE_LIMIT ? page.pageInfo.endCursor : null;
   } while (after);
-  if (!orders.length) return { ...base, outcome: 'insufficient_evidence', sampled: 0, candidates: [NEW_CANDIDATE] };
+  if (!orders.length)
+    return { ...base, outcome: 'insufficient_evidence', sampled: 0, candidates: [NEW_CANDIDATE] };
 
   // 2. NetSuite: sales orders referencing them (by external id OR order number).
   const identities: SourceIdentity[] = orders.map((o) => ({
@@ -174,12 +225,16 @@ export async function discoverIntegration(
   const signature: { name: string; at: string }[] = [];
   const other = new Map<string, { name: string; at: string }[]>();
   for (const o of orders) {
-    const sig = records.find((r) => r.externalId === `shopify-${o.legacyResourceId}` && r.otherRefNum === o.name);
+    const sig = records.find(
+      (r) => r.externalId === `shopify-${o.legacyResourceId}` && r.otherRefNum === o.name,
+    );
     if (sig) {
       signature.push({ name: o.name, at: o.createdAt });
       continue;
     }
-    const ref = records.find((r) => r.otherRefNum === o.name && r.externalId !== `shopify-${o.legacyResourceId}`);
+    const ref = records.find(
+      (r) => r.otherRefNum === o.name && r.externalId !== `shopify-${o.legacyResourceId}`,
+    );
     if (ref) {
       const pattern = (ref.externalId ?? '(none)')
         .replace(o.legacyResourceId, '{order id}')
@@ -204,7 +259,10 @@ export async function discoverIntegration(
         sampled: orders.length,
         coverage: Math.round(coverage * 1000) / 1000,
         firstSeen: signature.map((x) => x.at).sort()[0],
-        lastSeen: signature.map((x) => x.at).sort().pop(),
+        lastSeen: signature
+          .map((x) => x.at)
+          .sort()
+          .pop(),
         examples: signature.slice(-3).map((x) => x.name),
       },
     });
@@ -217,14 +275,30 @@ export async function discoverIntegration(
       summary: `${list.length} of your last ${orders.length} Shopify orders are in NetSuite, written by an integration we do not recognize.`,
       implementation: null,
       confidence: null,
-      evidence: { externalIdPattern: pattern, matched: list.length, sampled: orders.length, examples: list.slice(-3).map((x) => x.name) },
+      evidence: {
+        externalIdPattern: pattern,
+        matched: list.length,
+        sampled: orders.length,
+        examples: list.slice(-3).map((x) => x.name),
+      },
     });
   }
   const adoptable = candidates.filter((c) => c.kind === 'adoptable');
   const unsupported = candidates.filter((c) => c.kind === 'unsupported');
   const outcome: Discovery['outcome'] =
-    adoptable.length && !unsupported.length ? 'found' : adoptable.length ? 'ambiguous' : unsupported.length ? 'unsupported' : 'not_found';
-  return { ...base, outcome, sampled: orders.length, candidates: outcome === 'found' ? candidates : [...candidates, NEW_CANDIDATE] };
+    adoptable.length && !unsupported.length
+      ? 'found'
+      : adoptable.length
+        ? 'ambiguous'
+        : unsupported.length
+          ? 'unsupported'
+          : 'not_found';
+  return {
+    ...base,
+    outcome,
+    sampled: orders.length,
+    candidates: outcome === 'found' ? candidates : [...candidates, NEW_CANDIDATE],
+  };
 }
 
 /** Runs discovery for a tenant and records the result (resumable). */
@@ -238,14 +312,17 @@ export async function runDiscovery(
   const ob = await getOnboarding(db, tenantId);
   if (ob.status === 'activating' || ob.status === 'managed') return ob;
   const r = await ready(db, tenantId);
-  if (!r.shopify || !r.netsuite)
-    return setOnboarding(db, tenantId, { status: 'connect', problem: null });
+  if (!r.shopify || !r.netsuite) return setOnboarding(db, tenantId, { status: 'connect', problem: null });
   await setOnboarding(db, tenantId, { status: 'discovering', problem: null });
   try {
     const clients = await tenantClients(db, cipher, endpoints, tenantId);
     const discovery = await discoverIntegration(db, clients, tenantId, opts);
     const status: OnboardingStatus =
-      discovery.outcome === 'already_managed' ? 'managed' : discovery.outcome === 'found' ? 'confirm' : 'select';
+      discovery.outcome === 'already_managed'
+        ? 'managed'
+        : discovery.outcome === 'found'
+          ? 'confirm'
+          : 'select';
     return setOnboarding(db, tenantId, { status, discovery });
   } catch (err) {
     return setOnboarding(db, tenantId, {
@@ -263,19 +340,27 @@ export async function confirmOnboarding(
   p: { candidateId: string; responsibilitiesVersion: string; userId: string },
 ) {
   const ob = await getOnboarding(db, tenantId);
-  if (ob.status !== 'confirm' && ob.status !== 'select') throw new OnboardingError(`Nothing to confirm (onboarding is ${ob.status})`);
-  if (p.responsibilitiesVersion !== RESPONSIBILITIES.version) throw new OnboardingError('The responsibilities changed; review them again');
+  if (ob.status !== 'confirm' && ob.status !== 'select')
+    throw new OnboardingError(`Nothing to confirm (onboarding is ${ob.status})`);
+  if (p.responsibilitiesVersion !== RESPONSIBILITIES.version)
+    throw new OnboardingError('The responsibilities changed; review them again');
   const discovery = ob.discovery as Discovery;
   const c = discovery.candidates.find((x) => x.id === p.candidateId);
   if (!c) throw new OnboardingError('Unknown choice');
   if (c.kind === 'unsupported')
-    throw new OnboardingError('We cannot take over that integration’s software; choose the managed integration instead');
+    throw new OnboardingError(
+      'We cannot take over that integration’s software; choose the managed integration instead',
+    );
   await registerAdoptedContract(db);
   // Adopting an existing integration covers its recent history; a NEW integration starts now
   // (orders from before it existed are not "missing", and are not sent without the customer asking).
   const from = c.kind === 'new' ? new Date().toISOString() : discovery.window.from;
   return db.transaction(async (tx) => {
-    const [locked] = await tx.select().from(onboardings).where(eq(onboardings.tenantId, tenantId)).for('update');
+    const [locked] = await tx
+      .select()
+      .from(onboardings)
+      .where(eq(onboardings.tenantId, tenantId))
+      .for('update');
     if (locked!.integrationId) throw new OnboardingError('Already confirmed');
     const [integ] = await tx
       .insert(integrations)
@@ -285,7 +370,13 @@ export async function confirmOnboarding(
         displayName: 'Shopify → NetSuite orders',
         contractVersion: ADOPTED_CONTRACT.version,
         // The adopted code's own defaults; the customer can change them in Settings later.
-        config: { erp: 'netsuite', customerByEmail: {}, defaultCustomer: 'WEB', reconcileFrom: from, reconcileGraceMinutes: 10 },
+        config: {
+          erp: 'netsuite',
+          customerByEmail: {},
+          defaultCustomer: 'WEB',
+          reconcileFrom: from,
+          reconcileGraceMinutes: 10,
+        },
         enabled: true,
         lifecycle: 'setup',
       })
@@ -302,7 +393,14 @@ export async function confirmOnboarding(
     };
     await tx
       .update(onboardings)
-      .set({ status: 'activating', confirmation, integrationId: integ!.id, activation: { steps: {} }, problem: null, updatedAt: new Date() })
+      .set({
+        status: 'activating',
+        confirmation,
+        integrationId: integ!.id,
+        activation: { steps: {} },
+        problem: null,
+        updatedAt: new Date(),
+      })
       .where(eq(onboardings.tenantId, tenantId));
     await tx.insert(auditLog).values({
       actorUserId: p.userId,
@@ -339,8 +437,13 @@ export type OnboardingAdvance = { state: 'continue' | 'wait' | 'done' | 'blocked
 const SUBSCRIBE = /* GraphQL */ `
   mutation Subscribe($topic: WebhookSubscriptionTopic!, $sub: WebhookSubscriptionInput!) {
     webhookSubscriptionCreate(topic: $topic, webhookSubscription: $sub) {
-      webhookSubscription { id }
-      userErrors { field message }
+      webhookSubscription {
+        id
+      }
+      userErrors {
+        field
+        message
+      }
     }
   }
 `;
@@ -364,16 +467,38 @@ export async function advanceOnboarding(p: {
   if (!steps.webhook) {
     const callbackUrl = `${p.webhookBaseUrl.replace(/\/$/, '')}/webhooks/shopify/${ob.integrationId}`;
     const res = await withRetry(
-      () => p.clients.shopify.graphql(SUBSCRIBE, { topic: 'ORDERS_CREATE', sub: { callbackUrl, format: 'JSON' } }),
+      () =>
+        p.clients.shopify.graphql(SUBSCRIBE, {
+          topic: 'ORDERS_CREATE',
+          sub: { callbackUrl, format: 'JSON' },
+        }),
       p.retry ?? DEFAULT_RETRY,
     );
-    const out = (res.data as { webhookSubscriptionCreate: { webhookSubscription: { id: string } | null; userErrors: { message: string }[] } }).webhookSubscriptionCreate;
+    const out = (
+      res.data as {
+        webhookSubscriptionCreate: {
+          webhookSubscription: { id: string } | null;
+          userErrors: { message: string }[];
+        };
+      }
+    ).webhookSubscriptionCreate;
     const taken = out.userErrors.some((e) => /already been taken/i.test(e.message));
     if (!out.webhookSubscription && !taken) {
-      await setOnboarding(db, p.tenantId, { status: 'blocked', problem: `Shopify did not accept our order notification: ${out.userErrors.map((e) => e.message).join('; ')}` });
+      await setOnboarding(db, p.tenantId, {
+        status: 'blocked',
+        problem: `Shopify did not accept our order notification: ${out.userErrors.map((e) => e.message).join('; ')}`,
+      });
       return { state: 'blocked', detail: 'webhook registration refused' };
     }
-    await save({ ...steps, webhook: { subscriptionId: out.webhookSubscription?.id ?? null, callbackUrl, at: new Date().toISOString(), existing: taken } });
+    await save({
+      ...steps,
+      webhook: {
+        subscriptionId: out.webhookSubscription?.id ?? null,
+        callbackUrl,
+        at: new Date().toISOString(),
+        existing: taken,
+      },
+    });
     return { state: 'continue', detail: 'webhook registered' };
   }
 
@@ -391,15 +516,22 @@ export async function advanceOnboarding(p: {
       await p.enqueueReconciliation(s.runId);
       return { state: 'continue', detail: 'baseline started' };
     } catch (err) {
-      if (err instanceof ReconciliationBusy) return { state: 'wait', detail: 'another reconciliation is running' };
+      if (err instanceof ReconciliationBusy)
+        return { state: 'wait', detail: 'another reconciliation is running' };
       throw err;
     }
   }
-  const [run] = await db.select().from(reconciliationRuns).where(eq(reconciliationRuns.id, steps.baseline.runId));
+  const [run] = await db
+    .select()
+    .from(reconciliationRuns)
+    .where(eq(reconciliationRuns.id, steps.baseline.runId));
   if (!run || run.status === 'running') return { state: 'wait', detail: 'baseline running' };
   if (run.status !== 'completed' || run.outcome === 'partial') {
     if (steps.baseline.attempts >= 3) {
-      await setOnboarding(db, p.tenantId, { status: 'blocked', problem: 'We could not complete the first full check of your orders. We are looking into it.' });
+      await setOnboarding(db, p.tenantId, {
+        status: 'blocked',
+        problem: 'We could not complete the first full check of your orders. We are looking into it.',
+      });
       return { state: 'blocked', detail: 'baseline incomplete' };
     }
     await save({ ...steps, baseline: undefined as never });
@@ -413,7 +545,12 @@ export async function advanceOnboarding(p: {
     const items = await db
       .select()
       .from(reconciliationItems)
-      .where(and(eq(reconciliationItems.runId, run.id), eq(reconciliationItems.classification, 'destination_exists_untracked')));
+      .where(
+        and(
+          eq(reconciliationItems.runId, run.id),
+          eq(reconciliationItems.classification, 'destination_exists_untracked'),
+        ),
+      );
     let adopted = 0;
     for (const it of items) {
       const inserted = await db
@@ -431,7 +568,11 @@ export async function advanceOnboarding(p: {
           destinationId: it.destinationIds?.[0] ?? null,
           outcome: 'delivered',
           attempts: 0,
-          validation: { origin: 'baseline', note: 'Written by the customer’s existing deployment before we took over', runId: run.id },
+          validation: {
+            origin: 'baseline',
+            note: 'Written by the customer’s existing deployment before we took over',
+            runId: run.id,
+          },
         })
         .onConflictDoNothing()
         .returning({ id: deliveries.id });
@@ -454,15 +595,22 @@ export async function advanceOnboarding(p: {
       await p.enqueueReconciliation(s.runId);
       return { state: 'continue', detail: 'verification check started' };
     } catch (err) {
-      if (err instanceof ReconciliationBusy) return { state: 'wait', detail: 'another reconciliation is running' };
+      if (err instanceof ReconciliationBusy)
+        return { state: 'wait', detail: 'another reconciliation is running' };
       throw err;
     }
   }
-  const [check] = await db.select().from(reconciliationRuns).where(eq(reconciliationRuns.id, steps.verify.runId));
+  const [check] = await db
+    .select()
+    .from(reconciliationRuns)
+    .where(eq(reconciliationRuns.id, steps.verify.runId));
   if (!check || check.status === 'running') return { state: 'wait', detail: 'verification check running' };
   if (check.status !== 'completed' || check.outcome === 'partial') {
     if (steps.verify.attempts >= 3) {
-      await setOnboarding(db, p.tenantId, { status: 'blocked', problem: 'We could not complete the first full check of your orders. We are looking into it.' });
+      await setOnboarding(db, p.tenantId, {
+        status: 'blocked',
+        problem: 'We could not complete the first full check of your orders. We are looking into it.',
+      });
       return { state: 'blocked', detail: 'verification incomplete' };
     }
     await save({ ...steps, verify: undefined as never });
@@ -480,10 +628,18 @@ export async function advanceOnboarding(p: {
     verifyRunId: check.id,
   };
   await db.transaction(async (tx) => {
-    await tx.update(integrations).set({ lifecycle: 'active', updatedAt: new Date() }).where(eq(integrations.id, ob.integrationId!));
+    await tx
+      .update(integrations)
+      .set({ lifecycle: 'active', updatedAt: new Date() })
+      .where(eq(integrations.id, ob.integrationId!));
     await tx
       .update(onboardings)
-      .set({ status: 'managed', activation: { steps: { ...steps, baselineResult } }, problem: null, updatedAt: new Date() })
+      .set({
+        status: 'managed',
+        activation: { steps: { ...steps, baselineResult } },
+        problem: null,
+        updatedAt: new Date(),
+      })
       .where(eq(onboardings.tenantId, p.tenantId));
     await tx.insert(auditLog).values({
       actorRole: 'system',
@@ -498,6 +654,9 @@ export async function advanceOnboarding(p: {
 
 /** Tenants whose activation should be (re)driven (crash safety: the worker tick picks them up). */
 export async function onboardingsActivating(db: Db): Promise<string[]> {
-  const rows = await db.select({ t: onboardings.tenantId }).from(onboardings).where(eq(onboardings.status, 'activating'));
+  const rows = await db
+    .select({ t: onboardings.tenantId })
+    .from(onboardings)
+    .where(eq(onboardings.status, 'activating'));
   return rows.map((r) => r.t);
 }

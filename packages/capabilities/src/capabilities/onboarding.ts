@@ -12,7 +12,13 @@ import { defineCapability, type CapabilityDefinition } from '@appport/core';
 import { errors } from '@appport/protocol';
 import { s } from '@appport/schema';
 import { and, eq, inArray } from 'drizzle-orm';
-import { confirmOnboarding, getOnboarding, OnboardingError, RESPONSIBILITIES, type Discovery } from '@mi/adopted-order-sync';
+import {
+  confirmOnboarding,
+  getOnboarding,
+  OnboardingError,
+  RESPONSIBILITIES,
+  type Discovery,
+} from '@mi/adopted-order-sync';
 import { connections, type Db } from '@mi/database';
 import { AppPortPermissions, tenantIdOf } from '../identity.ts';
 
@@ -38,8 +44,16 @@ const STEP_TEXT: Record<string, string> = {
 export interface OnboardingView {
   status: string;
   next: string;
-  connections: { shopify: { connected: boolean; account: string | null }; netsuite: { connected: boolean; account: string | null } };
-  discovery: { outcome: string; window: { from: string; to: string }; checked: number; candidates: { id: string; kind: string; title: string; summary: string; confidence: string | null }[] } | null;
+  connections: {
+    shopify: { connected: boolean; account: string | null };
+    netsuite: { connected: boolean; account: string | null };
+  };
+  discovery: {
+    outcome: string;
+    window: { from: string; to: string };
+    checked: number;
+    candidates: { id: string; kind: string; title: string; summary: string; confidence: string | null }[];
+  } | null;
   responsibilities: typeof RESPONSIBILITIES;
   confirmation: { candidateId: string; at: string } | null;
   activation: { steps: { label: string; done: boolean }[]; baseline: Record<string, unknown> | null } | null;
@@ -55,7 +69,10 @@ async function view(db: Db, tenantId: string): Promise<OnboardingView> {
     .where(and(eq(connections.tenantId, tenantId), inArray(connections.providerId, ['shopify', 'netsuite'])));
   const c = (p: string) => {
     const r = conns.find((x) => x.providerId === p);
-    return { connected: !!r && ['authorized', 'verified'].includes(r.status) && !!r.credentialsCiphertext, account: r?.externalAccount ?? null };
+    return {
+      connected: !!r && ['authorized', 'verified'].includes(r.status) && !!r.credentialsCiphertext,
+      account: r?.externalAccount ?? null,
+    };
   };
   const d = ob.discovery as Discovery | null;
   const steps = (ob.activation as { steps?: Record<string, unknown> } | null)?.steps ?? null;
@@ -68,11 +85,22 @@ async function view(db: Db, tenantId: string): Promise<OnboardingView> {
           outcome: d.outcome,
           window: d.window,
           checked: d.sampled,
-          candidates: d.candidates.map((x) => ({ id: x.id, kind: x.kind, title: x.title, summary: x.summary, confidence: x.confidence })),
+          candidates: d.candidates.map((x) => ({
+            id: x.id,
+            kind: x.kind,
+            title: x.title,
+            summary: x.summary,
+            confidence: x.confidence,
+          })),
         }
       : null,
     responsibilities: RESPONSIBILITIES,
-    confirmation: ob.confirmation ? { candidateId: (ob.confirmation as { candidateId: string }).candidateId, at: (ob.confirmation as { at: string }).at } : null,
+    confirmation: ob.confirmation
+      ? {
+          candidateId: (ob.confirmation as { candidateId: string }).candidateId,
+          at: (ob.confirmation as { at: string }).at,
+        }
+      : null,
     activation: steps
       ? {
           steps: [
@@ -100,7 +128,9 @@ const viewSchema = s.object({
   problem: s.nullable(s.string()),
 });
 
-export function createOnboardingStatusCapability(db: Db): CapabilityDefinition<Record<string, never>, Record<string, unknown>> {
+export function createOnboardingStatusCapability(
+  db: Db,
+): CapabilityDefinition<Record<string, never>, Record<string, unknown>> {
   return defineCapability({
     name: 'onboarding.status',
     version: 1,

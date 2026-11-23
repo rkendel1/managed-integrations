@@ -254,7 +254,13 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
     webhookVersion: '2026-10' as WebhookVersion,
     /** App webhook subscriptions and every delivery attempt made to them (fixture evidence). */
     subscriptions: [] as { id: string; topic: 'ORDERS_CREATE'; callbackUrl: string }[],
-    webhookDeliveries: [] as { at: string; orderId: string; callbackUrl: string; status: number | null; error?: string }[],
+    webhookDeliveries: [] as {
+      at: string;
+      orderId: string;
+      callbackUrl: string;
+      status: number | null;
+      error?: string;
+    }[],
   };
 
   const schemas: Record<SchemaVariant, GraphQLSchema> = {
@@ -300,7 +306,12 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
   function deliverOrderCreated(o: FixtureOrder) {
     for (const sub of state.subscriptions) {
       const raw = Buffer.from(JSON.stringify(control.webhookPayload(o)));
-      const rec: (typeof state.webhookDeliveries)[number] = { at: new Date().toISOString(), orderId: o.legacyId, callbackUrl: sub.callbackUrl, status: null };
+      const rec: (typeof state.webhookDeliveries)[number] = {
+        at: new Date().toISOString(),
+        orderId: o.legacyId,
+        callbackUrl: sub.callbackUrl,
+        status: null,
+      };
       state.webhookDeliveries.push(rec);
       void fetch(sub.callbackUrl, {
         method: 'POST',
@@ -325,10 +336,29 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
 
   const rootValue = {
     webhookSubscriptions: () => ({ nodes: state.subscriptions }),
-    webhookSubscriptionCreate: (args: { topic: 'ORDERS_CREATE'; webhookSubscription: { callbackUrl: string } }) => {
-      if (state.subscriptions.some((x) => x.topic === args.topic && x.callbackUrl === args.webhookSubscription.callbackUrl))
-        return { webhookSubscription: null, userErrors: [{ field: ['webhookSubscription', 'callbackUrl'], message: 'Address for this topic has already been taken' }] };
-      const sub = { id: `gid://shopify/WebhookSubscription/${state.subscriptions.length + 1}`, topic: args.topic, callbackUrl: args.webhookSubscription.callbackUrl };
+    webhookSubscriptionCreate: (args: {
+      topic: 'ORDERS_CREATE';
+      webhookSubscription: { callbackUrl: string };
+    }) => {
+      if (
+        state.subscriptions.some(
+          (x) => x.topic === args.topic && x.callbackUrl === args.webhookSubscription.callbackUrl,
+        )
+      )
+        return {
+          webhookSubscription: null,
+          userErrors: [
+            {
+              field: ['webhookSubscription', 'callbackUrl'],
+              message: 'Address for this topic has already been taken',
+            },
+          ],
+        };
+      const sub = {
+        id: `gid://shopify/WebhookSubscription/${state.subscriptions.length + 1}`,
+        topic: args.topic,
+        callbackUrl: args.webhookSubscription.callbackUrl,
+      };
       state.subscriptions.push(sub);
       return { webhookSubscription: sub, userErrors: [] };
     },

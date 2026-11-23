@@ -186,10 +186,19 @@ export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps
   // OAuth callback: authenticated by the signed state + Shopify HMAC, not by session (top-level redirect).
   app.get('/api/oauth/shopify/callback', async (req, reply) => {
     const q = req.query as Record<string, string>;
-    const fail = (msg: string) => reply.redirect(`/app/connections?error=${encodeURIComponent(msg)}`);
+    const [tenantId, state] = String(q.state ?? '').split('.');
+    // Back to onboarding while the customer is still setting up; otherwise to their connections.
+    const fail = async (msg: string) => {
+      const [ob] =
+        tenantId && /^[0-9a-f-]{36}$/.test(tenantId)
+          ? await db.select().from(onboardings).where(eq(onboardings.tenantId, tenantId))
+          : [];
+      return reply.redirect(
+        `${ob && ob.status !== 'managed' ? '/app/welcome' : '/app/connections'}?error=${encodeURIComponent(msg)}`,
+      );
+    };
     if (!verifyShopifyCallbackHmac(q, deps.config.endpoints.shopifyClientSecret))
       return fail('Shopify signature check failed');
-    const [tenantId, state] = String(q.state ?? '').split('.');
     if (!tenantId || !state || !/^[0-9a-f-]{36}$/.test(tenantId)) return fail('Invalid state');
     const [conn] = await db
       .select()
@@ -235,7 +244,11 @@ export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps
       });
       // Back to onboarding if the customer is still setting up; otherwise to their connections.
       const [ob] = await db.select().from(onboardings).where(eq(onboardings.tenantId, tenantId));
-      return reply.redirect(ob && ob.status !== 'managed' ? '/app/welcome?connected=shopify' : '/app/connections?connected=shopify');
+      return reply.redirect(
+        ob && ob.status !== 'managed'
+          ? '/app/welcome?connected=shopify'
+          : '/app/connections?connected=shopify',
+      );
     } catch (err) {
       req.log.warn({ err: describeError(err) }, 'shopify code exchange failed');
       return fail('Shopify did not complete authorization');

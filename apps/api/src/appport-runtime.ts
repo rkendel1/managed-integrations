@@ -90,9 +90,13 @@ export function createApiAppPortRuntime(deps: {
     ...(deps.enqueueReconciliationScan ? { enqueueReconciliationScan: deps.enqueueReconciliationScan } : {}),
     ...(deps.enqueueRecovery ? { enqueueRecovery: deps.enqueueRecovery } : {}),
     ...(deps.reconcileIntervalMinutes ? { reconcileIntervalMinutes: deps.reconcileIntervalMinutes } : {}),
-    ...(deps.enqueueAdaptationValidation ? { enqueueAdaptationValidation: deps.enqueueAdaptationValidation } : {}),
+    ...(deps.enqueueAdaptationValidation
+      ? { enqueueAdaptationValidation: deps.enqueueAdaptationValidation }
+      : {}),
     ...(deps.runOnboardingDiscovery ? { runOnboardingDiscovery: deps.runOnboardingDiscovery } : {}),
-    ...(deps.enqueueOnboardingActivation ? { enqueueOnboardingActivation: deps.enqueueOnboardingActivation } : {}),
+    ...(deps.enqueueOnboardingActivation
+      ? { enqueueOnboardingActivation: deps.enqueueOnboardingActivation }
+      : {}),
     ...(deps.telemetry ? { telemetry: deps.telemetry } : {}),
   });
 }

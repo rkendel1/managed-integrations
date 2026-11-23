@@ -90,16 +90,14 @@ export async function approveCandidate(
         ],
       })
       .where(eq(maintenanceRuns.id, mr!.id));
-    await tx
-      .insert(auditLog)
-      .values({
-        actorUserId: p.operatorUserId,
-        actorRole: 'operator',
-        action: 'candidate.approve',
-        targetType: 'repair_candidate',
-        targetId: cand.id,
-        details: { releaseId: rel!.id, version: cand.integrationVersionId },
-      });
+    await tx.insert(auditLog).values({
+      actorUserId: p.operatorUserId,
+      actorRole: 'operator',
+      action: 'candidate.approve',
+      targetType: 'repair_candidate',
+      targetId: cand.id,
+      details: { releaseId: rel!.id, version: cand.integrationVersionId },
+    });
     return { releaseId: rel!.id };
   });
 }
@@ -133,16 +131,14 @@ export async function rejectCandidate(
       ],
     })
     .where(eq(maintenanceRuns.id, mr!.id));
-  await db
-    .insert(auditLog)
-    .values({
-      actorUserId: p.operatorUserId,
-      actorRole: 'operator',
-      action: 'candidate.reject',
-      targetType: 'repair_candidate',
-      targetId: cand.id,
-      details: { note: p.note },
-    });
+  await db.insert(auditLog).values({
+    actorUserId: p.operatorUserId,
+    actorRole: 'operator',
+    action: 'candidate.reject',
+    targetType: 'repair_candidate',
+    targetId: cand.id,
+    details: { note: p.note },
+  });
 }
 
 export interface RunReleaseDeps {
@@ -391,15 +387,13 @@ export async function rollbackRelease(
       .update(releases)
       .set({ status: 'rolled_back', rollbackReason: p.reason, updatedAt: new Date() })
       .where(eq(releases.id, rel.id));
-    await tx
-      .insert(auditLog)
-      .values({
-        actorUserId: p.operatorUserId,
-        actorRole: 'operator',
-        action: 'release.rollback',
-        targetType: 'release',
-        targetId: rel.id,
-        details: { reason: p.reason, restored: rel.previousVersionId },
-      });
+    await tx.insert(auditLog).values({
+      actorUserId: p.operatorUserId,
+      actorRole: 'operator',
+      action: 'release.rollback',
+      targetType: 'release',
+      targetId: rel.id,
+      details: { reason: p.reason, restored: rel.previousVersionId },
+    });
   });
 }

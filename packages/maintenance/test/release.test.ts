@@ -61,16 +61,14 @@ async function validatedCandidate(versionId: string) {
       integrationVersionId: versionId,
     })
     .returning();
-  await db
-    .insert(validationRuns)
-    .values({
-      repairCandidateId: cand!.id,
-      contractVersion: '1.0.0',
-      testSuiteSha256: 'h',
-      candidateCommit: 'b'.repeat(40),
-      status: 'passed',
-      protectedPathsOk: true,
-    });
+  await db.insert(validationRuns).values({
+    repairCandidateId: cand!.id,
+    contractVersion: '1.0.0',
+    testSuiteSha256: 'h',
+    candidateCommit: 'b'.repeat(40),
+    status: 'passed',
+    protectedPathsOk: true,
+  });
   return cand!;
 }
 
