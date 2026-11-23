@@ -82,13 +82,20 @@ afterAll(async () => {
   await h?.close();
 });
 
+// One session per user: the API limits logins to 10/min per client (a product control).
+const sessions = new Map<string, string>();
 async function cookie(email: string) {
+  const known = sessions.get(email);
+  if (known) return known;
   const r = await fetch(`${base}/api/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ email, password: PW }),
   });
-  return (r.headers.get('set-cookie') ?? '').split(';')[0]!;
+  if (!r.ok) throw new Error(`login ${email}: ${r.status}`);
+  const c = (r.headers.get('set-cookie') ?? '').split(';')[0]!;
+  sessions.set(email, c);
+  return c;
 }
 async function ui(c: string) {
   const client = createClient({
@@ -325,6 +332,69 @@ describe('customer product through AppPort', () => {
       .from(adaptations)
       .where(eq(adaptations.integrationId, a.integrationId));
     expect(active.map((x) => x.status)).toEqual(['active']);
+  });
+
+  it('adaptations: operators inspect what code runs and why; customers cannot touch corrections (UI and MCP)', async () => {
+    const [adapter] = await h.dbh.db
+      .select()
+      .from(adaptations)
+      .where(eq(adaptations.integrationId, a.integrationId));
+    const customer = await ui(await cookie('ops@bluewave.test'));
+    for (const [name, input] of [
+      ['adaptations.inspect', { integrationId: a.integrationId }],
+      ['adaptations.rollback', { adaptationId: adapter!.id, reason: 'customer attempt' }],
+      ['adaptations.activate', { adaptationId: adapter!.id, reason: 'customer attempt' }],
+      [
+        'adaptations.propose',
+        {
+          integrationId: a.integrationId,
+          patchId: 'p0001-preserve-price-precision',
+          reason: 'customer attempt',
+        },
+      ],
+    ] as const)
+      expect(await code(customer.call(name, input))).toBe('FORBIDDEN');
+    const mc = await mcp(await cookie('ops@bluewave.test'));
+    const denied = (await mc.callTool({
+      name: 'adaptations_rollback',
+      arguments: { adaptationId: adapter!.id, reason: 'customer attempt' },
+    })) as ToolResult;
+    await mc.close();
+    expect(denied.isError).toBe(true);
+
+    const m = await mcp(await cookie('operator@mi.test'));
+    const code1 = json(
+      (await m.callTool({
+        name: 'adaptations_inspect',
+        arguments: { integrationId: a.integrationId },
+      })) as ToolResult,
+    );
+    expect(code1).toMatchObject({
+      adopted: { commit: 'd01b51d95993598580cdcffda6537a6f20a10a3a' },
+      running: { id: 'adopted:d01b51d95993' },
+      adaptations: [
+        expect.objectContaining({ kind: 'adapter', status: 'active', maintenanceEventId: eventId }),
+      ],
+    });
+    expect((code1['pinnedFiles'] as { matches: boolean }[]).every((f) => f.matches)).toBe(true);
+    const bad = (await m.callTool({
+      name: 'adaptations_propose',
+      arguments: { integrationId: a.integrationId, patchId: 'p9999-anything', reason: 'not reviewed' },
+    })) as ToolResult;
+    expect(bad.isError).toBe(true);
+    const rb = json(
+      (await m.callTool({
+        name: 'adaptations_rollback',
+        arguments: { adaptationId: adapter!.id, reason: 'operator rollback test' },
+      })) as ToolResult,
+    );
+    expect(rb).toMatchObject({ status: 'rolled_back' });
+    const again = (await m.callTool({
+      name: 'adaptations_rollback',
+      arguments: { adaptationId: adapter!.id, reason: 'twice' },
+    })) as ToolResult;
+    expect(again.isError).toBe(true);
+    await m.close();
   });
 
   it('nothing on the AppPort surface can write maintenance state (test 15, boundary side)', async () => {

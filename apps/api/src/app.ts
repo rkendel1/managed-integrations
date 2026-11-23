@@ -105,6 +105,9 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
       await deps.boss.send(QUEUES.adoptedReconcile, { runId }, { singletonKey: `adopted-recon:${runId}` });
     },
     reconcileIntervalMinutes: deps.config.env.RECONCILE_INTERVAL_MINUTES,
+    enqueueAdaptationValidation: async (adaptationId) => {
+      await deps.boss.send(QUEUES.adoptedAdaptationValidate, { adaptationId }, { singletonKey: `adaptation:${adaptationId}` });
+    },
     enqueueRecovery: async (itemId) => {
       await deps.boss.send(QUEUES.adoptedRecover, { itemId }, { singletonKey: `adopted-recover:${itemId}` });
     },

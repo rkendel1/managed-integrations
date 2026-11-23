@@ -59,6 +59,7 @@ export function createApiAppPortRuntime(deps: {
   enqueueReconciliationScan?: EnqueueReconciliationScan;
   enqueueRecovery?: EnqueueRecovery;
   reconcileIntervalMinutes?: number;
+  enqueueAdaptationValidation?: (adaptationId: string) => Promise<void>;
   telemetry?: TelemetrySink;
 }): AppPortRuntime {
   const resolveIdentity = async (headers: CallerHeaders) => {
@@ -87,6 +88,7 @@ export function createApiAppPortRuntime(deps: {
     ...(deps.enqueueReconciliationScan ? { enqueueReconciliationScan: deps.enqueueReconciliationScan } : {}),
     ...(deps.enqueueRecovery ? { enqueueRecovery: deps.enqueueRecovery } : {}),
     ...(deps.reconcileIntervalMinutes ? { reconcileIntervalMinutes: deps.reconcileIntervalMinutes } : {}),
+    ...(deps.enqueueAdaptationValidation ? { enqueueAdaptationValidation: deps.enqueueAdaptationValidation } : {}),
     ...(deps.telemetry ? { telemetry: deps.telemetry } : {}),
   });
 }

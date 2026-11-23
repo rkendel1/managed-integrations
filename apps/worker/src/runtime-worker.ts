@@ -10,6 +10,7 @@ import {
   AdoptedReconcileJobSchema,
   AdoptedRecoverJobSchema,
   AdoptedMaintenanceJobSchema,
+  AdoptedAdaptationValidateJobSchema,
   BacklogJobSchema,
   FLOW_TYPE,
   ProviderError,
@@ -20,6 +21,7 @@ import {
 } from '@mi/contracts';
 import {
   deliveries,
+  adaptations,
   incidents,
   integrations,
   maintenanceRuns,
@@ -46,6 +48,7 @@ import {
   heldWithoutEvent,
   openMaintenanceEvents,
   recordInputContractFinding,
+  validateAdaptation,
   scanReconciliation,
   startReconciliation,
   ADOPTED_FLOW_TYPE,
@@ -87,6 +90,7 @@ export const RUNTIME_QUEUES = [
   QUEUES.adoptedReconcile,
   QUEUES.adoptedRecover,
   QUEUES.adoptedMaintenance,
+  QUEUES.adoptedAdaptationValidate,
 ];
 
 export async function ensureQueues(boss: PgBoss): Promise<void> {
@@ -483,6 +487,16 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
       return { state: r.state, steps };
     },
 
+    /** Validates one adaptation against stored and affected orders (operator-requested). */
+    async adoptedAdaptationValidate(raw: unknown): Promise<unknown> {
+      const job = AdoptedAdaptationValidateJobSchema.parse(raw);
+      const [row] = await db.select().from(adaptations).where(eq(adaptations.id, job.adaptationId));
+      if (!row || !['proposed', 'validated'].includes(row.status)) return { skipped: row?.status ?? 'unknown' };
+      const clients = await adoptedClients(db, config.cipher!, config.endpoints, row.integrationId);
+      const v = await validateAdaptation(db, config.cipher!, row.id, clients, deps.retry);
+      return { status: v.status };
+    },
+
     /** Runs one delivery through the ADOPTED upstream implementation (shopify-erp-order-sync). */
     async adoptedExecute(raw: unknown): Promise<unknown> {
       const job = AdoptedExecuteJobSchema.parse(raw);
@@ -554,6 +568,7 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     await wrap(QUEUES.adoptedReconcile, handlers.adoptedReconcile);
     await wrap(QUEUES.adoptedRecover, handlers.adoptedRecover);
     await wrap(QUEUES.adoptedMaintenance, handlers.adoptedMaintenance);
+    await wrap(QUEUES.adoptedAdaptationValidate, handlers.adoptedAdaptationValidate);
     await boss.schedule(QUEUES.reliabilityTick, '* * * * *');
   }
 

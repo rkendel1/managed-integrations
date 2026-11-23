@@ -29,6 +29,15 @@ import {
   createPortfolioIntegrationCapability,
   createPortfolioListCapability,
 } from './capabilities/product.ts';
+import {
+  createAdaptationActivateCapability,
+  createAdaptationProposeCapability,
+  createAdaptationRejectCapability,
+  createAdaptationRollbackCapability,
+  createAdaptationsInspectCapability,
+  createAdaptationValidateCapability,
+  type EnqueueAdaptationValidation,
+} from './capabilities/adaptations.ts';
 
 export const APPPORT_APPLICATION = {
   id: 'io.managedintegrations.app',
@@ -44,6 +53,8 @@ export interface IntegrationsApplicationOptions {
   enqueueReconciliationScan?: EnqueueReconciliationScan;
   /** Queues the execution of one requested recovery (host-provided). */
   enqueueRecovery?: EnqueueRecovery;
+  /** Queues validation of an adaptation in the worker (host-provided). */
+  enqueueAdaptationValidation?: EnqueueAdaptationValidation;
   /** How often the worker reconciles (stated to customers as a responsibility). */
   reconcileIntervalMinutes?: number;
   /** Receives one record per capability invocation (persisted as invocation evidence). */
@@ -68,6 +79,12 @@ export function createIntegrationsApplication(options: IntegrationsApplicationOp
       createPortfolioIntegrationCapability(options.db, options.reconcileIntervalMinutes ?? null),
       createMaintenanceEventGetCapability(options.db),
       createMaintenanceEvidenceCapability(options.db),
+      createAdaptationsInspectCapability(options.db),
+      createAdaptationProposeCapability(options.db, options.enqueueAdaptationValidation),
+      createAdaptationValidateCapability(options.db, options.enqueueAdaptationValidation),
+      createAdaptationActivateCapability(options.db),
+      createAdaptationRollbackCapability(options.db),
+      createAdaptationRejectCapability(options.db),
     ],
     authorizer: combineAuthorizers([integrationsAuthorizer(), resourceTenantAuthorizer(options.db)]),
     ...(options.telemetry ? { telemetry: options.telemetry } : {}),

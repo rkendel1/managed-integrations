@@ -14,6 +14,8 @@ export const QUEUES = {
   adoptedRecover: 'adopted.recover',
   /** Drives one maintenance event of an adopted integration (slice 4). */
   adoptedMaintenance: 'adopted.maintenance',
+  /** Validates one adaptation (adapter or patch) against stored and affected orders (slice 5). */
+  adoptedAdaptationValidate: 'adopted.adaptation.validate',
 } as const;
 
 export const SyncJobSchema = z.object({
@@ -50,3 +52,4 @@ export const AdoptedExecuteJobSchema = z.object({
 export const AdoptedReconcileJobSchema = z.object({ runId: z.string().uuid() });
 export const AdoptedRecoverJobSchema = z.object({ itemId: z.string().uuid() });
 export const AdoptedMaintenanceJobSchema = z.object({ incidentId: z.string().uuid() });
+export const AdoptedAdaptationValidateJobSchema = z.object({ adaptationId: z.string().uuid() });

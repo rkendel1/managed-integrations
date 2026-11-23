@@ -70,6 +70,15 @@ export {
   createPortfolioListCapability,
 } from './capabilities/product.ts';
 export {
+  createAdaptationActivateCapability,
+  createAdaptationProposeCapability,
+  createAdaptationRejectCapability,
+  createAdaptationRollbackCapability,
+  createAdaptationsInspectCapability,
+  createAdaptationValidateCapability,
+  type EnqueueAdaptationValidation,
+} from './capabilities/adaptations.ts';
+export {
   assessStatus,
   presentEvent,
   responsibilitiesFor,
