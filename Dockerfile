@@ -48,6 +48,7 @@ RUN --mount=type=secret,id=extra_ca,required=false \
     apt-get $APTOPT update && apt-get $APTOPT install -y --no-install-recommends ca-certificates git ripgrep \
     && rm -rf /var/lib/apt/lists/* /tmp/build-extra-ca.crt && git config --system --add safe.directory '*'
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
-ENV NODE_ENV=production WORKER_ROLE=maintenance ARTIFACT_DIR=/data/artifacts
+# pnpm otherwise picks an (empty) store on the filesystem of the mounted repository.
+ENV NODE_ENV=production WORKER_ROLE=maintenance ARTIFACT_DIR=/data/artifacts npm_config_store_dir=/pnpm/store
 HEALTHCHECK NONE
 CMD ["pnpm", "exec", "tsx", "apps/worker/src/main.ts"]

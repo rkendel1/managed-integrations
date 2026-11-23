@@ -60,7 +60,7 @@ export async function runMaintenance(deps: MaintenanceDeps, maintenanceRunId: st
     await mkdir(resolve(deps.workDir), { recursive: true });
     await git(deps.repoDir, ['worktree', 'add', '-q', '-b', branch, worktree, base.sourceCommit]);
     const install = await installOffline(worktree);
-    if (install.code !== 0) throw new Error(`offline dependency install failed: ${install.stderr.slice(-500)}`);
+    if (install.code !== 0) throw new Error(`offline dependency install failed: ${(install.stdout + install.stderr).slice(-800)}`);
 
     const toolbox = new MaintenanceToolbox({
       db,

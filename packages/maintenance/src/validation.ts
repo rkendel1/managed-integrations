@@ -96,7 +96,7 @@ export async function validateCandidate(deps: ValidationDeps, candidateId: strin
       return { status: 'failed', validationRunId: vr!.id };
     }
     const install = await installOffline(tree);
-    if (install.code !== 0) throw new Error(`offline install failed: ${install.stderr.slice(-400)}`);
+    if (install.code !== 0) throw new Error(`offline install failed: ${(install.stdout + install.stderr).slice(-800)}`);
 
     const profile = reproductionProfile(cand.agentTestResults);
     results.reproductionProfile = profile;
