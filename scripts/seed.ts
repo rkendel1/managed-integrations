@@ -87,6 +87,8 @@ if (!integ) {
     .values({
       tenantId: tenant!.id,
       flowType: FLOW_TYPE,
+      displayName: 'Shopify orders → NetSuite sales orders',
+      configVersion: 1,
       contractVersion: CONTRACT_V1.version,
       implementationVersionId: baselineVersion,
       enabled: false,
@@ -108,6 +110,13 @@ if (baselineVersion)
     .update(integrations)
     .set({ implementationVersionId: baselineVersion })
     .where(and(eq(integrations.id, integ!.id), isNull(integrations.implementationVersionId)));
+
+// Existing rows created before display_name was introduced get the human name once.
+if (!integ!.displayName)
+  await db
+    .update(integrations)
+    .set({ displayName: 'Shopify orders → NetSuite sales orders' })
+    .where(eq(integrations.id, integ!.id));
 
 /* demo: connect to the deterministic fixtures */
 if (process.env.DEMO_FIXTURES === 'true') {

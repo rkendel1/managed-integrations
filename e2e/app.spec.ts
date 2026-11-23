@@ -88,6 +88,78 @@ test('customer: action required for an unmapped SKU, resolved by adding the mapp
   await expect(page.getByTestId('actions')).toHaveCount(0, { timeout: 90_000 });
 });
 
+test('customer: integrations page is served by the AppPort capability', async ({ page }) => {
+  await login(page, CUSTOMER);
+  await page.getByRole('link', { name: 'Integrations', exact: true }).click();
+  await expect(page).toHaveURL(/\/app\/integrations$/);
+
+  // The page names the capability it consumed; the values come from PostgreSQL via AppPort.
+  await expect(page.getByTestId('appport-integrations')).toContainText('integrations.list@1');
+  const rows = page.getByTestId('integration-row');
+  await expect(rows).toHaveCount(1);
+  await expect(rows.first()).toContainText('Shopify orders → NetSuite sales orders');
+  await expect(rows.first()).toContainText('active');
+  expect(consoleErrors).toEqual([]);
+});
+
+/**
+ * Rendering states of the same page. These intercept only the `integrations.list` call (discovery
+ * and the manifest still reach the real AppPort binding) so the empty and failure renderings can
+ * be exercised deterministically. The success path above uses the real capability end to end.
+ */
+test('customer: integrations page renders the empty state', async ({ page }) => {
+  await page.route('**/appport', async (route) => {
+    const request = route.request().postDataJSON() as {
+      requestId: string;
+      capability?: { name?: string };
+    };
+    if (request.capability?.name !== 'integrations.list') return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        protocol: 'appport/1',
+        type: 'response',
+        requestId: request.requestId,
+        ok: true,
+        output: {
+          tenant: { id: '00000000-0000-4000-8000-000000000000', name: 'Empty Tenant' },
+          integrations: [],
+        },
+      }),
+    });
+  });
+  await login(page, CUSTOMER);
+  await page.getByRole('link', { name: 'Integrations', exact: true }).click();
+  await expect(page.getByText('No integrations exist for this tenant.')).toBeVisible();
+  await expect(page.getByTestId('integration-row')).toHaveCount(0);
+});
+
+test('customer: integrations page renders capability failures honestly', async ({ page }) => {
+  await page.route('**/appport', async (route) => {
+    const request = route.request().postDataJSON() as {
+      requestId: string;
+      capability?: { name?: string };
+    };
+    if (request.capability?.name !== 'integrations.list') return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        protocol: 'appport/1',
+        type: 'response',
+        requestId: request.requestId,
+        ok: false,
+        error: { code: 'FORBIDDEN', message: 'The principal cannot read another tenant' },
+      }),
+    });
+  });
+  await login(page, CUSTOMER);
+  await page.getByRole('link', { name: 'Integrations', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('cannot read another tenant');
+  await expect(page.getByTestId('integration-row')).toHaveCount(0);
+});
+
 test('operator: inbox, tenants, releases, economics', async ({ page }) => {
   await login(page, OPERATOR);
   await expect(page).toHaveURL(/\/ops$/);

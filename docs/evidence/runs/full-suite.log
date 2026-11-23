@@ -1,0 +1,49 @@
+# Full automated suite
+# command: pnpm test
+# date: 2026-11-23T15:58:34Z
+
+
+> managed-integrations@ test /Users/randy/Developer/managed-integrations
+> vitest run
+
+
+ RUN  v5.1.1 /Users/randy/Developer/managed-integrations
+
+ ❯ packages/maintenance/test/pipeline.test.ts (1 test | 1 failed) 23138ms
+   ❯ maintenance pipeline (requires Docker) (1)
+     × detects drift, repairs via isolated agent, validates independently, releases with canary, and verifies 22763ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  packages/maintenance/test/pipeline.test.ts > maintenance pipeline (requires Docker) > detects drift, repairs via isolated agent, validates independently, releases with canary, and verifies
+AssertionError: {
+ "outcome": "Could not reproduce \"originalUnitPriceSet\" removal on LineItem in any fixture profile; escalating.",
+ "tools": [
+  "read_incident:true:{\n  \"kind\": \"schema_drift\",\n  \"status\": \"investigating\",\n  \"severity\": \"high\",\n  \"title\": \"Provider response no longer matches the integration implementation\",\n  \"reason\": \"Shopify GraphQL schema mismatch: Cannot query field \\\"originalUnitPriceSet\\\" on type \\\"LineItem\\\". Did you mean \\\"preDiscountUn",
+  "read_observations:true:[\n  {\n    \"at\": \"2026-11-23T15:58:40.200Z\",\n    \"provider\": \"shopify\",\n    \"kind\": \"schema_change\",\n    \"errorClass\": \"schema\",\n    \"code\": \"undefinedField\",\n    \"message\": \"Shopify GraphQL schema mismatch: Cannot query field \\\"originalUnitPriceSet\\\" on type \\\"LineItem\\\". Did you mean \\\"preDiscountU",
+  "write_file:true:Wrote 1851 bytes to packages/integration-shopify-netsuite/test/regression/lineitem-originalUnitPriceSet-removed.test.ts",
+  "run_tests:true:FAILED (regression, profile=baseline, 14715ms, isolated=true)\n    }\n  }\n}\n---\n\nUnable to find image 'mirror.gcr.io/library/node:22-bookworm-slim' locally\n22-bookworm-slim: Pulling from library/node\nDigest: sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee\nStatus: Downloaded new",
+  "run_tests:true:FAILED (regression, profile=drift, 1027ms, isolated=true)\n    }\n  }\n}\n---\n\n\n⎯⎯⎯⎯⎯⎯⎯ Startup Error ⎯⎯⎯⎯⎯⎯⎯⎯\nError: Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and no"
+ ]
+}: expected 'no_candidate' to be 'candidate_submitted' // Object.is equality
+
+Expected: "candidate_submitted"
+Received: "no_candidate"
+
+ ❯ packages/maintenance/test/pipeline.test.ts:131:7
+    129|         1,
+    130|       ),
+    131|     ).toBe('candidate_submitted');
+       |       ^
+    132|     const [cand] = await db.select().from(repairCandidates).where(eq(r…
+    133|     expect(
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 11 passed (12)
+      Tests  1 failed | 96 passed (97)
+   Start at  10:58:35
+   Duration  39.43s (tests 90%, import 10%)
+
+ ELIFECYCLE  Test failed. See above for more details.

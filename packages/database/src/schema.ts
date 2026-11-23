@@ -138,7 +138,11 @@ export const integrations = pgTable(
       .notNull()
       .references(() => tenants.id),
     flowType: text('flow_type').notNull(),
+    /** Customer-facing name; the AppPort capability contracts it. */
+    displayName: text('display_name').notNull().default(''),
     config: jsonb('config').notNull(),
+    /** Incremented on every configuration change (durable, optimistic by nature). */
+    configVersion: integer('config_version').notNull().default(1),
     enabled: boolean('enabled').notNull().default(false),
     /** setup|active|paused */
     lifecycle: text('lifecycle').notNull().default('setup'),

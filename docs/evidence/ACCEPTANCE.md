@@ -54,3 +54,44 @@ Latest full run: `pnpm test` → 9 files, 76 tests passed (2026-11-23), plus `re
 
 **The first slice is NOT complete per §29:** criterion 1 is blocked on real provider access (and every
 "VERIFIED (fixture)" item still needs confirmation against real sandboxes), and 32 is partial.
+
+---
+
+# SLICE 1 acceptance — AppPort-native foundation
+
+Scope: one real capability (`integrations.list@1`) over durable PostgreSQL state, authorized at the
+capability boundary, consumed by the UI and by a real MCP client. Provider/OAuth/sync/maintenance work
+was explicitly out of scope for this slice.
+
+Evidence keys:
+**T-cap** `packages/capabilities/test/integrations-list.test.ts` ·
+**T-mcp** `apps/api/test/appport-mcp.test.ts` ·
+**E2E** `e2e/app.spec.ts` (3 new `/app/integrations` tests) ·
+**MANIFEST** `docs/evidence/runs/appport-manifest.log` ·
+**HTTP** `docs/evidence/runs/appport-http.log`.
+
+| # | Criterion | Status | Evidence |
+| --- | --- | --- | --- |
+| 1 | AppPort implementation inspected | VERIFIED | Phase A matrix in `architecture/APPORT-CAPABILITY-MAP.md` §5, with package versions and source symbols |
+| 2 | Capability model understood and documented | VERIFIED | `APPORT-CAPABILITY-MAP.md` (contract, permissions, projections, gaps) |
+| 3 | Real capability via AppPort contracts | VERIFIED | `defineCapability` + `s.object`; T-cap manifest assertions; MANIFEST |
+| 4 | Reads durable application state | VERIFIED | T-cap inserts rows through Drizzle and asserts they are returned; new application instance returns the same rows; restart evidence below |
+| 5 | Authorization at the capability boundary | VERIFIED | T-cap: anonymous `UNAUTHORIZED`, empty permissions `FORBIDDEN`; T-mcp same through MCP |
+| 6 | Tenant isolation proven | VERIFIED | T-cap + T-mcp: tenant A with `{tenantId: B}` → `FORBIDDEN`; tenant B sees only B's row |
+| 7 | Discoverable through native MCP | VERIFIED | T-mcp `tools/list` → `integrations_list` with the AppPort schema; HTTP log `tools/list` |
+| 8 | Real MCP client invokes it | VERIFIED | T-mcp uses `@modelcontextprotocol/sdk` `Client` + `StreamableHTTPClientTransport` over HTTP; HTTP log shows persisted rows |
+| 9 | UI invokes the same capability | VERIFIED | E2E navigates `/app/integrations`; the page uses `@appport/client` + `@appport/transport-http` against `/appport` (no REST listing route) |
+| 10 | UI and MCP produce equivalent results | VERIFIED | Same `handleRequest` path; T-mcp structuredContent equals the serialized business object; E2E row contains the same display name/lifecycle |
+| 11 | Automated persistence/invocation/authorization tests | VERIFIED | T-cap 10 tests · T-mcp 9 tests (see run log) |
+| 12 | Runs locally with documented commands | VERIFIED | `make up`; `curl` checks in `docs/operations/OPERATIONS.md`; HTTP log |
+| 13 | Docs distinguish implemented/limitations/future | VERIFIED | capability map §8, KNOWN-LIMITATIONS "AppPort layer", ROADMAP row 8 |
+| 14 | No parallel capability/authorization framework | VERIFIED | One `createApplication`, one authorizer composition; transport adapter contains no business logic or auth; see `ARCHITECTURE.md` |
+
+State survives restart: the stack was restarted via `make reset`/`make up` and `integrations.list`
+returned the seeded rows from PostgreSQL with no in-memory cache (`HTTP` log; T-cap "fresh application
+instance" test). Migrations run from `packages/database/migrations` on a clean database
+(`0000_initial.sql`, `0001_sharp_angel.sql`).
+
+Known deviations from "all green at once": see KNOWN-LIMITATIONS item 10 (the pre-existing unmapped-SKU
+browser test is stateful and requires `make reset`; the suite also expects the first scheduled sync to
+have run). The AppPort-specific tests are independent of that state.

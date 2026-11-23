@@ -71,6 +71,7 @@ const badgeVariants = cva('inline-flex items-center rounded px-2 py-0.5 text-xs 
 
 const TONES: Record<string, VariantProps<typeof badgeVariants>['tone']> = {
   healthy: 'good',
+  active: 'good',
   verified: 'good',
   authorized: 'good',
   succeeded: 'good',
@@ -82,6 +83,7 @@ const TONES: Record<string, VariantProps<typeof badgeVariants>['tone']> = {
   validated: 'good',
   candidate_submitted: 'good',
   degraded: 'warn',
+  paused: 'warn',
   partial: 'warn',
   pending: 'warn',
   skipped: 'neutral',

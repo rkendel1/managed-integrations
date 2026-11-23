@@ -10,13 +10,21 @@
 | 5 Release safety            | DONE                                                | pipeline + release tests (canary, auto/operator rollback)                                                                    |
 | 6 End-to-end proof          | DONE (fixtures)                                     | Docker demo, crash test, Playwright                                                                                          |
 | 7 Pilot readiness           | PARTIAL                                             | see `evidence/PILOT-READINESS.md`; blocked on real provider access                                                           |
+| 8 AppPort-native foundation  | DONE (one capability)                               | `capabilities/test/integrations-list.test.ts`, `apps/api/test/appport-mcp.test.ts`, Playwright; `architecture/APPORT-CAPABILITY-MAP.md` |
 
 ## Next (within the locked roadmap)
 
 1. **Real-provider verification (Phase 7 blocker):** Shopify dev store + NetSuite sandbox; run the
    acceptance scenarios manually against them; resolve every UNVERIFIED item in PROVIDER-RESEARCH.
-2. Onboarding checklist + NetSuite certificate generation helper (openssl) in the Connections UI.
-3. Run the maintenance service on a separate host; production deploy to a VPS; restore drill.
-4. Execute the Claude planner against a recorded non-playbook failure with an API key; measure cost.
+2. **Capability parity for configuration (recommended next slice):** add one consequential capability,
+   `integrations.configure@1`, that reads and updates the integration's contract-validated config with
+   `config_version` optimistic concurrency and an `integrations.write` permission. It replaces the
+   customer config REST path as the UI's mutation, exercises AppPort idempotency/effect handling, and
+   proves UI/MCP equivalence for a write. Do this only after deciding how CSRF is expressed across
+   capability transports; the current cookie + custom-header CSRF applies to the REST path, not to
+   AppPort calls.
+3. Onboarding checklist + NetSuite certificate generation helper (openssl) in the Connections UI.
+4. Run the maintenance service on a separate host; production deploy to a VPS; restore drill.
+5. Execute the Claude planner against a recorded non-playbook failure with an API key; measure cost.
 
 No additional integrations until the first flow is proven with a real customer.

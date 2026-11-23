@@ -22,10 +22,18 @@
 
 ## Components
 
+- **AppPort capability layer** (`packages/capabilities`, mounted in `apps/api`): one
+  `@appport/core` application (`io.managedintegrations.app`) owns the capability contract and the
+  authorization boundary. Today it registers `integrations.list@1`; the browser UI and MCP are two
+  projections of the same `AppPortApplication.handleRequest` pipeline
+  (`validate → authorize → execute → serialize`). See
+  [`APPORT-CAPABILITY-MAP.md`](APPORT-CAPABILITY-MAP.md).
 - **API** (`apps/api`): session auth (scrypt, httpOnly cookie, per-session CSRF), customer routes (status,
   connections, Shopify OAuth, NetSuite M2M setup, integration config, history, reliability, incidents),
   operator routes (exception inbox, incidents, candidates, approve/reject, releases/rollback, metrics,
-  audit). Serves the built UI. Internal errors return only a request id.
+  audit). Serves the built UI and the AppPort HTTP binding (`/.well-known/appport`, `/appport`,
+  `/appport/manifest`, `/appport/public`, `/appport/events`) and MCP (`POST /mcp`). Internal errors
+  return only a request id.
 - **Runtime worker** (`apps/worker`, `WORKER_ROLE=runtime`): `reliability.tick` every minute (recover
   interrupted runs → schedule due syncs/reconciliations → evaluate → execute actions), `sync.run`,
   `reconcile.run`, `backlog.assess`, `release.run`.
@@ -42,6 +50,14 @@
 
 ## Key decisions
 
+- **AppPort is the capability boundary**: capabilities are defined once with `defineCapability` and
+  registered in one `createApplication`; UI, MCP and tests consume the same `handleRequest` path.
+  Authorization is declared on the capability and enforced before the handler, never in a transport.
+  There is no second capability registry, permission engine or MCP router.
+- **Trusted identity is host-owned**: AppPort does not authenticate. The API resolves the existing
+  `mi_session` cookie against the durable `sessions` table and hands AppPort a `Session`/`Principal`
+  whose permissions are derived from role and tenant. Capability input (including `tenantId`) is never
+  accepted as proof of authority.
 - **Decision vs execution**: reliability rules return actions; workers execute them as durable jobs.
 - **Durable authority**: PostgreSQL holds every lifecycle state; pg-boss jobs carry only ids. Agent tool
   logs are evidence, never the lifecycle record.
@@ -52,6 +68,21 @@
   check), not trusted.
 - **Deterministic first**: the shipped demo repair uses a deterministic playbook; an LLM planner is
   optional and replaceable (`MAINTENANCE_PLANNER`).
+
+## Capability path (implemented)
+
+```
+browser /app/integrations ── @appport/client + @appport/transport-http ─┐
+MCP client POST /mcp ── @appport/mcp createMcpHandler ──────────────────┤
+direct tests ── application.handleRequest ──────────────────────────────┘
+        → validate input → authorize (permission + tenant boundary)
+        → integrations.list handler → PostgreSQL → validate output
+```
+
+`apps/api/src/appport-routes.ts` is a Fastify ↔ WHATWG `Request`/`Response` adapter only. It forwards
+to the AppPort HTTP binding and MCP handler; it contains no business logic and no authorization.
+Identity for both projections comes from the same cookie → `loadSession` resolver in
+`apps/api/src/appport-runtime.ts`.
 
 ## Observability
 

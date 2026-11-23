@@ -43,6 +43,35 @@ single currency; one integration per tenant.
 - Interrupted-run detection waits for lease expiry (2 min) before resuming.
 - Scheduled reconciliation window is the last 7 days; older history is reconciled only on demand.
 
+## AppPort layer (SLICE 1)
+
+1. **One capability only.** `integrations.list@1` is registered. Creating/configuring/enabling/syncing
+   integrations, connections, credentials, incidents, maintenance and releases are still REST routes or
+   worker jobs; they are **not** AppPort capabilities and MCP cannot reach them.
+2. **Agents need a browser session cookie.** MCP resolves identity from `mi_session`. There is no OAuth
+   resource-server flow, API key or service principal for MCP clients yet. A non-browser agent cannot
+   authenticate without a session token minted for it. This is the main blocker to real agent use.
+3. **No capability audit trail or telemetry sink.** Read invocations are not written to `audit_log`;
+   AppPort's telemetry hooks are not wired to pino/OTel.
+4. **MCP is stateless.** `createMcpHandler` builds a server per HTTP request and declines `GET`/`DELETE`.
+   No resumable streams, server-initiated notifications, resources or prompts.
+5. **Local HTTP adapter.** `apps/api/src/appport-routes.ts` converts Fastify requests to WHATWG
+   `Request`/`Response` and re-serializes the parsed JSON body; the AppPort binding reads a text body.
+   AppPort request bodies are capped at 256 KiB.
+6. **No durable AppPort session store.** Identity is rebuilt from the application `sessions` table on
+   every call; AppPort's in-memory `MemorySessionStore` is not used. Sign-out/expiry therefore applies
+   immediately, but no AppPort session features exist.
+7. **No pagination or filtering** beyond tenant: `integrations.list` returns every integration of the
+   tenant (currently one per tenant by product scope).
+8. **Tenant policy is code**, not a grants table; per-user permissions are not modelled.
+9. **UI state tests use transport interception** for the empty and failure cases (only the
+   `integrations.list` response is substituted; discovery/manifest are real). The success path is a real
+   capability call against PostgreSQL.
+10. **E2E suite is stateful.** The pre-existing unmapped-SKU browser test adds a SKU mapping and is only
+    repeatable after `make reset`; the suite also assumes the first scheduled sync has run
+    (`last-sync != never`). These are pre-existing properties, not introduced by this slice. The new
+    `/app/integrations` tests do not depend on that state.
+
 ## Risks
 
 - Real NetSuite accounts commonly have mandatory custom fields/approval workflows: these surface as

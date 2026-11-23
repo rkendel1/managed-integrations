@@ -22,3 +22,11 @@ changed after delivery), **unexpected** (delivered but no longer in source windo
 rejection, or a NetSuite record without our externalId).
 
 We do not claim perfect reliability. Unknown states are reported as unknown.
+
+## Capability surface (SLICE 1)
+
+`integrations.list@1` is a **read-only projection** of durable integration state. It does not extend or
+weaken the commitments above: freshness and completeness are still established by the sync engine and
+reconciliation, not by the capability. The capability adds an authority boundary — a caller only sees
+its own tenant's integrations, and every consumer (UI, MCP) passes the same check. Capability
+availability is not yet a contractual uptime commitment.

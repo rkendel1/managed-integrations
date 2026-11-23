@@ -33,6 +33,10 @@ export interface SessionUser {
   role: 'customer' | 'operator';
   tenantId: string | null;
   csrfToken: string;
+  /** AppPort needs a stable session id and its expiry for the identity it authorizes against. */
+  sessionId: string;
+  sessionCreatedAt: Date;
+  sessionExpiresAt: Date;
 }
 
 declare module 'fastify' {
@@ -66,6 +70,9 @@ export async function loadSession(db: Db, token: string | undefined): Promise<Se
     role: row.u.role as SessionUser['role'],
     tenantId: row.u.tenantId,
     csrfToken: row.s.csrfToken,
+    sessionId: row.s.id,
+    sessionCreatedAt: row.s.createdAt,
+    sessionExpiresAt: row.s.expiresAt,
   };
 }
 

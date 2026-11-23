@@ -8,6 +8,13 @@
       "when": 1795442465500,
       "tag": "0000_initial",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1795448563060,
+      "tag": "0001_sharp_angel",
+      "breakpoints": true
     }
   ]
 }

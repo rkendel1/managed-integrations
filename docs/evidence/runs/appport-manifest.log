@@ -1,0 +1,584 @@
+# AppPort manifest and MCP tool projection
+# command: DATABASE_URL=postgres://mi:mi_dev_password@127.0.0.1:5432/managed_integrations_test pnpm --filter @mi/capabilities exec tsx scripts/print-manifest.ts
+# date: 2026-11-23T15:58:09Z
+
+=== AppPort manifest ===
+{
+  "protocol": "appport/1",
+  "application": {
+    "id": "io.managedintegrations.app",
+    "name": "Managed Integrations",
+    "version": "0.1.0"
+  },
+  "capabilities": [
+    {
+      "name": "appport.manifest",
+      "versions": [
+        1
+      ],
+      "latestVersion": 1,
+      "description": "Returns the application manifest for this deployment.",
+      "kind": "request",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "protocol": {
+            "type": "string"
+          },
+          "application": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "id",
+              "name",
+              "version"
+            ]
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "transports": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "protocol",
+          "application",
+          "capabilities",
+          "events",
+          "transports"
+        ],
+        "title": "AppPortManifest"
+      },
+      "authorization": [],
+      "authorizationContract": {
+        "required": false,
+        "public": true
+      },
+      "authorizationVersion": 1,
+      "idempotency": "unsupported",
+      "concurrency": {
+        "mode": "parallel"
+      },
+      "definitions": [
+        {
+          "version": 1,
+          "description": "Returns the application manifest for this deployment.",
+          "kind": "request",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "protocol": {
+                "type": "string"
+              },
+              "application": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "id",
+                  "name",
+                  "version"
+                ]
+              },
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              },
+              "transports": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                }
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "protocol",
+              "application",
+              "capabilities",
+              "events",
+              "transports"
+            ],
+            "title": "AppPortManifest"
+          },
+          "authorization": [],
+          "authorizationContract": {
+            "required": false,
+            "public": true
+          },
+          "authorizationVersion": 1,
+          "idempotency": "unsupported",
+          "concurrency": {
+            "mode": "parallel"
+          }
+        }
+      ]
+    },
+    {
+      "name": "appport.ping",
+      "versions": [
+        1
+      ],
+      "latestVersion": 1,
+      "description": "Liveness probe. Returns the server time.",
+      "kind": "request",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "type": "string",
+            "description": "ISO-8601 timestamp",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "timestamp"
+        ]
+      },
+      "authorization": [],
+      "authorizationContract": {
+        "required": false,
+        "public": true
+      },
+      "authorizationVersion": 1,
+      "idempotency": "unsupported",
+      "concurrency": {
+        "mode": "parallel"
+      },
+      "definitions": [
+        {
+          "version": 1,
+          "description": "Liveness probe. Returns the server time.",
+          "kind": "request",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "timestamp": {
+                "type": "string",
+                "description": "ISO-8601 timestamp",
+                "format": "date-time"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "timestamp"
+            ]
+          },
+          "authorization": [],
+          "authorizationContract": {
+            "required": false,
+            "public": true
+          },
+          "authorizationVersion": 1,
+          "idempotency": "unsupported",
+          "concurrency": {
+            "mode": "parallel"
+          }
+        }
+      ]
+    },
+    {
+      "name": "integrations.list",
+      "versions": [
+        1
+      ],
+      "latestVersion": 1,
+      "description": "Lists the integrations visible to the authenticated principal, scoped to its tenant.",
+      "kind": "request",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "Optional tenant scope. A caller without integrations.read:any may only name its own tenant.",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "tenant": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "integrations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "tenantId": {
+                  "type": "string"
+                },
+                "flowId": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "lifecycle": {
+                  "type": "string",
+                  "enum": [
+                    "setup",
+                    "active",
+                    "paused"
+                  ]
+                },
+                "configVersion": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "tenantId",
+                "flowId",
+                "displayName",
+                "lifecycle",
+                "configVersion",
+                "createdAt",
+                "updatedAt"
+              ]
+            }
+          }
+        },
+        "additionalProperties": false,
+        "required": [
+          "tenant",
+          "integrations"
+        ]
+      },
+      "authorization": [
+        "integrations.read"
+      ],
+      "effect": "observation",
+      "authorizationContract": {
+        "required": true,
+        "scopes": [
+          "integrations.read"
+        ]
+      },
+      "authorizationVersion": 1,
+      "idempotency": "unsupported",
+      "concurrency": {
+        "mode": "parallel"
+      },
+      "definitions": [
+        {
+          "version": 1,
+          "description": "Lists the integrations visible to the authenticated principal, scoped to its tenant.",
+          "kind": "request",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "tenantId": {
+                "type": "string",
+                "description": "Optional tenant scope. A caller without integrations.read:any may only name its own tenant.",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              }
+            },
+            "additionalProperties": false
+          },
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "tenant": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "name"
+                ]
+              },
+              "integrations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "tenantId": {
+                      "type": "string"
+                    },
+                    "flowId": {
+                      "type": "string"
+                    },
+                    "displayName": {
+                      "type": "string"
+                    },
+                    "lifecycle": {
+                      "type": "string",
+                      "enum": [
+                        "setup",
+                        "active",
+                        "paused"
+                      ]
+                    },
+                    "configVersion": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "tenantId",
+                    "flowId",
+                    "displayName",
+                    "lifecycle",
+                    "configVersion",
+                    "createdAt",
+                    "updatedAt"
+                  ]
+                }
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "tenant",
+              "integrations"
+            ]
+          },
+          "authorization": [
+            "integrations.read"
+          ],
+          "effect": "observation",
+          "authorizationContract": {
+            "required": true,
+            "scopes": [
+              "integrations.read"
+            ]
+          },
+          "authorizationVersion": 1,
+          "idempotency": "unsupported",
+          "concurrency": {
+            "mode": "parallel"
+          }
+        }
+      ]
+    }
+  ],
+  "events": [],
+  "transports": [],
+  "conformance": 1
+}
+=== MCP tools (derived from the manifest) ===
+{
+  "tools": [
+    {
+      "name": "integrations_list",
+      "description": "Lists the integrations visible to the authenticated principal, scoped to its tenant.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "description": "Optional tenant scope. A caller without integrations.read:any may only name its own tenant.",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "tenant": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name"
+            ]
+          },
+          "integrations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "tenantId": {
+                  "type": "string"
+                },
+                "flowId": {
+                  "type": "string"
+                },
+                "displayName": {
+                  "type": "string"
+                },
+                "lifecycle": {
+                  "type": "string",
+                  "enum": [
+                    "setup",
+                    "active",
+                    "paused"
+                  ]
+                },
+                "configVersion": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "tenantId",
+                "flowId",
+                "displayName",
+                "lifecycle",
+                "configVersion",
+                "createdAt",
+                "updatedAt"
+              ]
+            }
+          }
+        },
+        "required": [
+          "tenant",
+          "integrations"
+        ],
+        "additionalProperties": false
+      },
+      "_meta": {
+        "dev.appport/capability": {
+          "name": "integrations.list",
+          "version": 1,
+          "authorization": [
+            "integrations.read"
+          ],
+          "effect": "observation",
+          "idempotency": "unsupported",
+          "authorizationContract": {
+            "required": true,
+            "scopes": [
+              "integrations.read"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import {
   CustomerRun,
   CustomerRuns,
 } from '@/pages/customer';
+import { CustomerIntegrations } from '@/pages/integrations';
 import {
   OpsCandidate,
   OpsInbox,
@@ -162,6 +163,7 @@ function Guard({ role, children }: { role: 'customer' | 'operator'; children: (m
 
 const CUSTOMER_NAV: [string, string][] = [
   ['/app', 'Overview'],
+  ['/app/integrations', 'Integrations'],
   ['/app/connections', 'Connections'],
   ['/app/integration', 'Integration'],
   ['/app/history', 'Delivery history'],
@@ -194,6 +196,7 @@ function App() {
               <Shell me={me} nav={CUSTOMER_NAV}>
                 <Routes>
                   <Route index element={<CustomerOverview />} />
+                  <Route path="integrations" element={<CustomerIntegrations />} />
                   <Route path="connections" element={<CustomerConnections />} />
                   <Route path="integration" element={<CustomerIntegration />} />
                   <Route path="history" element={<CustomerRuns />} />

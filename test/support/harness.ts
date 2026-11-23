@@ -185,6 +185,8 @@ export async function createHarness(
     .values({
       tenantId,
       flowType: FLOW_TYPE,
+      displayName: 'Shopify orders → NetSuite sales orders',
+      configVersion: 1,
       config: { ...DEFAULT_CONFIG, ...opts.config },
       enabled: true,
       lifecycle: 'active',

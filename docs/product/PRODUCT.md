@@ -20,6 +20,18 @@ cursors, investigate missing records, or operate an integration platform.
 We are a managed service, not an iPaaS, connector marketplace, workflow builder, SDK, customer-side agent
 or consulting firm. Customers never connect repositories, receive PRs, or run our code.
 
+## Capability boundary (SLICE 1)
+
+The product is an **AppPort-native application**: business operations are defined once as AppPort
+capabilities, and the customer UI, software clients and agents are projections of the same contract
+and the same authorization boundary. The first capability, `integrations.list@1`, returns the
+integrations of the authenticated principal's tenant from durable PostgreSQL state.
+
+This is a foundation, not a new customer promise. The existing reliability contract and the
+Shopify → NetSuite flow are unchanged. See
+[`docs/architecture/APPORT-CAPABILITY-MAP.md`](../architecture/APPORT-CAPABILITY-MAP.md) for the
+actual contract, permissions, MCP exposure and verified/unverified areas.
+
 ## First flow (candidate — not market-validated)
 
 Shopify orders → NetSuite sales orders: backfill, incremental sync, pagination, durable cursor,

@@ -11,6 +11,12 @@ outcome; the engine, workers, reliability system and maintenance agent are inter
 [`docs/evidence/KNOWN-LIMITATIONS.md`](docs/evidence/KNOWN-LIMITATIONS.md) and
 [`docs/evidence/ACCEPTANCE.md`](docs/evidence/ACCEPTANCE.md).
 
+**SLICE 1 (AppPort-native foundation):** the application is now an AppPort application
+(`io.managedintegrations.app`). One real capability, `integrations.list@1`, is backed by PostgreSQL,
+authorized at the capability boundary, and consumed by both the browser UI (`/app/integrations`) and
+MCP clients (`POST /mcp`). Contract, permissions, verified/unverified areas and platform gaps:
+[`docs/architecture/APPORT-CAPABILITY-MAP.md`](docs/architecture/APPORT-CAPABILITY-MAP.md).
+
 ## Run it (Docker)
 
 Requirements: Docker with Compose v2, git, make, openssl.
@@ -55,10 +61,18 @@ Worker crash/restart check (SIGKILL mid-sync, resume, no duplicates):
 make reset && ./scripts/crash-test.sh
 ```
 
-Browser tests against the running stack:
+Browser tests against the running stack (the unmapped-SKU test adds a SKU mapping, so start from a
+fresh stack; allow the first scheduled sync to run so `last-sync` is populated):
 
 ```bash
+make reset
 pnpm install && pnpm exec playwright test
+```
+
+The AppPort capability and MCP tests do not need the Docker stack:
+
+```bash
+pnpm exec vitest run packages/capabilities/test/integrations-list.test.ts apps/api/test/appport-mcp.test.ts
 ```
 
 Behind a TLS-intercepting proxy or Docker Hub rate limits, set the build/image overrides documented in
@@ -97,9 +111,10 @@ maintenance pipeline test (skipped with a message when Docker is unavailable).
 ## Repository map
 
 ```
-apps/api        Fastify API (customer + operator), serves the web UI
+apps/api        Fastify API (customer + operator), serves the web UI, AppPort HTTP binding and MCP
 apps/worker     pg-boss workers: runtime role (sync, reconcile, release) and maintenance role (agent, validation)
 apps/web        React + Vite + Tailwind + TanStack Query UI (customer /app, operator /ops)
+packages/capabilities               AppPort application: capability contracts, authorizer, identity mapping, read model, HTTP/MCP runtime
 packages/contracts                  reliability contract v1, config schema, error classes, queues
 packages/database                   Drizzle schema + migrations (PostgreSQL is the authority)
 packages/integration-shopify-netsuite  provider clients, OAuth/M2M, sync engine; src/implementation = versioned code

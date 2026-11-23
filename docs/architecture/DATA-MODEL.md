@@ -7,7 +7,7 @@
 | connections                         | per tenant+provider: status (pending/authorized/verified/error/revoked/disconnected), scopes, base URL, AES-GCM credential envelope (AAD = connection id), token expiries, OAuth state hash |
 | integration_contracts               | immutable contract versions + sha256                                                                                                                                                        |
 | integration_versions                | immutable implementation artifacts: source commit, path, sha256, release state                                                                                                              |
-| integrations                        | config, enabled/lifecycle, contract version, pinned + canary implementation version, health, **cursor watermark**, backfill completion, last successful sync, **lease** (owner/expiry)      |
+| integrations                        | config, **display_name** (customer-facing label), **config_version** (incremented on every config change), enabled/lifecycle, contract version, pinned + canary implementation version, health, **cursor watermark**, backfill completion, last successful sync, **lease** (owner/expiry) |
 | sync_runs                           | mode, status, trigger, version, cursor before/after, page/record counts, error class, heartbeat, evidence                                                                                   |
 | deliveries                          | one per (integration, source order): idempotency key, external id, destination id, outcome, attempts, validation, non-PII summary (lines, total), source updatedAt delivered vs latest      |
 | delivery_attempts                   | every attempt: outcome, HTTP status, error class, retry delay, version                                                                                                                      |
@@ -18,6 +18,16 @@
 | repair_candidates                   | branch, base/candidate commit, diff, changed files, hypothesis, agent test results (non-authoritative), status, decision                                                                    |
 | validation_runs                     | suite sha256, candidate commit, protected-paths check, per-suite results, sandbox info                                                                                                      |
 | releases                            | version, previous version, approver, canary run/result, post-release reconciliation, rollback reason                                                                                        |
+
+## Capability-facing read model
+
+`integrations.list@1` reads only `integrations` and `tenants`. It publishes ids, tenant, flow id,
+display name, lifecycle, config version and timestamps; it never publishes `config`, credentials,
+cursor/lease state or provider payloads. The tenant filter is applied in the SQL predicate from the
+trusted principal's tenant, not from caller input.
+
+`display_name` and `config_version` were added by migration `0001_sharp_angel.sql`. Existing rows
+default to `display_name = ''` and `config_version = 1`; the seed fills the display name once.
 
 ## State machines
 

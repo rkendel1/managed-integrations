@@ -415,6 +415,7 @@ export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps
       .update(integrations)
       .set({
         config,
+        ...(body.data.config ? { configVersion: integ.configVersion + 1 } : {}),
         ...(body.data.enabled != null
           ? { enabled: body.data.enabled, lifecycle: body.data.enabled ? 'active' : 'paused' }
           : {}),

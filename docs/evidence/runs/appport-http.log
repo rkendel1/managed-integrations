@@ -1,0 +1,128 @@
+# AppPort capability evidence against the running Docker stack
+# stack: make reset  (API http://localhost:3000)
+# date: 2026-11-23T15:58:22Z
+
+## readiness
+GET /readyz -> 200
+
+## discovery
+GET /.well-known/appport -> 200
+
+## manifest capabilities and authorization
+{
+  "application": "io.managedintegrations.app",
+  "capabilities": [
+    {
+      "name": "appport.manifest",
+      "latestVersion": 1,
+      "kind": "request",
+      "authorization": [],
+      "effect": null
+    },
+    {
+      "name": "appport.ping",
+      "latestVersion": 1,
+      "kind": "request",
+      "authorization": [],
+      "effect": null
+    },
+    {
+      "name": "integrations.list",
+      "latestVersion": 1,
+      "kind": "request",
+      "authorization": [
+        "integrations.read"
+      ],
+      "effect": "observation"
+    }
+  ]
+}
+
+## session (cookie value not printed)
+{
+  "user": {
+    "email": "customer@acme.test",
+    "role": "customer"
+  }
+}
+
+## MCP tools/list (MCP client credential = mi_session cookie)
+{
+  "name": "integrations_list",
+  "description": "Lists the integrations visible to the authenticated principal, scoped to its tenant.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "tenantId": {
+        "type": "string",
+        "description": "Optional tenant scope. A caller without integrations.read:any may only name its own tenant.",
+        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+      }
+    },
+    "additionalProperties": false
+  }
+}
+
+## MCP tools/call integrations_list (authorized)
+{
+  "isError": null,
+  "structuredContent": {
+    "tenant": {
+      "id": "cbcbd4a2-f673-4d31-a514-0a597c690423",
+      "name": "Acme Outdoor"
+    },
+    "integrations": [
+      {
+        "id": "08a323a0-4bf4-437f-b8b5-e15385222118",
+        "tenantId": "cbcbd4a2-f673-4d31-a514-0a597c690423",
+        "flowId": "shopify_orders_to_netsuite_sales_orders",
+        "displayName": "Shopify orders → NetSuite sales orders",
+        "lifecycle": "active",
+        "configVersion": 2,
+        "createdAt": "2026-11-23T15:56:31.038Z",
+        "updatedAt": "2026-11-23T15:58:06.764Z"
+      }
+    ]
+  }
+}
+
+## MCP tools/call integrations_list (anonymous)
+{
+  "isError": true,
+  "content": [
+    {
+      "type": "text",
+      "text": "UNAUTHORIZED: Authentication is required"
+    }
+  ],
+  "error": {
+    "code": "UNAUTHORIZED",
+    "category": "unauthenticated",
+    "retryable": false
+  }
+}
+
+## MCP tools/call invalid input
+{
+  "isError": true,
+  "content": [
+    {
+      "type": "text",
+      "text": "INVALID_INPUT: Input for integrations.list@1 is invalid: tenantId: does not match the required pattern"
+    }
+  ],
+  "error": {
+    "code": "INVALID_INPUT",
+    "category": "invalid_request",
+    "retryable": false,
+    "details": {
+      "issues": [
+        {
+          "path": "tenantId",
+          "message": "does not match the required pattern"
+        }
+      ]
+    }
+  }
+}
+

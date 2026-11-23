@@ -14,6 +14,8 @@ import { newCorrelationId, redact, withCorrelation } from '@mi/observability';
 import { createSession, destroySession, loadSession, SESSION_COOKIE, verifyPassword } from './auth.ts';
 import { registerCustomerRoutes } from './customer-routes.ts';
 import { registerOperatorRoutes } from './operator-routes.ts';
+import { registerAppPortRoutes } from './appport-routes.ts';
+import { createApiAppPortRuntime, pinoToAppPortLogger } from './appport-runtime.ts';
 
 export interface ApiDeps {
   db: Db;
@@ -76,6 +78,18 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
       return reply.code(503).send({ status: 'unavailable' });
     }
   });
+
+  /* ------------------------------ AppPort: capabilities + MCP ------------------------------ */
+  const appPort = createApiAppPortRuntime({
+    db: deps.db,
+    logger: pinoToAppPortLogger({
+      debug: (obj, msg) => app.log.debug(obj, msg),
+      info: (obj, msg) => app.log.info(obj, msg),
+      warn: (obj, msg) => app.log.warn(obj, msg),
+      error: (obj, msg) => app.log.error(obj, msg),
+    }),
+  });
+  registerAppPortRoutes(app, appPort);
 
   /* ------------------------------ auth ------------------------------ */
   const secureCookie = deps.config.production;

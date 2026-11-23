@@ -29,6 +29,37 @@ Startup **fails closed** if keys are missing, overrides are set, or the session 
 so the running implementation is traceable to a commit. Runtime images currently run TypeScript through
 `tsx` with the full dependency set installed (simplicity over image size; see KNOWN-LIMITATIONS).
 
+## Capability endpoints (AppPort)
+
+The API serves the capability contract and its two projections:
+
+| Path | Method | Purpose | Auth |
+| --- | --- | --- | --- |
+| `/.well-known/appport` | GET | AppPort discovery | none |
+| `/appport/manifest` | GET | published manifest (capabilities, schemas, permissions) | none |
+| `/appport/public` | GET | public description | none |
+| `/appport` | POST | capability invocation (UI transport) | `mi_session` cookie for protected capabilities |
+| `/mcp` | POST | MCP Streamable HTTP (tools) | `mi_session` cookie |
+| `/mcp` | GET/DELETE | declined by the stateless adapter (405) | — |
+
+Readiness does not depend on AppPort; if the database is down every capability answers with the
+protocol's error envelope and `/readyz` returns 503.
+
+Operational checks (running stack):
+
+```bash
+curl -fsS http://localhost:3000/readyz
+curl -fsS http://localhost:3000/.well-known/appport
+curl -fsS http://localhost:3000/appport/manifest | jq '.capabilities[].name'
+curl -fsS -X POST http://localhost:3000/mcp \
+  -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+A capability failure is an AppPort error (`UNAUTHORIZED`, `FORBIDDEN`, `INVALID_INPUT`, `NOT_FOUND`,
+`INTERNAL_ERROR`). In production, `INTERNAL_ERROR` hides the cause; correlate with the AppPort trace id
+the MCP adapter returns in `_meta` and the API's request id.
+
 ## Health and failure response
 
 - Liveness/readiness: `/healthz`, `/readyz`; `make ps` shows container health.
