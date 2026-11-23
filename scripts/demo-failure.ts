@@ -60,6 +60,7 @@ async function login(email: string, password: string) {
 const fixture = (base: string, path: string, body: unknown) =>
   fetch(`${base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }).then((r) => r.json());
 
+await waitFor('API readiness', async () => (await fetch(`${API}/readyz`).catch(() => null))?.ok, 120_000);
 const customer = await login(process.env.SEED_CUSTOMER_EMAIL ?? 'customer@acme.test', process.env.SEED_CUSTOMER_PASSWORD || 'customer-demo-password');
 const operator = await login(process.env.SEED_OPERATOR_EMAIL ?? 'operator@managed-integrations.test', process.env.SEED_OPERATOR_PASSWORD || 'operator-demo-password');
 const [integ] = await db.select().from(integrations);
