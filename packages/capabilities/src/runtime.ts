@@ -26,6 +26,8 @@ export interface AppPortRuntimeOptions {
   db: Db;
   resolveIdentity: ResolveIdentity;
   enqueueDeliveryExecution?: import('./capabilities/deliveries.ts').EnqueueDeliveryExecution;
+  enqueueReconciliationScan?: import('./capabilities/reconciliation.ts').EnqueueReconciliationScan;
+  enqueueRecovery?: import('./capabilities/reconciliation.ts').EnqueueRecovery;
   telemetry?: import('@appport/core').TelemetrySink;
   /** Host logger (for example the API's pino instance). */
   logger?: Logger;
@@ -48,6 +50,10 @@ export function createAppPortRuntime(options: AppPortRuntimeOptions): AppPortRun
     ...(options.enqueueDeliveryExecution
       ? { enqueueDeliveryExecution: options.enqueueDeliveryExecution }
       : {}),
+    ...(options.enqueueReconciliationScan
+      ? { enqueueReconciliationScan: options.enqueueReconciliationScan }
+      : {}),
+    ...(options.enqueueRecovery ? { enqueueRecovery: options.enqueueRecovery } : {}),
     ...(options.telemetry ? { telemetry: options.telemetry } : {}),
     ...(options.logger ? { logger: options.logger } : {}),
   });

@@ -13,6 +13,8 @@ import {
   type AppPortRuntime,
   type CallerHeaders,
   type EnqueueDeliveryExecution,
+  type EnqueueReconciliationScan,
+  type EnqueueRecovery,
 } from '@mi/capabilities';
 import type { TelemetrySink } from '@appport/core';
 import type { Db } from '@mi/database';
@@ -54,6 +56,8 @@ export function createApiAppPortRuntime(deps: {
   db: Db;
   logger?: AppPortLogger;
   enqueueDeliveryExecution?: EnqueueDeliveryExecution;
+  enqueueReconciliationScan?: EnqueueReconciliationScan;
+  enqueueRecovery?: EnqueueRecovery;
   telemetry?: TelemetrySink;
 }): AppPortRuntime {
   const resolveIdentity = async (headers: CallerHeaders) => {
@@ -79,6 +83,8 @@ export function createApiAppPortRuntime(deps: {
     resolveIdentity,
     ...(deps.logger ? { logger: deps.logger } : {}),
     ...(deps.enqueueDeliveryExecution ? { enqueueDeliveryExecution: deps.enqueueDeliveryExecution } : {}),
+    ...(deps.enqueueReconciliationScan ? { enqueueReconciliationScan: deps.enqueueReconciliationScan } : {}),
+    ...(deps.enqueueRecovery ? { enqueueRecovery: deps.enqueueRecovery } : {}),
     ...(deps.telemetry ? { telemetry: deps.telemetry } : {}),
   });
 }

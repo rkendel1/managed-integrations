@@ -52,3 +52,14 @@ export {
 } from './capabilities/deliveries.ts';
 export { resourceTenantAuthorizer } from './authorization.ts';
 export { APPPORT_INVOCATION_ACTION, auditLogTelemetrySink } from './invocation-evidence.ts';
+export {
+  createReconciliationItemsCapability,
+  createReconciliationRecoverCapability,
+  createReconciliationRunsCapability,
+  createReconciliationStartCapability,
+  type EnqueueReconciliationScan,
+  type EnqueueRecovery,
+  type ReconciliationItemView,
+  type ReconciliationRun,
+  type RecoverOutput,
+} from './capabilities/reconciliation.ts';

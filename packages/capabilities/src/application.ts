@@ -14,6 +14,14 @@ import {
   createDeliveryRetryCapability,
   type EnqueueDeliveryExecution,
 } from './capabilities/deliveries.ts';
+import {
+  createReconciliationItemsCapability,
+  createReconciliationRecoverCapability,
+  createReconciliationRunsCapability,
+  createReconciliationStartCapability,
+  type EnqueueReconciliationScan,
+  type EnqueueRecovery,
+} from './capabilities/reconciliation.ts';
 import { createIntegrationsListCapability } from './capabilities/integrations-list.ts';
 
 export const APPPORT_APPLICATION = {
@@ -26,6 +34,10 @@ export interface IntegrationsApplicationOptions {
   db: Db;
   /** Queues a delivery for execution by its executor (provided by the host; absent → retry unavailable). */
   enqueueDeliveryExecution?: EnqueueDeliveryExecution;
+  /** Queues the source scan of a reconciliation run (host-provided). */
+  enqueueReconciliationScan?: EnqueueReconciliationScan;
+  /** Queues the execution of one requested recovery (host-provided). */
+  enqueueRecovery?: EnqueueRecovery;
   /** Receives one record per capability invocation (persisted as invocation evidence). */
   telemetry?: TelemetrySink;
   /** Optional host logger (for example the API's pino instance), bridged to AppPort's interface. */
@@ -40,6 +52,10 @@ export function createIntegrationsApplication(options: IntegrationsApplicationOp
       createDeliveriesListCapability(options.db),
       createDeliveryGetCapability(options.db),
       createDeliveryRetryCapability(options.db, options.enqueueDeliveryExecution),
+      createReconciliationStartCapability(options.db, options.enqueueReconciliationScan),
+      createReconciliationRunsCapability(options.db),
+      createReconciliationItemsCapability(options.db),
+      createReconciliationRecoverCapability(options.db, options.enqueueRecovery),
     ],
     authorizer: combineAuthorizers([integrationsAuthorizer(), resourceTenantAuthorizer(options.db)]),
     ...(options.telemetry ? { telemetry: options.telemetry } : {}),

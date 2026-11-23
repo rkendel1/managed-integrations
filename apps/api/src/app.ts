@@ -101,6 +101,12 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
         { singletonKey: `adopted:${deliveryId}` },
       );
     },
+    enqueueReconciliationScan: async (runId) => {
+      await deps.boss.send(QUEUES.adoptedReconcile, { runId }, { singletonKey: `adopted-recon:${runId}` });
+    },
+    enqueueRecovery: async (itemId) => {
+      await deps.boss.send(QUEUES.adoptedRecover, { itemId }, { singletonKey: `adopted-recover:${itemId}` });
+    },
     telemetry:
       deps.invocationEvidence ??
       auditLogTelemetrySink(deps.db, (err) =>

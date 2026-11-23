@@ -15,7 +15,7 @@ import {
 } from '@appport/authorization';
 import type { JsonValue } from '@appport/protocol';
 import { eq } from 'drizzle-orm';
-import { deliveries, integrations, type Db } from '@mi/database';
+import { deliveries, integrations, reconciliationRuns, type Db } from '@mi/database';
 import { AppPortPermissions, tenantIdOf } from './identity.ts';
 
 function requestedTenantId(input: unknown): string | undefined {
@@ -62,10 +62,11 @@ export function integrationsAuthorizer(): Authorizer {
  */
 export function resourceTenantAuthorizer(db: Db): Authorizer {
   return authorizerFrom('resource-tenant', async (request) => {
-    const input = (request.input ?? {}) as { integrationId?: unknown; deliveryId?: unknown };
+    const input = (request.input ?? {}) as { integrationId?: unknown; deliveryId?: unknown; runId?: unknown };
+    const runId = typeof input.runId === 'string' ? input.runId : undefined;
     const integrationId = typeof input.integrationId === 'string' ? input.integrationId : undefined;
     const deliveryId = typeof input.deliveryId === 'string' ? input.deliveryId : undefined;
-    if (!integrationId && !deliveryId) return true;
+    if (!integrationId && !deliveryId && !runId) return true;
 
     let resourceTenant: string | undefined;
     if (deliveryId) {
@@ -74,6 +75,13 @@ export function resourceTenantAuthorizer(db: Db): Authorizer {
         .from(deliveries)
         .innerJoin(integrations, eq(integrations.id, deliveries.integrationId))
         .where(eq(deliveries.id, deliveryId));
+      resourceTenant = row?.tenantId;
+    } else if (runId) {
+      const [row] = await db
+        .select({ tenantId: integrations.tenantId })
+        .from(reconciliationRuns)
+        .innerJoin(integrations, eq(integrations.id, reconciliationRuns.integrationId))
+        .where(eq(reconciliationRuns.id, runId));
       resourceTenant = row?.tenantId;
     } else if (integrationId) {
       const [row] = await db

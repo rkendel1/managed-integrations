@@ -7,6 +7,8 @@ import { and, eq, gt, lt } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import {
   AdoptedExecuteJobSchema,
+  AdoptedReconcileJobSchema,
+  AdoptedRecoverJobSchema,
   BacklogJobSchema,
   FLOW_TYPE,
   ProviderError,
@@ -21,6 +23,7 @@ import {
   integrations,
   maintenanceRuns,
   observations,
+  reconciliationItems,
   reconciliationRuns,
   syncRuns,
   type Db,
@@ -35,6 +38,11 @@ import {
 import { describeError, withCorrelation, type Logger } from '@mi/observability';
 import { runRelease } from '@mi/maintenance';
 import {
+  adoptedClients,
+  executeRecovery,
+  findOrphanedWork,
+  scanReconciliation,
+  startReconciliation,
   ADOPTED_FLOW_TYPE,
   executeDelivery,
   nextAutomaticRetryDelaySeconds,
@@ -71,6 +79,8 @@ export const RUNTIME_QUEUES = [
   QUEUES.maintenance,
   QUEUES.validation,
   QUEUES.adoptedExecute,
+  QUEUES.adoptedReconcile,
+  QUEUES.adoptedRecover,
 ];
 
 export async function ensureQueues(boss: PgBoss): Promise<void> {
@@ -222,6 +232,31 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
           { singletonKey: `adopted:${o.id}` },
         );
       }
+      // Adopted reconciliation: resume scans and recoveries left behind by a dead worker (expired leases).
+      const orphanedRecon = await findOrphanedWork(db);
+      for (const runId of orphanedRecon.runIds) {
+        await boss.send(QUEUES.adoptedReconcile, { runId }, { singletonKey: `adopted-recon:${runId}` });
+      }
+      for (const itemId of orphanedRecon.itemIds) {
+        await boss.send(QUEUES.adoptedRecover, { itemId }, { singletonKey: `adopted-recover:${itemId}` });
+      }
+      // Scheduled completeness check for adopted integrations (bounded: one run per interval).
+      const adoptedActive = await db
+        .select()
+        .from(integrations)
+        .where(and(eq(integrations.enabled, true), eq(integrations.flowType, ADOPTED_FLOW_TYPE)));
+      for (const integ of adoptedActive) {
+        const due = new Date(Date.now() - config.env.RECONCILE_INTERVAL_MINUTES * 60_000);
+        const recent = await db
+          .select({ id: reconciliationRuns.id })
+          .from(reconciliationRuns)
+          .where(and(eq(reconciliationRuns.integrationId, integ.id), gt(reconciliationRuns.startedAt, due)))
+          .limit(1);
+        if (!recent.length) {
+          const started = await startReconciliation(db, { integrationId: integ.id, trigger: 'schedule' });
+          if (!started.deduplicated) await boss.send(QUEUES.adoptedReconcile, { runId: started.runId }, { singletonKey: `adopted-recon:${started.runId}` });
+        }
+      }
       const active = await db
         .select()
         .from(integrations)
@@ -349,6 +384,27 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
       });
     },
 
+    /** Scans the source for an adopted reconciliation run (resumable; lease-fenced). */
+    async adoptedReconcile(raw: unknown): Promise<unknown> {
+      const job = AdoptedReconcileJobSchema.parse(raw);
+      const [run] = await db.select().from(reconciliationRuns).where(eq(reconciliationRuns.id, job.runId));
+      if (!run) return { skipped: 'unknown run' };
+      const clients = await adoptedClients(db, config.cipher!, config.endpoints, run.integrationId);
+      return scanReconciliation({ db, runId: job.runId, workerId: deps.workerId, clients, ...(deps.retry ? { retry: deps.retry } : {}) });
+    },
+
+    /** Executes one requested recovery through the adopted executor and verifies NetSuite. */
+    async adoptedRecover(raw: unknown): Promise<unknown> {
+      const job = AdoptedRecoverJobSchema.parse(raw);
+      const [item] = await db.select().from(reconciliationItems).where(eq(reconciliationItems.id, job.itemId));
+      if (!item) return { skipped: 'unknown item' };
+      const clients = await adoptedClients(db, config.cipher!, config.endpoints, item.integrationId);
+      const r = await executeRecovery({ db, cipher: config.cipher!, endpoints: config.endpoints, itemId: job.itemId, clients, ...(deps.retry ? { retry: deps.retry } : {}) });
+      if (!r.done && r.retryLater) throw new Error(`recovery deferred: ${r.reason}`); // pg-boss retries with backoff
+      if (r.done) await evaluateAndAct(item.integrationId);
+      return r;
+    },
+
     /** Runs one delivery through the ADOPTED upstream implementation (shopify-erp-order-sync). */
     async adoptedExecute(raw: unknown): Promise<unknown> {
       const job = AdoptedExecuteJobSchema.parse(raw);
@@ -412,6 +468,8 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     await wrap(QUEUES.backlog, handlers.backlog);
     await wrap(QUEUES.release, handlers.release);
     await wrap(QUEUES.adoptedExecute, handlers.adoptedExecute);
+    await wrap(QUEUES.adoptedReconcile, handlers.adoptedReconcile);
+    await wrap(QUEUES.adoptedRecover, handlers.adoptedRecover);
     await boss.schedule(QUEUES.reliabilityTick, '* * * * *');
   }
 
