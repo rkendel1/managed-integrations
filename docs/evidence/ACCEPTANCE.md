@@ -231,3 +231,70 @@ Fresh-stack verification (`make build`, `make reset`, then `demo-maintenance` �
 - Typecheck and lint clean.
 - The AppPort packages were upgraded to the latest published versions before this slice. The upgrade was
   committed separately, and the suite stayed green.
+
+## Slice 5 — frictionless onboarding and managed integration adaptation (2026-11-23)
+
+Records: `docs/product/ONBOARDING.md`, `docs/product/ADAPTATION.md`. Starting commit `17f1f79`. Every
+result is **fixture-backed** (Shopify and NetSuite fixtures); nothing was run against a live provider.
+
+Test files: `apps/api/test/onboarding.test.ts` (**onboarding**), `packages/adopted-order-sync/test/adaptation.test.ts`
+(**adaptation**), `packages/adopted-order-sync/test/maintenance.test.ts` (**lifecycle**),
+`apps/api/test/product-appport.test.ts` (**API**), `e2e/onboarding.spec.ts`, `e2e/maintenance.spec.ts` (**e2e**),
+`make demo-onboarding` (**demo**, `runs/demo-onboarding-slice5-docker.log`, `runs/demo-onboarding-docker.json`).
+
+### Onboarding
+
+| #   | Required                                 | Status             | Where                                                                                       |
+| --- | ---------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------- |
+| 1   | new customer enters the product          | VERIFIED           | onboarding (signup); e2e (signup → `/app/welcome`, Connect); demo A1                        |
+| 2   | connects supported systems               | VERIFIED (fixture) | onboarding (Shopify OAuth, NetSuite M2M); demo A2–A3                                        |
+| 3   | discovery finds the existing integration | VERIFIED (fixture) | onboarding; demo A4 (6/6 orders written by the customer's own upstream deployment)          |
+| 4   | customer confirms and authorizes         | VERIFIED           | onboarding (versioned responsibilities, user, time); demo A5                                |
+| 5   | baseline established                     | VERIFIED (fixture) | onboarding; demo A6 (6 checked, 6 present, recorded as history with `origin: baseline`)     |
+| 6   | genuinely managed state                  | VERIFIED (fixture) | onboarding (new order via our registered subscription, exactly once); demo A7–A8            |
+| —   | ambiguous discovery                      | VERIFIED           | onboarding (choices offered; unrecognized scheme not adopted)                               |
+| —   | unsupported integration                  | VERIFIED           | onboarding (ambiguous/unsupported candidates)                                               |
+| —   | denied permissions                       | VERIFIED           | onboarding (missing order scope → not connected, nothing proceeds)                          |
+| —   | partial onboarding                       | VERIFIED           | onboarding (NetSuite missing → discovery waits; interrupted activation resumes, no repeats) |
+| —   | existing management                      | VERIFIED           | onboarding (managed tenant: discovery does not restart); e2e                                |
+| —   | cross-tenant access                      | VERIFIED           | onboarding (cannot read or confirm another tenant's onboarding); demo C1                    |
+
+Happy path: 7 customer actions, 3 genuine decisions (authorize Shopify, authorize NetSuite, confirm).
+
+### Adaptation
+
+| #   | Required                                    | Status             | Where                                                                                           |
+| --- | ------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------- |
+| 1   | pinned adopted integration                  | VERIFIED           | adaptation (artifacts); demo B2 (`adopted:d01b51d95993`, files match the pin)                   |
+| 2   | documented provider change introduced       | VERIFIED (fixture) | lifecycle; demo B1 (fictional webhook version `2027-01`)                                        |
+| 3   | affected dependency detected                | VERIFIED           | lifecycle (input contract violation: `line_items[].price` absent)                               |
+| 4   | exact adopted code path                     | VERIFIED           | lifecycle; demo B2 (`src/mapping.js:11`)                                                        |
+| 5   | adapter proposed                            | VERIFIED           | lifecycle; demo B3 (registry `proposed`, with changelog hash and baseline equivalence)          |
+| 6   | old and new behaviour validated             | VERIFIED           | adaptation (pure cases); demo B3 (7 checks passed; patch path 8 checks)                         |
+| 7   | correction activated                        | VERIFIED           | lifecycle; adaptation (patch: operator activation only)                                         |
+| 8   | affected orders executed                    | VERIFIED (fixture) | lifecycle; demo B4 (price 7.25 from Shopify)                                                    |
+| 9   | reconcile and verify destination            | VERIFIED (fixture) | lifecycle (second run + line-level NetSuite vs Shopify); `postActivation` on the adaptation     |
+| 10  | transaction accounting                      | VERIFIED           | lifecycle; demo B3/B5 (2/2, zero loss, 0 duplicates)                                            |
+| 11  | rollback (separate test)                    | VERIFIED           | adaptation (adapter and patch rollback; previous runtime runs; not re-applied automatically)    |
+| 12  | unsafe or ambiguous correction refused      | VERIFIED           | adaptation (conflict held and escalated; activation guards; non-matching patch refuses to load) |
+| —   | customers cannot create or activate patches | VERIFIED           | API (UI client and MCP refused; operator inspect/rollback allowed)                              |
+| —   | operator sees what code runs and why        | VERIFIED           | e2e (running artifact, contract, adaptation with validation and Roll back)                      |
+
+Adapter cases (pure): old shape, new shape, both present equal, both present conflicting, missing, wrong
+type, null/empty, unexpected nesting, repeated execution; stored orders via the regression check.
+
+Found and fixed during slice 5:
+
+- **jsonb key order** defeated the "previously rolled back" check, so maintenance re-applied a rolled-back adapter. Now compared canonically.
+- **Operator evidence page read slice-4's `passed`**, showing every slice-5 check as failed and "configuration version undefined". It now renders `status`; e2e asserts no failed check on a resolved event.
+- **Already-managed tenants** would have been shown the Connect step. They now start as `managed`.
+- **NetSuite account domain** was built from the account id, against Oracle's guidance. The domain is now asked for.
+- **A single Shopify override URL** made a new store unreachable in the fixtures. Added `SHOPIFY_FIXTURE_SHOPS` (refused in production).
+
+Fresh-stack verification (`make build`, `make reset`, then `demo-maintenance` → `demo-onboarding` →
+`demo-reconcile` → `demo-adopted` → `demo-failure --auto-approve` → Playwright):
+
+- All five demos passed (`runs/*-slice5-docker.log`).
+- Playwright: 19/19 (`runs/playwright-slice5-docker.log`).
+- Vitest: 21 files, 187 tests (`runs/vitest-slice5.log`).
+- Typecheck and lint clean.

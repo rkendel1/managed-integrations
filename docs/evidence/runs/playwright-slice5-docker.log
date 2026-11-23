@@ -1,0 +1,24 @@
+
+Running 19 tests using 1 worker
+
+  ✓   1 e2e/adopted.spec.ts:18:1 › operator sees the adopted executor, its provenance, outcomes and attempt history (616ms)
+  ✓   2 e2e/adopted.spec.ts:44:1 › the adopted tenant's customer sees the product, not the executor machinery (501ms)
+  ✓   3 e2e/adopted.spec.ts:61:1 › operator finds the tenant and inspects the same evidence (449ms)
+  ✓   4 e2e/adopted.spec.ts:75:1 › a customer of another tenant cannot open the adopted integration (294ms)
+  ✓   5 e2e/app.spec.ts:29:1 › rejects invalid credentials (325ms)
+  ✓   6 e2e/app.spec.ts:34:1 › customer: the product shows what we maintain, its evidence-based status, credentials and settings (608ms)
+  ✓   7 e2e/app.spec.ts:72:1 › customer: a decision only the customer can make (unmapped SKU) is asked for, and clears once made (42.8s)
+  ✓   8 e2e/app.spec.ts:106:1 › customer: the portfolio is served by the AppPort capability portfolio.list (394ms)
+  ✓   9 e2e/app.spec.ts:125:1 › customer: the portfolio renders the empty state (322ms)
+  ✓  10 e2e/app.spec.ts:150:1 › customer: the portfolio renders capability failures honestly (15.3s)
+  ✓  11 e2e/app.spec.ts:171:1 › operator: inbox, tenants, releases, economics (492ms)
+  ✓  12 e2e/maintenance.spec.ts:18:1 › customer sees the completed maintenance as an outcome, with no internal machinery (650ms)
+  ✓  13 e2e/maintenance.spec.ts:60:1 › operator sees the same story and the evidence behind every claim (602ms)
+  ✓  14 e2e/maintenance.spec.ts:92:1 › another tenant cannot open the maintenance event (279ms)
+  ✓  15 e2e/onboarding.spec.ts:20:1 › a new customer signs up and lands in onboarding at the Connect step (436ms)
+  ✓  16 e2e/onboarding.spec.ts:41:1 › a customer whose integration is already managed is not asked to set up again (324ms)
+  ✓  17 e2e/onboarding.spec.ts:52:1 › operator sees what adopted code runs, what it depends on, and the corrections with their evidence (42.9s)
+  ✓  18 e2e/reconciliation.spec.ts:34:1 › operator detects orders whose webhooks never arrived and recovers them (bulk needs confirmation) (7.2s)
+  ✓  19 e2e/reconciliation.spec.ts:80:1 › operator sees the same reconciliation for the tenant (8.4s)
+
+  19 passed (2.1m)

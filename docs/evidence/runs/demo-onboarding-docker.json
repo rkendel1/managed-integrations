@@ -1,0 +1,406 @@
+{
+  "steps": [
+    {
+      "n": "0",
+      "title": "Before: Northwind's own deployment of shopify-erp-order-sync wrote 6 orders to NetSuite (the pinned upstream code, run as their server would)",
+      "data": {}
+    },
+    {
+      "n": "A1",
+      "title": "New customer signed up: Connect Shopify and NetSuite.",
+      "data": {}
+    },
+    {
+      "n": "A2",
+      "title": "Shopify connected through OAuth (scope read_orders) → back to /app/welcome?connected=shopify",
+      "data": {}
+    },
+    {
+      "n": "A3",
+      "title": "NetSuite connected (machine-to-machine certificate) → verified",
+      "data": {}
+    },
+    {
+      "n": "A4",
+      "title": "Discovered: 6 of your last 6 Shopify orders are in NetSuite, written the way the shopify-erp-order-sync integration writes them. (confidence: established)",
+      "data": {
+        "outcome": "found",
+        "window": {
+          "to": "2026-11-23T23:19:18.154Z",
+          "from": "2026-10-24T23:29:18.154Z"
+        },
+        "checked": 6,
+        "candidates": [
+          {
+            "id": "adopted.shopify_erp_order_sync",
+            "kind": "adoptable",
+            "title": "Shopify orders → NetSuite sales orders",
+            "summary": "6 of your last 6 Shopify orders are in NetSuite, written the way the shopify-erp-order-sync integration writes them.",
+            "confidence": "established"
+          }
+        ]
+      }
+    },
+    {
+      "n": "A5",
+      "title": "Customer confirmed; Setting up protection: routing new orders to us and checking every recent order.",
+      "data": {}
+    },
+    {
+      "n": "A6",
+      "title": "Under management. Baseline: 6 recent orders checked, 6 in NetSuite (6 written by their earlier deployment), 0 missing",
+      "data": {
+        "checked": 6,
+        "missing": 0,
+        "outcome": "consistent",
+        "unresolved": 0,
+        "verifyRunId": "a18edf0d-6d0b-4757-a860-8206e4422b4d",
+        "accountedFor": 6,
+        "previouslyDelivered": 6
+      }
+    },
+    {
+      "n": "A7",
+      "title": "Customer overview: Protected — On 2026-11-23 23:29 UTC we checked 6 order(s) from Shopify against NetSuite: all accounted for.",
+      "data": {}
+    },
+    {
+      "n": "A8",
+      "title": "A new order (#NFFDD-NEW) reached us through the notification we registered and is in NetSuite exactly once",
+      "data": {}
+    },
+    {
+      "n": "B1",
+      "title": "FIXTURE: Shopify switches its order webhooks to format 2027-01 (unit price moved); #NFFDD-CHG arrives in the new format",
+      "data": {}
+    },
+    {
+      "n": "B2",
+      "title": "Operator: running adopted:d01b51d95993; upstream files match the pin: true; price is read at src/mapping.js:11",
+      "data": {}
+    },
+    {
+      "n": "B3",
+      "title": "Adapter line_items[].price ← line_items[].price_set.shop_money.amount: proposed → validating → validated → active",
+      "data": {
+        "id": "cf8c5591-af15-4b96-a780-8cc8fcdb7611",
+        "kind": "adapter",
+        "status": "active",
+        "maintenanceEventId": "1cd7501f-766e-465c-8b0a-a36198deec63",
+        "spec": {
+          "type": "field_moved",
+          "source": "line_items[].price_set.shop_money.amount",
+          "target": "line_items[].price"
+        },
+        "rationale": "shopify no longer sends line_items[].price (version 2027-01); its documented replacement line_items[].price_set.shop_money.amount carried the same value in every stored order.",
+        "validation": {
+          "checks": [
+            {
+              "name": "applies to the adopted artifact",
+              "detail": "line_items[].price is read at src/mapping.js:11 in d01b51d95993",
+              "status": "passed"
+            },
+            {
+              "name": "original adopted code unchanged",
+              "detail": "7 files match d01b51d95993",
+              "status": "passed"
+            },
+            {
+              "name": "regression: stored orders unchanged",
+              "detail": "1/1 stored orders map identically",
+              "status": "passed"
+            },
+            {
+              "name": "affected orders handled",
+              "detail": "1/1 held orders satisfy the contract and map without error",
+              "status": "passed"
+            },
+            {
+              "name": "business data preserved (Shopify Admin API)",
+              "detail": "1/1 orders: quantities and unit prices equal Shopify's order record",
+              "status": "passed"
+            },
+            {
+              "name": "no conflicting data accepted",
+              "detail": "no conflicts",
+              "status": "passed"
+            },
+            {
+              "name": "rollback target available",
+              "detail": "rolling back selects adopted:d01b51d95993 (0 adapter(s))",
+              "status": "passed"
+            }
+          ],
+          "passed": true,
+          "artifact": {
+            "after": "adopted:d01b51d95993",
+            "before": "adopted:d01b51d95993"
+          },
+          "validatedAt": "2026-11-23T23:29:33.653Z",
+          "postActivation": {
+            "verified": 2,
+            "zeroLoss": true,
+            "recovered": 1,
+            "duplicates": 0,
+            "population": 2,
+            "unresolved": 0,
+            "verifiedAt": "2026-11-23T23:29:45.648Z",
+            "verificationRunId": "c3f36c50-e7f1-4d07-a9f8-3cfd128e7836",
+            "maintenanceEventId": "1cd7501f-766e-465c-8b0a-a36198deec63"
+          },
+          "requiresDecision": false
+        },
+        "history": [
+          {
+            "at": "2026-11-23T23:29:33.627Z",
+            "to": "proposed",
+            "from": null,
+            "note": "shopify no longer sends line_items[].price (version 2027-01); its documented replacement line_items[].price_set.shop_money.amount carried the same value in every stored order.",
+            "actor": "system:maintenance"
+          },
+          {
+            "at": "2026-11-23T23:29:33.637Z",
+            "to": "validating",
+            "from": "proposed",
+            "note": "Validation started",
+            "actor": "system:validation"
+          },
+          {
+            "at": "2026-11-23T23:29:33.654Z",
+            "to": "validated",
+            "from": "validating",
+            "note": "Validated",
+            "actor": "system:validation"
+          },
+          {
+            "at": "2026-11-23T23:29:33.664Z",
+            "to": "active",
+            "from": "validated",
+            "note": "Activated by maintenance event 1cd7501f-766e-465c-8b0a-a36198deec63",
+            "actor": "system:maintenance"
+          }
+        ],
+        "activatedAt": "2026-11-23T23:29:33.663Z",
+        "rolledBackAt": null
+      }
+    },
+    {
+      "n": "B4",
+      "title": "#NFFDD-CHG is in NetSuite with Shopify's price (7.25), written by the adopted code with the adapter applied",
+      "data": {}
+    },
+    {
+      "n": "B5",
+      "title": "Customer sees: \"We resolved a compatibility issue\" — We detected a change that threatened order processing. We resolved it and verified all 2 orders from the affected period against NetSuite. Zero transactions lost.",
+      "data": {
+        "id": "1cd7501f-766e-465c-8b0a-a36198deec63",
+        "integrationId": "e00a4f1e-1d4f-44cf-a80b-368cb5c69e82",
+        "category": "Provider change",
+        "state": "completed",
+        "headline": "We resolved a compatibility issue",
+        "summary": "We detected a change that threatened order processing. We resolved it and verified all 2 orders from the affected period against NetSuite.",
+        "detectedAt": "2026-11-23T23:29:31.625Z",
+        "resolvedAt": "2026-11-23T23:29:45.645Z",
+        "facts": [
+          {
+            "label": "Change detected",
+            "value": "Shopify changed the order data it sends (format 2026-10 → 2027-01): the unit price of each order line is no longer where your integration reads it."
+          },
+          {
+            "label": "Why it mattered",
+            "value": "Orders could have been created in NetSuite without the unit price of each order line. We held them instead of writing them."
+          },
+          {
+            "label": "Action taken",
+            "value": "We updated how your integration reads the unit price of each order line to match Shopify’s new format. Before switching it on, we confirmed it changes nothing for 1 earlier order and gives the same values as Shopify’s own records for 1 affected order."
+          },
+          {
+            "label": "Transactions affected",
+            "value": "1 order: 1 held safely and delivered after the fix."
+          },
+          {
+            "label": "Transactions recovered",
+            "value": "1 of 1."
+          },
+          {
+            "label": "Final outcome",
+            "value": "All 2 orders created in the affected period are in NetSuite exactly once, with the items, quantities and prices Shopify has for them."
+          },
+          {
+            "label": "Customer action",
+            "value": "None required."
+          }
+        ],
+        "accounting": {
+          "window": {
+            "from": "2026-11-23T23:29:28.382Z",
+            "to": "2026-11-23T23:29:37.624Z"
+          },
+          "ordersInWindow": 2,
+          "deliveredBeforeChange": 1,
+          "delayed": 1,
+          "failedDuringDisruption": 0,
+          "foundByChecking": 0,
+          "recovered": 1,
+          "verified": 2,
+          "excluded": 0,
+          "unresolved": 0,
+          "duplicates": 0
+        },
+        "claim": {
+          "zeroLoss": true,
+          "statement": "Zero transactions lost.",
+          "basis": "Every order Shopify has for the affected period (23 Nov 2026, 23:29:28–23:29:37 UTC) was checked in NetSuite after the fix."
+        },
+        "customerAction": {
+          "required": false,
+          "text": null
+        },
+        "timeline": [
+          {
+            "at": "2026-11-23T23:29:31.633Z",
+            "step": "noticed",
+            "title": "Change detected",
+            "text": "We noticed that Shopify changed the format of the order data it sends (the unit price of each order line). Affected orders are held safely; nothing incorrect was written.",
+            "details": [
+              {
+                "label": "Shopify data format",
+                "value": "2026-10 → 2027-01"
+              },
+              {
+                "label": "What moved",
+                "value": "the unit price of each order line"
+              },
+              {
+                "label": "Orders written incorrectly",
+                "value": "None: affected orders were held"
+              }
+            ]
+          },
+          {
+            "at": "2026-11-23T23:29:33.622Z",
+            "step": "investigated",
+            "title": "Investigated",
+            "text": "We traced the change to the part of your integration that reads the unit price of each order line and confirmed that, left alone, it would have produced incorrect sales orders.",
+            "details": [
+              {
+                "label": "Orders held safely",
+                "value": "1"
+              }
+            ]
+          },
+          {
+            "at": "2026-11-23T23:29:33.658Z",
+            "step": "tested",
+            "title": "Fix tested",
+            "text": "We tested the fix against earlier orders and against Shopify’s own records of the affected orders before switching it on.",
+            "details": [
+              {
+                "label": "Fits your integration’s software",
+                "value": "Passed"
+              },
+              {
+                "label": "Integration software unchanged",
+                "value": "Passed"
+              },
+              {
+                "label": "Earlier orders unaffected",
+                "value": "Passed (1 of 1)"
+              },
+              {
+                "label": "Held orders read correctly",
+                "value": "Passed (1 of 1)"
+              },
+              {
+                "label": "Matches Shopify’s own records",
+                "value": "Passed (1 of 1)"
+              },
+              {
+                "label": "No conflicting data",
+                "value": "Passed"
+              },
+              {
+                "label": "Can be undone safely",
+                "value": "Passed"
+              }
+            ]
+          },
+          {
+            "at": "2026-11-23T23:29:33.671Z",
+            "step": "switched_on",
+            "title": "Fix switched on",
+            "text": "We switched the fix on.",
+            "details": []
+          },
+          {
+            "at": "2026-11-23T23:29:37.620Z",
+            "step": "delivered",
+            "title": "Held orders delivered",
+            "text": "The 1 order we held was delivered to NetSuite (1 of 1).",
+            "details": [
+              {
+                "label": "Delivered to NetSuite",
+                "value": "1 of 1"
+              }
+            ]
+          },
+          {
+            "at": "2026-11-23T23:29:41.625Z",
+            "step": "checked",
+            "title": "Every order checked",
+            "text": "We checked all 2 orders Shopify has for the affected period. None were missing.",
+            "details": [
+              {
+                "label": "Orders in the affected period",
+                "value": "2"
+              },
+              {
+                "label": "Never reached us (recovered)",
+                "value": "0"
+              }
+            ]
+          },
+          {
+            "at": "2026-11-23T23:29:41.630Z",
+            "step": "verifying",
+            "title": "Verifying",
+            "text": "Recovery finished. We are now checking every order from the affected period in NetSuite.",
+            "details": []
+          },
+          {
+            "at": "2026-11-23T23:29:45.644Z",
+            "step": "verified",
+            "title": "Verified",
+            "text": "All 2 orders from the affected period are in NetSuite exactly once, with the right items, quantities and prices.",
+            "details": [
+              {
+                "label": "Orders verified in NetSuite",
+                "value": "2"
+              },
+              {
+                "label": "Duplicates",
+                "value": "0"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "n": "C1",
+      "title": "Another tenant sees only its own onboarding (status managed, integration its own)",
+      "data": {}
+    }
+  ],
+  "startedAt": "2026-11-23T23:29:17.522Z",
+  "providers": "deterministic fixtures (not Shopify or NetSuite); the provider change is fictional and documented",
+  "customerActions": [
+    "sign up",
+    "connect Shopify (shop name)",
+    "approve in Shopify",
+    "connect NetSuite (account domain, client id, certificate id)",
+    "upload the certificate in NetSuite",
+    "verify NetSuite",
+    "confirm: maintain this integration"
+  ]
+}
