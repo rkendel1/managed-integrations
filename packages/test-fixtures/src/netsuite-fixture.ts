@@ -414,6 +414,10 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
   app.post('/__fixture/delete', async (req) => ({
     deleted: control.deleteByExternalId((req.body as { externalId: string }).externalId),
   }));
+  app.post('/__fixture/latency', async (req) => {
+    state.artificialLatencyMs = Math.max(0, Math.min(10_000, Number((req.body as { ms: number }).ms) || 0));
+    return { latencyMs: state.artificialLatencyMs };
+  });
   app.post('/__fixture/revoke', async () => {
     control.revoke();
     return { ok: true };

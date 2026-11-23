@@ -1,0 +1,310 @@
+{
+  "startedAt": "2026-11-23T15:00:39.792Z",
+  "fixture": "DETERMINISTIC TEST FIXTURE (not Shopify/NetSuite)",
+  "steps": [
+    {
+      "n": 1,
+      "title": "Integration healthy",
+      "at": "2026-11-23T15:00:42.123Z",
+      "data": {
+        "health": "healthy",
+        "implementation": "impl-7349339f9c29"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Records delivered: NetSuite fixture holds 30 sales orders",
+      "at": "2026-11-23T15:00:42.123Z",
+      "data": {
+        "syncRunId": "a7ea9393-7dd9-4b14-9ba6-60d2ee8b0cc0",
+        "delivered": 30
+      }
+    },
+    {
+      "n": 3,
+      "title": "Delivery evidence recorded",
+      "at": "2026-11-23T15:00:42.136Z",
+      "data": {
+        "run": {
+          "status": "succeeded",
+          "records": 30,
+          "sample": {
+            "order": "#1001",
+            "outcome": "delivered",
+            "netsuiteId": "9001",
+            "externalId": "shopify-5000000001",
+            "attempts": 1,
+            "reason": null,
+            "deliveredAt": "2026-11-23T15:00:41.442Z"
+          }
+        }
+      }
+    },
+    {
+      "n": 4,
+      "title": "FIXTURE: controlled upstream schema change introduced (LineItem.originalUnitPriceSet removed) + 5 new orders",
+      "at": "2026-11-23T15:00:42.144Z",
+      "data": {}
+    },
+    {
+      "n": 5,
+      "title": "Integration failed safely (schema); cursor not advanced",
+      "at": "2026-11-23T15:00:44.164Z",
+      "data": {
+        "syncRunId": "db112672-93bc-4e45-9b27-f3bb585159c2",
+        "error": "Shopify GraphQL schema mismatch: Cannot query field \"originalUnitPriceSet\" on type \"LineItem\". Did you mean \"preDiscountUnitPriceSet\"?",
+        "cursorBefore": "2026-11-23T13:50:24.800Z",
+        "cursorAfter": "2026-11-23T13:50:24.800Z"
+      }
+    },
+    {
+      "n": 6,
+      "title": "Reliability system detected the failure",
+      "at": "2026-11-23T15:00:44.168Z",
+      "data": {
+        "incidentId": "256e3439-685a-478b-87d5-aee225d087c6",
+        "status": "investigating"
+      }
+    },
+    {
+      "n": 7,
+      "title": "Incident created: \"Provider response no longer matches the integration implementation\"",
+      "at": "2026-11-23T15:00:44.168Z",
+      "data": {
+        "severity": "high",
+        "classification": "investigating"
+      }
+    },
+    {
+      "n": 8,
+      "title": "Affected records identified: 5 order(s)",
+      "at": "2026-11-23T15:00:46.173Z",
+      "data": {
+        "orders": [
+          {
+            "name": "#1031",
+            "legacyId": "5000000031",
+            "updatedAt": "2026-11-23T14:59:42.139Z"
+          },
+          {
+            "name": "#1032",
+            "legacyId": "5000000032",
+            "updatedAt": "2026-11-23T14:59:47.139Z"
+          },
+          {
+            "name": "#1033",
+            "legacyId": "5000000033",
+            "updatedAt": "2026-11-23T14:59:52.139Z"
+          },
+          {
+            "name": "#1034",
+            "legacyId": "5000000034",
+            "updatedAt": "2026-11-23T14:59:57.139Z"
+          },
+          {
+            "name": "#1035",
+            "legacyId": "5000000035",
+            "updatedAt": "2026-11-23T15:00:02.139Z"
+          }
+        ]
+      }
+    },
+    {
+      "n": 9,
+      "title": "Maintenance agent received a bounded, sanitized task",
+      "at": "2026-11-23T15:00:46.176Z",
+      "data": {
+        "maintenanceRunId": "fcef6fbe-cd5f-4ca8-980d-0a8a7fc1e052"
+      }
+    },
+    {
+      "n": 10,
+      "title": "Agent investigated with 17 restricted tool calls (planner: playbook)",
+      "at": "2026-11-23T15:01:28.267Z",
+      "data": {
+        "tools": [
+          "read_incident",
+          "read_observations",
+          "write_file",
+          "run_tests",
+          "run_tests",
+          "search_source",
+          "read_provider_docs",
+          "read_provider_docs",
+          "read_provider_docs",
+          "read_provider_docs",
+          "edit_file",
+          "write_file",
+          "run_tests",
+          "run_tests",
+          "run_tests",
+          "git_diff",
+          "submit_candidate"
+        ],
+        "status": "candidate_submitted"
+      }
+    },
+    {
+      "n": 11,
+      "title": "Repair candidate created in an isolated worktree",
+      "at": "2026-11-23T15:01:28.270Z",
+      "data": {
+        "candidateId": "ad3ec760-bada-4315-bc8c-8a21e96ef268",
+        "branch": "repair/fcef6fbe",
+        "changedFiles": [
+          "packages/integration-shopify-netsuite/src/implementation/shopify-orders.ts",
+          "packages/integration-shopify-netsuite/test/regression/lineitem-originalUnitPriceSet-removed.test.ts"
+        ],
+        "hypothesis": "Provider removed LineItem.originalUnitPriceSet (GraphQL validation: Cannot query field \"originalUnitPriceSet\" on type \"LineItem\"). Provider documentation names preDiscountUnitPriceSet as the replacement with the same MoneyBag shape. Reproduced with fixture profile \"drift\". Repair: query and parse preDiscountUnitPriceSet instead; mapping semantics (pre-discount unit price) unchanged. Added a regression test."
+      }
+    },
+    {
+      "n": 12,
+      "title": "Acceptance tests not altered by the agent",
+      "at": "2026-11-23T15:01:28.271Z",
+      "data": {
+        "acceptanceFilesChanged": []
+      }
+    },
+    {
+      "n": 13,
+      "title": "Independent validation passed (protected suite intact: true)",
+      "at": "2026-11-23T15:02:10.359Z",
+      "data": {
+        "validationRunId": "7f188a99-7e99-4656-b5e0-9e847e708d9a",
+        "suiteSha256": "ae5979529f833256266318a70d33a1267ceb323f79ec2d67c9d8ebd6fa9256a3",
+        "suites": {
+          "unit": {
+            "passed": true,
+            "summary": "filter: packages/integration-shopify-netsuite/test/unit\ninclude: packages/*/test/**/*.test.ts, apps/*/test/**/*.test.ts\nexclude:  **/node_modules/**, **/.git/**",
+            "exitCode": 0,
+            "isolated": true,
+            "timedOut": false,
+            "durationMs": 2525
+          },
+          "typecheck": {
+            "passed": true,
+            "summary": "",
+            "exitCode": 0,
+            "isolated": true,
+            "timedOut": false,
+            "durationMs": 9952
+          },
+          "acceptance": {
+            "passed": true,
+            "summary": "Test Files  2 passed (2)\n      Tests  27 passed (27)",
+            "exitCode": 0,
+            "isolated": true,
+            "timedOut": false,
+            "durationMs": 16575
+          },
+          "regression": {
+            "passed": true,
+            "summary": "Test Files  1 passed (1)\n      Tests  2 passed (2)",
+            "exitCode": 0,
+            "isolated": true,
+            "timedOut": false,
+            "durationMs": 3204
+          }
+        }
+      }
+    },
+    {
+      "n": 14,
+      "title": "Approval recorded via operator API (--auto-approve: SCRIPTED stand-in for a human click)",
+      "at": "2026-11-23T15:02:10.418Z",
+      "data": {}
+    },
+    {
+      "n": 15,
+      "title": "Candidate released via canary (released)",
+      "at": "2026-11-23T15:02:12.426Z",
+      "data": {
+        "releaseId": "dca1b634-b4ea-47cc-a36e-5047bf8c2846",
+        "version": "impl-21d1f1318062",
+        "previous": "impl-7349339f9c29",
+        "canary": {
+          "status": "succeeded",
+          "delivered": 5,
+          "syncRunId": "f7fedcd6-5360-4589-8438-07e62e73967a",
+          "errorClass": null,
+          "errorMessage": null,
+          "reconciliation": {
+            "runId": "828b8545-ddfe-4757-8c02-b122069cbf77",
+            "matched": 6,
+            "missing": 0,
+            "outcome": "consistent",
+            "duplicates": 0,
+            "inconsistent": 0
+          }
+        }
+      }
+    },
+    {
+      "n": 16,
+      "title": "Synchronization resumed on the new version",
+      "at": "2026-11-23T15:02:12.429Z",
+      "data": {
+        "syncRunId": "bd1846c5-1fa9-4b93-af2e-937134d0f4f6",
+        "mode": "incremental",
+        "delivered": 0
+      }
+    },
+    {
+      "n": 17,
+      "title": "Reconciliation: consistent — 35/35 expected orders matched; missing 0, duplicates 0",
+      "at": "2026-11-23T15:02:12.431Z",
+      "data": {
+        "reconciliationRunId": "0fde11db-e446-474c-ade0-62dc1ddacd3b"
+      }
+    },
+    {
+      "n": 18,
+      "title": "Incident resolved with verification evidence",
+      "at": "2026-11-23T15:02:12.433Z",
+      "data": {
+        "resolution": "Recovered. Reconciliation verified 35 of 35 expected orders present and consistent in NetSuite; no missing or duplicate records.",
+        "verification": {
+          "stale": 0,
+          "matched": 35,
+          "missing": 0,
+          "outcome": "consistent",
+          "expected": 35,
+          "duplicates": 0,
+          "unexpected": 0,
+          "unresolved": 0,
+          "inconsistent": 0,
+          "reconciliationRunId": "0fde11db-e446-474c-ade0-62dc1ddacd3b"
+        }
+      }
+    },
+    {
+      "n": 19,
+      "title": "Customer sees a clear status and history",
+      "at": "2026-11-23T15:02:12.448Z",
+      "data": {
+        "status": "resolved",
+        "summary": "Shopify changed how order data is returned. We detected it automatically and are preparing a fix; delayed orders will be delivered once it is released.",
+        "resolution": "Recovered. Reconciliation verified 35 of 35 expected orders present and consistent in NetSuite; no missing or duplicate records.",
+        "timeline": [
+          "detected: Shopify GraphQL schema mismatch: Cannot query field \"originalUnitPriceSet\" on type \"LineItem\". Did you mean \"preDiscountUnitPriceSet\"?",
+          "classified: Deterministic recovery cannot fix a schema mismatch; internal maintenance engaged.",
+          "investigating: Deterministic recovery cannot fix a schema mismatch; internal maintenance engaged.",
+          "investigating: Internal maintenance task created: an engineer-agent will investigate in an isolated environment. No production changes are made without validation and human approval.",
+          "investigating: Identified 5 affected order(s) awaiting delivery.",
+          "investigating: A repair candidate was produced and submitted for independent validation and human review.",
+          "investigating: Fix approved by an operator. Canary release impl-21d1f1318062 started on a limited set of orders.",
+          "investigating: Canary verified. Version impl-21d1f1318062 promoted; catching up on delayed orders.",
+          "recovery: Sync resumed successfully (run bd1846c5, implementation impl-21d1f1318062).",
+          "verification: Reconciling affected orders against NetSuite before closing.",
+          "resolved: Recovered. Reconciliation verified 35 of 35 expected orders present and consistent in NetSuite; no missing or duplicate records."
+        ]
+      }
+    }
+  ],
+  "finishedAt": "2026-11-23T15:02:12.451Z",
+  "netsuiteFixture": {
+    "salesOrders": 35,
+    "uniqueExternalIds": 35
+  }
+}

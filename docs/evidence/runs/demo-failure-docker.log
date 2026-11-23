@@ -1,0 +1,22 @@
+[   2.3s]  1. Integration healthy
+[   2.3s]  2. Records delivered: NetSuite fixture holds 30 sales orders
+[   2.3s]  3. Delivery evidence recorded
+[   2.4s]  4. FIXTURE: controlled upstream schema change introduced (LineItem.originalUnitPriceSet removed) + 5 new orders
+[   4.4s]  5. Integration failed safely (schema); cursor not advanced
+[   4.4s]  6. Reliability system detected the failure
+[   4.4s]  7. Incident created: "Provider response no longer matches the integration implementation"
+[   6.4s]  8. Affected records identified: 5 order(s)
+[   6.4s]  9. Maintenance agent received a bounded, sanitized task
+[  48.5s] 10. Agent investigated with 17 restricted tool calls (planner: playbook)
+[  48.5s] 11. Repair candidate created in an isolated worktree
+[  48.5s] 12. Acceptance tests not altered by the agent
+[  90.6s] 13. Independent validation passed (protected suite intact: true)
+[  90.6s] 14. Approval recorded via operator API (--auto-approve: SCRIPTED stand-in for a human click)
+[  92.6s] 15. Candidate released via canary (released)
+[  92.6s] 16. Synchronization resumed on the new version
+[  92.6s] 17. Reconciliation: consistent — 35/35 expected orders matched; missing 0, duplicates 0
+[  92.6s] 18. Incident resolved with verification evidence
+[  92.7s] 19. Customer sees a clear status and history
+
+DONE in 93s — NetSuite fixture: 35 sales orders, 35 unique externalIds (no duplicates: true)
+evidence written to /data/artifacts/evidence/demo-failure-1795446132452.json
