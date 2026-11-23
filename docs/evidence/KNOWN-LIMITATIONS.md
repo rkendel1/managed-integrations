@@ -111,3 +111,23 @@ See `docs/product/MAINTENANCE.md` §10. In short:
 - The native flow's customer Settings page (SKU mappings) is still the slice-1 page and keeps some operational vocabulary (health badge, contract version, "synced through").
 - Native incidents appear in the customer's maintenance history with the facts they have; they have no
   transaction accounting, so they never carry a zero-loss claim.
+
+## Slice 5 — onboarding and adaptation
+
+- Fixture-only. No live Shopify store or NetSuite account has been onboarded.
+- NetSuite connection is machine-to-machine: the customer's admin must create an integration record and
+  upload our certificate (4 of the 7 onboarding actions). A one-click NetSuite OAuth 2.0 authorization-code
+  flow needs our app installed in their account (SuiteApp/integration record); not built.
+- Discovery recognizes one adoptable implementation (shopify-erp-order-sync) by its NetSuite signature.
+  Other integrations are detected as "another integration" but cannot be adopted.
+- Shopify does not expose other apps' webhook subscriptions, so we cannot see or retire the customer's
+  existing deployment. After takeover both may run; duplicates are prevented because both write the same
+  NetSuite external id (upsert), but the customer should retire their deployment.
+- The adopted code sends no subsidiary: NetSuite OneWorld accounts reject its orders (since slice 2). Demos
+  and tests use a non-OneWorld fixture account.
+- Orders from before the takeover that never reached NetSuite are reported, not recovered, without a
+  customer decision; there is no customer UI action for that decision yet.
+- Corrections: one adapter type (`field_moved`) and one reviewed patch (p0001). Adapters auto-activate only
+  with a full validation; patches always need an operator. Arbitrary code changes cannot be proposed.
+- The browser cannot complete the fixture's Shopify OAuth in Docker (in-network host); covered by API tests
+  and `make demo-onboarding`.

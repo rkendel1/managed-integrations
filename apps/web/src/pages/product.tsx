@@ -709,9 +709,23 @@ interface Evidence {
     reason?: string;
     rules?: { target: string; source: string; evidence: Record<string, unknown> }[];
     activatedAt?: string;
+    /** slice 5: the registry entry and its kind */
+    adaptationId?: string;
+    kind?: 'adapter' | 'patch' | 'unsupported';
+    patchId?: string;
+    /** slice-4 events only */
     configVersion?: number;
   } | null;
-  validation: { passed: boolean; checks: { name: string; passed: boolean; detail: string }[] } | null;
+  validation: {
+    passed: boolean;
+    requiresDecision?: boolean;
+    checks: {
+      name: string;
+      status?: 'passed' | 'failed' | 'not_applicable';
+      passed?: boolean;
+      detail: string;
+    }[];
+  } | null;
   accounting: {
     orders: { order: string; category: string; verified: boolean; detail: string }[];
     zeroLoss: boolean;
@@ -816,7 +830,13 @@ export function OpsMaintenanceEvent() {
           title="Correction and validation"
           description={
             d.correction?.activatedAt
-              ? `Activated ${fmtDate(d.correction.activatedAt)} as configuration version ${d.correction.configVersion}; upstream code unchanged.`
+              ? `${d.correction.kind === 'patch' ? `Reviewed patch ${d.correction.patchId}` : 'Adapter'} activated ${fmtDate(d.correction.activatedAt)}${
+                  d.correction.adaptationId
+                    ? ` (adaptation ${d.correction.adaptationId.slice(0, 8)})`
+                    : d.correction.configVersion
+                      ? ` (configuration version ${d.correction.configVersion})`
+                      : ''
+                }; installed upstream code unchanged.`
               : (d.correction?.reason ?? 'Not yet derived.')
           }
         />
@@ -837,7 +857,7 @@ export function OpsMaintenanceEvent() {
                 <tr key={c.name}>
                   <Td>{c.name}</Td>
                   <Td>
-                    <StatusBadge value={c.passed ? 'passed' : 'failed'} />
+                    <StatusBadge value={c.status ?? (c.passed ? 'passed' : 'failed')} />
                   </Td>
                   <Td className="text-xs">{c.detail}</Td>
                 </tr>

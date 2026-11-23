@@ -80,8 +80,10 @@ test('operator sees the same story and the evidence behind every claim', async (
   await expect(page.getByTestId('evidence-investigation')).toContainText('src/mapping.js');
   await expect(page.getByTestId('evidence-investigation')).toContainText('matches pinned upstream commit');
   await expect(page.getByTestId('evidence-correction')).toContainText('upstream code unchanged');
+  // a resolved event's validation shows no failed check (statuses are rendered from the record)
+  await expect(page.getByTestId('evidence-correction').locator('[data-status="failed"]')).toHaveCount(0);
   await expect(page.getByTestId('evidence-correction')).toContainText(
-    'mapped values match Shopify Admin API',
+    'business data preserved (Shopify Admin API)',
   );
   await expect(page.getByTestId('evidence-accounting')).toContainText('zero loss proven: yes');
   await expect(page.getByTestId('accounting-order').first()).toBeVisible();

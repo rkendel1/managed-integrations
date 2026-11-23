@@ -60,6 +60,15 @@ only). MCP tools: `portfolio_list`, `portfolio_integration`, `maintenance_events
 lifecycle, and `transitionIncident` enforces the evidence required to resolve. The resource-tenant authorizer
 also resolves `eventId` → incident → tenant. Contract and rules: `docs/product/MAINTENANCE.md`.
 
+### Slice 5 additions (onboarding, adaptation)
+
+Customer (own tenant from identity; no tenant ids in input): `onboarding.status@1` (observation,
+`integrations.read`), `onboarding.discover@1` and `onboarding.confirm@1` (consequential,
+`integrations.operate`). Operators only: `adaptations.inspect@1` (`integrations.read:any`),
+`adaptations.propose@1`, `adaptations.validate@1`, `adaptations.activate@1`, `adaptations.rollback@1`,
+`adaptations.reject@1` (`integrations.operate:any`). Only reviewed catalog patches can be proposed. No new
+authorization infrastructure. Records: `docs/product/ONBOARDING.md`, `docs/product/ADAPTATION.md`.
+
 ### `integrations.list@1`
 
 The first registered business capability (slice 1).

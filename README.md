@@ -138,6 +138,24 @@ make demo-maintenance
 Then sign in as `ops@bluewave.test` / `bluewave-demo-password`. How it works, and what we can and cannot
 claim: [`docs/product/MAINTENANCE.md`](docs/product/MAINTENANCE.md).
 
+### Slice 5: frictionless onboarding and managed adaptation
+
+A new customer signs up, connects Shopify and NetSuite, and we discover their existing integration from
+what actually reached NetSuite; they confirm once and we take over (order notification registered,
+baseline checked twice). Every change to how the adopted code behaves — an adapter, a reviewed patch, or an
+unsupported change routed to a person — lives in one registry with provenance, validation, activation and
+rollback, and operators can see exactly what code runs and why.
+
+```bash
+make reset
+```
+
+```bash
+make demo-onboarding
+```
+
+Records: [`docs/product/ONBOARDING.md`](docs/product/ONBOARDING.md), [`docs/product/ADAPTATION.md`](docs/product/ADAPTATION.md).
+
 ## Develop locally (without Docker for the app)
 
 Requirements: Node ≥ 22.12, pnpm 10, PostgreSQL 16, Docker (only for the maintenance sandbox).
