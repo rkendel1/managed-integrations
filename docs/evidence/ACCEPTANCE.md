@@ -165,3 +165,69 @@ Found and fixed during slice 3 verification:
 - **e2e and the login rate limit.** The suite needs more logins than the product's 10/min login limit
   allows. Login helpers now pace themselves (`e2e/support/pace-login.ts`); the limit itself is unchanged.
   `app.spec.ts` "unmapped SKU" still needs a fresh stack, because it adds the mapping it tests (pre-existing).
+
+## Slice 4 — customer product and verified maintenance lifecycle (2026-11-23)
+
+Record: `docs/product/MAINTENANCE.md`. The provider change is fictional and made at the fixture boundary.
+Nothing was run against real Shopify or NetSuite.
+
+Test files referenced below:
+
+- `packages/adopted-order-sync/test/maintenance.test.ts` (**lifecycle**)
+- `apps/api/test/product-appport.test.ts` (**API**: UI client + MCP)
+- `packages/capabilities/test/product.test.ts` (**rules**)
+- `e2e/maintenance.spec.ts`, `e2e/app.spec.ts` (**e2e**)
+
+| #   | Required test                                   | Status             | Where                                                                                                                     |
+| --- | ----------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| 1   | no event without a change                       | VERIFIED           | lifecycle                                                                                                                 |
+| 2   | change detected                                 | VERIFIED           | lifecycle; demo step 3                                                                                                    |
+| 3   | detection evidence persisted                    | VERIFIED           | lifecycle (`finding`: baseline vs observed, API versions, shape diff; reproducible)                                       |
+| 4   | affected integration identified                 | VERIFIED           | lifecycle; demo step 4                                                                                                    |
+| 5   | adopted execution at risk under the change      | VERIFIED           | lifecycle (dry run of the real upstream mapping: null rate); fixture rejects null rates                                   |
+| 6   | investigation identifies the code path          | VERIFIED           | lifecycle (`src/mapping.js` line, sha matches pinned commit)                                                              |
+| 7   | correction applied                              | VERIFIED           | lifecycle (`inputCompat` rule with provenance; upstream sha unchanged)                                                    |
+| 8   | regression tests pass                           | VERIFIED           | validation check 2 (stored pre-change orders map identically); full suites                                                |
+| 9   | changed fixture handled after correction        | VERIFIED           | lifecycle (new 2027-01 order delivered, correct rate); demo                                                               |
+| 10  | delayed transactions identified                 | VERIFIED           | accounting `delayed`; attempt history `held → delivered`                                                                  |
+| 11  | reconciliation discovers missing operations     | VERIFIED           | accounting `discoveredByReconciliation` (lost webhook)                                                                    |
+| 12  | recovery through the existing execution path    | VERIFIED           | released orders via `executeDelivery`; missing via slice-3 recovery                                                       |
+| 13  | destination verification                        | VERIFIED           | second reconciliation run + line-level NetSuite vs Shopify                                                                |
+| 14  | no duplicate records                            | VERIFIED           | lifecycle (one record per order, after re-running the driver); demo step 11                                               |
+| 15  | cannot be marked resolved without evidence      | VERIFIED           | lifecycle (legal transitions refused by the evidence guard); API (no write capability exists)                             |
+| 16  | customer claims derived from persisted evidence | VERIFIED           | API (facts and numbers equal persisted accounting); rules                                                                 |
+| 17  | unresolved/unverified prevents zero-loss        | VERIFIED           | lifecycle (unrecoverable order → not resolved, `zeroLoss: false`); rules                                                  |
+| 18  | tenant isolation                                | VERIFIED           | API (UI client + MCP); demo; e2e                                                                                          |
+| 19  | customer and operator agree                     | VERIFIED           | API (customer UI-client view deep-equals operator MCP view and the evidence's embedded view); demo                        |
+| 20  | existing native and adopted demos still work    | VERIFIED (fixture) | fresh stack: `demo-maintenance`, `demo-reconcile`, `demo-adopted`, `demo-failure` all passed (`runs/*-slice4-docker.log`) |
+
+Also verified:
+
+- **Status is not optimistic.** Successful deliveries leave "Verification pending"; "Protected" requires a
+  completed consistent check (API, rules).
+- **Escalation without a documented replacement** changes nothing and claims nothing (lifecycle).
+- **Vacuous claims are blocked.** An empty or incomplete population cannot yield zero loss (found by a
+  failing test during development; fixed).
+
+Found and fixed during slice 4:
+
+- **Vacuous zero-loss claim.** With an empty population it said `zeroLoss: true`. The claim now requires a
+  non-empty population containing every held order.
+- **Wrong window basis.** The affected window used webhook receipt time, but reconciliation selects by
+  order creation time.
+- **`deliveries.list`/`get` output schema lacked `held`.** Operators' views would have failed while orders
+  were held.
+- **Customer timeline exposed internals and duplicated an entry.** Caught by reviewing the CX screens.
+- **`demo-failure.ts` took the first `integrations` row without a filter.** Once maintenance updated a row,
+  it picked the adopted integration.
+- **The customer-facing integration name exposed the executor.**
+
+Fresh-stack verification (`make build`, `make reset`, then `demo-maintenance` → `demo-reconcile` →
+`demo-adopted` → `demo-failure --auto-approve` → Playwright):
+
+- All four demos passed.
+- Playwright: 16/16 (`runs/playwright-slice4-docker.log`).
+- Vitest: 19 files, 163 tests.
+- Typecheck and lint clean.
+- The AppPort packages were upgraded to the latest published versions before this slice. The upgrade was
+  committed separately, and the suite stayed green.
