@@ -15,7 +15,7 @@ import {
 } from '@appport/authorization';
 import type { JsonValue } from '@appport/protocol';
 import { eq } from 'drizzle-orm';
-import { deliveries, integrations, reconciliationRuns, type Db } from '@mi/database';
+import { deliveries, incidents, integrations, reconciliationRuns, type Db } from '@mi/database';
 import { AppPortPermissions, tenantIdOf } from './identity.ts';
 
 function requestedTenantId(input: unknown): string | undefined {
@@ -62,14 +62,23 @@ export function integrationsAuthorizer(): Authorizer {
  */
 export function resourceTenantAuthorizer(db: Db): Authorizer {
   return authorizerFrom('resource-tenant', async (request) => {
-    const input = (request.input ?? {}) as { integrationId?: unknown; deliveryId?: unknown; runId?: unknown };
+    const input = (request.input ?? {}) as {
+      integrationId?: unknown;
+      deliveryId?: unknown;
+      runId?: unknown;
+      eventId?: unknown;
+    };
+    const eventId = typeof input.eventId === 'string' ? input.eventId : undefined;
     const runId = typeof input.runId === 'string' ? input.runId : undefined;
     const integrationId = typeof input.integrationId === 'string' ? input.integrationId : undefined;
     const deliveryId = typeof input.deliveryId === 'string' ? input.deliveryId : undefined;
-    if (!integrationId && !deliveryId && !runId) return true;
+    if (!integrationId && !deliveryId && !runId && !eventId) return true;
 
     let resourceTenant: string | undefined;
-    if (deliveryId) {
+    if (eventId) {
+      const [row] = await db.select({ tenantId: incidents.tenantId }).from(incidents).where(eq(incidents.id, eventId));
+      resourceTenant = row?.tenantId;
+    } else if (deliveryId) {
       const [row] = await db
         .select({ tenantId: integrations.tenantId })
         .from(deliveries)

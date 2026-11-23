@@ -28,6 +28,8 @@ export interface ContractField {
   /** For line fields: checked only on lines upstream keeps (lines with a SKU). */
   requiredOnSkuLines?: boolean;
   required?: boolean;
+  /** Plain-language name, used when the field is described to a customer. */
+  label: string;
   /** The upstream expression that reads it, and where. */
   upstream: { file: 'src/mapping.js'; expression: string; effect: string };
 }
@@ -35,36 +37,42 @@ export interface ContractField {
 export const UPSTREAM_INPUT_CONTRACT: readonly ContractField[] = [
   {
     path: 'id',
+    label: 'the order number',
     kind: 'integer',
     required: true,
     upstream: { file: 'src/mapping.js', expression: 'shopifyOrder.id', effect: 'NetSuite externalId' },
   },
   {
     path: 'name',
+    label: 'the order name',
     kind: 'string',
     required: true,
     upstream: { file: 'src/mapping.js', expression: 'shopifyOrder.name', effect: 'NetSuite otherRefNum' },
   },
   {
     path: 'currency',
+    label: 'the order currency',
     kind: 'string',
     required: true,
     upstream: { file: 'src/mapping.js', expression: 'shopifyOrder.currency', effect: 'NetSuite currency' },
   },
   {
     path: 'line_items',
+    label: 'the order lines',
     kind: 'number', // presence of the array is checked separately
     required: true,
     upstream: { file: 'src/mapping.js', expression: 'shopifyOrder.line_items', effect: 'NetSuite lines' },
   },
   {
     path: 'line_items[].quantity',
+    label: 'the quantity of each order line',
     kind: 'number',
     requiredOnSkuLines: true,
     upstream: { file: 'src/mapping.js', expression: 'l.quantity', effect: 'NetSuite line quantity' },
   },
   {
     path: 'line_items[].price',
+    label: 'the unit price of each order line',
     kind: 'decimal_string',
     requiredOnSkuLines: true,
     upstream: {

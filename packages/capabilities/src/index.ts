@@ -63,3 +63,19 @@ export {
   type ReconciliationRun,
   type RecoverOutput,
 } from './capabilities/reconciliation.ts';
+export {
+  createMaintenanceEventGetCapability,
+  createMaintenanceEvidenceCapability,
+  createPortfolioIntegrationCapability,
+  createPortfolioListCapability,
+} from './capabilities/product.ts';
+export {
+  assessStatus,
+  presentEvent,
+  responsibilitiesFor,
+  STATUS_CODES,
+  STATUS_DEFINITIONS,
+  type CustomerEvent,
+  type StatusAssessment,
+  type StatusCode,
+} from './product.ts';

@@ -23,6 +23,12 @@ import {
   type EnqueueRecovery,
 } from './capabilities/reconciliation.ts';
 import { createIntegrationsListCapability } from './capabilities/integrations-list.ts';
+import {
+  createMaintenanceEventGetCapability,
+  createMaintenanceEvidenceCapability,
+  createPortfolioIntegrationCapability,
+  createPortfolioListCapability,
+} from './capabilities/product.ts';
 
 export const APPPORT_APPLICATION = {
   id: 'io.managedintegrations.app',
@@ -38,6 +44,8 @@ export interface IntegrationsApplicationOptions {
   enqueueReconciliationScan?: EnqueueReconciliationScan;
   /** Queues the execution of one requested recovery (host-provided). */
   enqueueRecovery?: EnqueueRecovery;
+  /** How often the worker reconciles (stated to customers as a responsibility). */
+  reconcileIntervalMinutes?: number;
   /** Receives one record per capability invocation (persisted as invocation evidence). */
   telemetry?: TelemetrySink;
   /** Optional host logger (for example the API's pino instance), bridged to AppPort's interface. */
@@ -56,6 +64,10 @@ export function createIntegrationsApplication(options: IntegrationsApplicationOp
       createReconciliationRunsCapability(options.db),
       createReconciliationItemsCapability(options.db),
       createReconciliationRecoverCapability(options.db, options.enqueueRecovery),
+      createPortfolioListCapability(options.db),
+      createPortfolioIntegrationCapability(options.db, options.reconcileIntervalMinutes ?? null),
+      createMaintenanceEventGetCapability(options.db),
+      createMaintenanceEvidenceCapability(options.db),
     ],
     authorizer: combineAuthorizers([integrationsAuthorizer(), resourceTenantAuthorizer(options.db)]),
     ...(options.telemetry ? { telemetry: options.telemetry } : {}),
