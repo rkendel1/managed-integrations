@@ -3,10 +3,12 @@
  * canaries) and the periodic reliability tick. Holds credentials (decrypts connections); never
  * runs maintenance-agent code.
  */
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt, lt } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import {
+  AdoptedExecuteJobSchema,
   BacklogJobSchema,
+  FLOW_TYPE,
   ProviderError,
   QUEUES,
   ReconcileJobSchema,
@@ -14,6 +16,7 @@ import {
   SyncJobSchema,
 } from '@mi/contracts';
 import {
+  deliveries,
   incidents,
   integrations,
   maintenanceRuns,
@@ -31,6 +34,12 @@ import {
 } from '@mi/integration-shopify-netsuite';
 import { describeError, withCorrelation, type Logger } from '@mi/observability';
 import { runRelease } from '@mi/maintenance';
+import {
+  ADOPTED_FLOW_TYPE,
+  executeDelivery,
+  nextAutomaticRetryDelaySeconds,
+  requestDeliveryRetry,
+} from '@mi/adopted-order-sync';
 import {
   applyReconciliationResult,
   evaluateIntegration,
@@ -61,6 +70,7 @@ export const RUNTIME_QUEUES = [
   QUEUES.release,
   QUEUES.maintenance,
   QUEUES.validation,
+  QUEUES.adoptedExecute,
 ];
 
 export async function ensureQueues(boss: PgBoss): Promise<void> {
@@ -192,10 +202,37 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     async tick(): Promise<void> {
       const interrupted = await recoverInterruptedRuns(db);
       if (interrupted.length) logger.warn({ interrupted }, 'marked interrupted sync runs');
+      // Durable outbox completion for adopted executors: re-enqueue deliveries accepted but never picked up
+      // (e.g. the API stopped between committing the receipt and enqueueing the job).
+      const orphaned = await db
+        .select({ id: deliveries.id })
+        .from(deliveries)
+        .innerJoin(integrations, eq(integrations.id, deliveries.integrationId))
+        .where(
+          and(
+            eq(integrations.flowType, ADOPTED_FLOW_TYPE),
+            eq(deliveries.outcome, 'pending'),
+            lt(deliveries.updatedAt, new Date(Date.now() - 2 * 60_000)),
+          ),
+        );
+      for (const o of orphaned) {
+        await boss.send(
+          QUEUES.adoptedExecute,
+          { deliveryId: o.id, trigger: { kind: 'automatic_retry' } },
+          { singletonKey: `adopted:${o.id}` },
+        );
+      }
       const active = await db
         .select()
         .from(integrations)
-        .where(and(eq(integrations.enabled, true), eq(integrations.lifecycle, 'active')));
+        // Only the native engine's integrations are scheduled here; adopted executors are event-driven.
+        .where(
+          and(
+            eq(integrations.enabled, true),
+            eq(integrations.lifecycle, 'active'),
+            eq(integrations.flowType, FLOW_TYPE),
+          ),
+        );
       for (const integ of active) {
         await withCorrelation({ integrationId: integ.id, tenantId: integ.tenantId }, async () => {
           const syncDue = new Date(Date.now() - config.env.SYNC_INTERVAL_MINUTES * 60_000);
@@ -311,6 +348,40 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
         enqueue: executeActions,
       });
     },
+
+    /** Runs one delivery through the ADOPTED upstream implementation (shopify-erp-order-sync). */
+    async adoptedExecute(raw: unknown): Promise<unknown> {
+      const job = AdoptedExecuteJobSchema.parse(raw);
+      const result = await executeDelivery({
+        db,
+        cipher: config.cipher!,
+        endpoints: config.endpoints,
+        deliveryId: job.deliveryId,
+        trigger: job.trigger,
+      });
+      if (result.executed && result.outcome === 'failed') {
+        const delay = nextAutomaticRetryDelaySeconds(result.attemptNo);
+        if (delay != null) {
+          const retry = await requestDeliveryRetry(db, job.deliveryId);
+          if (retry.accepted) {
+            await boss.sendAfter(
+              QUEUES.adoptedExecute,
+              { deliveryId: job.deliveryId, trigger: { kind: 'automatic_retry' } },
+              { singletonKey: `adopted:${job.deliveryId}` },
+              delay,
+            );
+          }
+        }
+      }
+      if (result.executed) {
+        const [d] = await db
+          .select({ integrationId: deliveries.integrationId })
+          .from(deliveries)
+          .where(eq(deliveries.id, job.deliveryId));
+        if (d) await evaluateAndAct(d.integrationId);
+      }
+      return result;
+    },
   };
 
   async function start(): Promise<void> {
@@ -340,6 +411,7 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     await wrap(QUEUES.reconcile, handlers.reconcile);
     await wrap(QUEUES.backlog, handlers.backlog);
     await wrap(QUEUES.release, handlers.release);
+    await wrap(QUEUES.adoptedExecute, handlers.adoptedExecute);
     await boss.schedule(QUEUES.reliabilityTick, '* * * * *');
   }
 

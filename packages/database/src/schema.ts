@@ -230,6 +230,8 @@ export const deliveries = pgTable(
     validation: jsonb('validation').notNull().default({}),
     /** Non-PII summary used by reconciliation: line count, computed total, currency. */
     summary: jsonb('summary').notNull().default({}),
+    /** Adopted executors: the durable webhook receipt whose payload this delivery executes. */
+    receiptId: uuid('receipt_id'),
     firstSyncRunId: uuid('first_sync_run_id'),
     lastSyncRunId: uuid('last_sync_run_id'),
     deliveredAt: ts('delivered_at'),
@@ -240,6 +242,36 @@ export const deliveries = pgTable(
     index('deliveries_integration_outcome_idx').on(t.integrationId, t.outcome),
     index('deliveries_integration_source_idx').on(t.integrationId, t.sourceId),
   ],
+);
+
+/**
+ * Durable receipt of a provider webhook for an adopted executor that has no persistence of its own.
+ * The raw body is kept encrypted (AES-GCM, AAD = receipt id) because replay requires the exact
+ * payload the upstream code consumes; it is never returned by any API.
+ */
+export const webhookReceipts = pgTable(
+  'webhook_receipts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    integrationId: uuid('integration_id')
+      .notNull()
+      .references(() => integrations.id),
+    /** X-Shopify-Webhook-Id: Shopify's id for this delivery attempt series (stable across its retries). */
+    providerWebhookId: text('provider_webhook_id').notNull(),
+    topic: text('topic').notNull(),
+    shopDomain: text('shop_domain').notNull(),
+    payloadCiphertext: text('payload_ciphertext').notNull(),
+    payloadSha256: text('payload_sha256').notNull(),
+    /** accepted | duplicate_webhook | already_delivered | ignored_topic */
+    disposition: text('disposition').notNull(),
+    deliveryId: uuid('delivery_id'),
+    correlationId: text('correlation_id'),
+    receivedAt: createdAt(),
+  },
+  (t) => [uniqueIndex('webhook_receipts_integration_webhook_uq').on(t.integrationId, t.providerWebhookId)],
 );
 
 export const deliveryAttempts = pgTable(

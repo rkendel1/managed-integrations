@@ -9,6 +9,7 @@ export const QUEUES = {
   maintenance: 'maintenance.run',
   validation: 'validation.run',
   release: 'release.run',
+  adoptedExecute: 'adopted.execute',
 } as const;
 
 export const SyncJobSchema = z.object({
@@ -26,3 +27,12 @@ export const BacklogJobSchema = z.object({ integrationId: z.string().uuid(), inc
 export const MaintenanceJobSchema = z.object({ maintenanceRunId: z.string().uuid() });
 export const ValidationJobSchema = z.object({ repairCandidateId: z.string().uuid() });
 export const ReleaseJobSchema = z.object({ releaseId: z.string().uuid() });
+export const AdoptedExecuteJobSchema = z.object({
+  deliveryId: z.string().uuid(),
+  trigger: z.object({
+    kind: z.enum(['webhook', 'automatic_retry', 'manual_retry']),
+    principalId: z.string().optional(),
+    appportRequestId: z.string().optional(),
+    reason: z.string().max(500).optional(),
+  }),
+});

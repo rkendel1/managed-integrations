@@ -66,6 +66,13 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
     salesOrders: new Map<string, SalesOrderRecord>(), // internal id -> record
     items: new Set<string>(['101', '102', '103']),
     customers: new Set<string>(['501']),
+    /** Business keys used by lookups: customer.entityid and item.itemid (internal id -> code). */
+    customerCodes: new Map<string, string>([['501', 'WEB']]),
+    itemCodes: new Map<string, string>([
+      ['101', 'SKU-RED'],
+      ['102', 'SKU-BLUE'],
+      ['103', 'SKU-GREEN'],
+    ]),
     subsidiaries: new Set<string>(['1']),
     oneWorld: opts.oneWorld ?? true,
     mandatoryBodyFields: [] as string[],
@@ -345,6 +352,11 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
     /^SELECT t\.id, t\.externalid, t\.otherrefnum, t\.trandate FROM transaction t WHERE t\.type = 'SalesOrd' AND \(t\.externalid IN \(([?, ]+)\) OR t\.otherrefnum IN \(([?, ]+)\)\) ORDER BY t\.id$/;
   const SUITEQL_LINES =
     /^SELECT tl\.transaction, tl\.item, tl\.quantity, tl\.rate FROM transactionline tl WHERE tl\.mainline = 'F' AND tl\.transaction IN \(([?, ]+)\) ORDER BY tl\.transaction, tl\.linesequencenumber$/;
+  /** Lookups by business key with inline, quote-escaped literals. */
+  const SUITEQL_CUSTOMER_BY_CODE = /^SELECT id, entityid FROM customer WHERE entityid IN \((.+)\)$/;
+  const SUITEQL_ITEM_BY_CODE = /^SELECT id, itemid FROM item WHERE itemid IN \((.+)\)$/;
+  const parseLiterals = (list: string): string[] =>
+    [...list.matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1]!.replace(/''/g, "'"));
   const SUITEQL_PREFIX =
     /^SELECT t\.id, t\.externalid, t\.otherrefnum, t\.trandate FROM transaction t WHERE t\.type = 'SalesOrd' AND t\.externalid LIKE \? ORDER BY t\.id$/;
 
@@ -391,6 +403,12 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
               rate: String(l.rate),
             })),
           );
+      } else if ((m = s.match(SUITEQL_CUSTOMER_BY_CODE))) {
+        const codes = new Set(parseLiterals(m[1]!));
+        rows = [...state.customerCodes].filter(([, code]) => codes.has(code)).map(([id, entityid]) => ({ id, entityid }));
+      } else if ((m = s.match(SUITEQL_ITEM_BY_CODE))) {
+        const codes = new Set(parseLiterals(m[1]!));
+        rows = [...state.itemCodes].filter(([, code]) => codes.has(code)).map(([id, itemid]) => ({ id, itemid }));
       } else if (s.match(SUITEQL_PREFIX)) {
         const like = String(params[0] ?? '');
         const prefix = like.endsWith('%') ? like.slice(0, -1) : like;
@@ -426,6 +444,11 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
   app.post('/__fixture/public-key', async (req) => {
     control.registerPublicKey((req.body as { pem: string }).pem);
     return { ok: true };
+  });
+  app.post('/__fixture/config', async (req) => {
+    const b = (req.body ?? {}) as { oneWorld?: boolean };
+    if (typeof b.oneWorld === 'boolean') state.oneWorld = b.oneWorld;
+    return { oneWorld: state.oneWorld };
   });
   app.post('/__fixture/mandatory-fields', async (req) => {
     control.setMandatoryBodyFields((req.body as { fields: string[] }).fields);

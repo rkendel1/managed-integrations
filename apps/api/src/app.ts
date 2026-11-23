@@ -12,6 +12,7 @@ import { users, type Db } from '@mi/database';
 import type { ServiceConfig } from '@mi/integration-shopify-netsuite';
 import { newCorrelationId, redact, withCorrelation } from '@mi/observability';
 import { createSession, destroySession, loadSession, SESSION_COOKIE, verifyPassword } from './auth.ts';
+import { registerAdoptedWebhookRoutes } from './adopted-webhook-routes.ts';
 import { registerCustomerRoutes } from './customer-routes.ts';
 import { registerOperatorRoutes } from './operator-routes.ts';
 import { registerAppPortRoutes } from './appport-routes.ts';
@@ -126,6 +127,7 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
     return { user: { email: u.email, role: u.role }, csrfToken: u.csrfToken };
   });
 
+  await registerAdoptedWebhookRoutes(app, deps);
   await registerCustomerRoutes(app, deps);
   await registerOperatorRoutes(app, deps);
 

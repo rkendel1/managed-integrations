@@ -217,7 +217,8 @@ export async function evaluateIntegration(
   const maxDelayMs = contract.freshness.maxAcceptableDelayMinutes * 60_000;
   const reference = integration.lastSuccessfulSyncAt ?? (integration.enabled ? integration.createdAt : null);
   const lagMs = reference ? now.getTime() - reference.getTime() : null;
-  if (integration.enabled && lagMs != null && lagMs > maxDelayMs) {
+  // A commitment of 0 means freshness is not applicable (event-driven flows have no polling interval).
+  if (maxDelayMs > 0 && integration.enabled && lagMs != null && lagMs > maxDelayMs) {
     await openIncident(db, {
       ...base,
       kind: 'freshness_breach',

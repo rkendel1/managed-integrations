@@ -1,0 +1,21 @@
+{
+  "name": "@mi/adopted-order-sync",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "shopify-sync": "github:Milo-ai-HQ/shopify-erp-order-sync#d01b51d95993598580cdcffda6537a6f20a10a3a",
+    "@mi/contracts": "workspace:*",
+    "@mi/database": "workspace:*",
+    "@mi/integration-shopify-netsuite": "workspace:*",
+    "@mi/observability": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "zod": "^4.6.7"
+  },
+  "scripts": {
+    "test:upstream": "node --test node_modules/shopify-sync/test/*.test.js"
+  }
+}

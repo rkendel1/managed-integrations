@@ -11,6 +11,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.0
         version: 10.0.1(eslint@10.15.0(jiti@2.7.0))
+      '@mi/adopted-order-sync':
+        specifier: workspace:*
+        version: link:packages/adopted-order-sync
       '@mi/contracts':
         specifier: workspace:*
         version: link:packages/contracts
@@ -74,6 +77,9 @@ importers:
       '@fastify/static':
         specifier: ^10.1.12
         version: 10.1.12
+      '@mi/adopted-order-sync':
+        specifier: workspace:*
+        version: link:../../packages/adopted-order-sync
       '@mi/capabilities':
         specifier: workspace:*
         version: link:../../packages/capabilities
@@ -163,6 +169,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@mi/adopted-order-sync':
+        specifier: workspace:*
+        version: link:../../packages/adopted-order-sync
       '@mi/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -187,6 +196,30 @@ importers:
       pg-boss:
         specifier: ^12.39.0
         version: 12.39.0(@opentelemetry/api@1.10.0)
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+
+  packages/adopted-order-sync:
+    dependencies:
+      '@mi/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@mi/database':
+        specifier: workspace:*
+        version: link:../database
+      '@mi/integration-shopify-netsuite':
+        specifier: workspace:*
+        version: link:../integration-shopify-netsuite
+      '@mi/observability':
+        specifier: workspace:*
+        version: link:../observability
+      drizzle-orm:
+        specifier: ^0.45.4
+        version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
+      shopify-sync:
+        specifier: github:Milo-ai-HQ/shopify-erp-order-sync#d01b51d95993598580cdcffda6537a6f20a10a3a
+        version: git+https://git@github.com:Milo-ai-HQ/shopify-erp-order-sync.git#d01b51d95993598580cdcffda6537a6f20a10a3a
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -2373,6 +2406,11 @@ packages:
     resolution: {integrity: sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==}
     engines: {node: '>=8'}
 
+  shopify-sync@git+https://git@github.com:Milo-ai-HQ/shopify-erp-order-sync.git#d01b51d95993598580cdcffda6537a6f20a10a3a:
+    resolution: {commit: d01b51d95993598580cdcffda6537a6f20a10a3a, repo: git@github.com:Milo-ai-HQ/shopify-erp-order-sync.git, type: git}
+    version: 1.0.0
+    engines: {node: '>=20'}
+
   side-channel-list@1.0.1:
     resolution: {integrity: sha512-mjn/0bi/oUURjc5Xl7IaWi/OJJJumuoJFQJfDDyO46+hBWsfaVM65TBHq2eoZBhzl9EchxOijpkbRC8SVBQU0w==}
     engines: {node: '>= 0.4'}
@@ -4405,6 +4443,8 @@ snapshots:
       shebang-regex: 3.0.0
 
   shebang-regex@3.0.0: {}
+
+  shopify-sync@git+https://git@github.com:Milo-ai-HQ/shopify-erp-order-sync.git#d01b51d95993598580cdcffda6537a6f20a10a3a: {}
 
   side-channel-list@1.0.1:
     dependencies:
