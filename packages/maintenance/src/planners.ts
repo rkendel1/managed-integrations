@@ -65,7 +65,7 @@ export class PlaybookPlanner implements MaintenancePlanner {
     let reproProfile: string | null = null;
     for (const profile of ['baseline', 'drift']) {
       const r = await tb.invoke('run_tests', { target: 'regression', profile });
-      if (r.startsWith('FAILED') && r.includes(`Cannot query field "${field}" on type "${type}"`)) {
+      if (r.startsWith('FAILED') && r.replace(/\\"/g, '"').includes(`Cannot query field "${field}" on type "${type}"`)) {
         reproProfile = profile;
         break;
       }
