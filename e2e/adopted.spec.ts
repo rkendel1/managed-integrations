@@ -49,6 +49,11 @@ test("the adopted tenant's customer sees the product, not the executor machinery
   );
   await expect(page.getByTestId('portfolio-integration')).toHaveCount(1);
   await expect(page.getByText('d01b51d95993')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await expect(page.getByTestId('adopted-settings')).toContainText(
+    'Which NetSuite customer receives each order',
+  );
+  await expect(page.getByLabel('Web-shop customer')).toHaveValue('WEB');
   await page.goto('/app/integrations/00000000-0000-4000-8000-000000000000/deliveries');
   await expect(page).toHaveURL(/\/app$/);
 });

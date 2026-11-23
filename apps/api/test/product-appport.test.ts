@@ -286,6 +286,42 @@ describe('customer product through AppPort', () => {
     expect(r.isError).toBe(true);
   });
 
+  it('adopted settings: the customer sees and edits only their decisions; internal correction rules are kept', async () => {
+    const login = await fetch(`${base}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'ops@bluewave.test', password: PW }),
+    });
+    const ck = (login.headers.get('set-cookie') ?? '').split(';')[0]!;
+    const csrf = ((await login.json()) as { csrfToken: string }).csrfToken;
+    const h2 = { cookie: ck, 'x-csrf-token': csrf, 'content-type': 'application/json' };
+    const got = await (await fetch(`${base}/api/customer/integration`, { headers: { cookie: ck } })).json();
+    expect(got).toMatchObject({ kind: 'adopted', settings: { defaultCustomer: 'WEB', customerByEmail: {} } });
+    expect(JSON.stringify(got)).not.toMatch(/inputCompat|line_items|reconcile/);
+    const bad = await fetch(`${base}/api/customer/integration`, {
+      method: 'PATCH',
+      headers: h2,
+      body: JSON.stringify({ settings: { customerByEmail: { 'not-an-email': 'X' } } }),
+    });
+    expect(bad.status).toBe(400);
+    const internal = await fetch(`${base}/api/customer/integration`, {
+      method: 'PATCH',
+      headers: h2,
+      body: JSON.stringify({ config: { inputCompat: [] } }),
+    });
+    expect(internal.status).toBe(400); // internal configuration is not writable from the customer product
+    const ok = await fetch(`${base}/api/customer/integration`, {
+      method: 'PATCH',
+      headers: h2,
+      body: JSON.stringify({ settings: { customerByEmail: { 'Buyer@Corp.test': 'C-100' } } }),
+    });
+    expect(ok.status).toBe(200);
+    const [integ] = await h.dbh.db.select().from(integrations).where(eq(integrations.id, a.integrationId));
+    const cfg = integ!.config as { customerByEmail: Record<string, string>; inputCompat: unknown[] };
+    expect(cfg.customerByEmail).toEqual({ 'buyer@corp.test': 'C-100' });
+    expect(cfg.inputCompat).toHaveLength(1); // the validated correction survived the customer's edit
+  });
+
   it('nothing on the AppPort surface can write maintenance state (test 15, boundary side)', async () => {
     const m = await mcp(await cookie('operator@mi.test'));
     const tools = (await m.listTools()).tools;

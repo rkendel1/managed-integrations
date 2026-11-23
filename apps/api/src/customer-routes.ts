@@ -32,6 +32,7 @@ import {
   sourceImplementation,
   verifyShopifyCallbackHmac,
 } from '@mi/integration-shopify-netsuite';
+import { ADOPTED_FLOW_TYPE, AdoptedConfigSchema } from '@mi/adopted-order-sync';
 import { describeError } from '@mi/observability';
 import { requireRole } from './auth.ts';
 import type { ApiDeps } from './app.ts';
@@ -373,6 +374,18 @@ export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps
   app.get('/api/customer/integration', { preHandler: auth }, async (req, reply) => {
     const integ = await tenantIntegration(req.user!.tenantId!);
     if (!integ) return reply.code(404).send({ error: 'No integration' });
+    if (integ.flowType === ADOPTED_FLOW_TYPE) {
+      // Only what the customer decides. Internal configuration (compatibility rules, reconciliation window)
+      // is operated by us and is not part of the customer's settings.
+      const c = AdoptedConfigSchema.parse(integ.config);
+      return {
+        id: integ.id,
+        kind: 'adopted',
+        flow: 'Shopify orders → NetSuite sales orders',
+        enabled: integ.enabled,
+        settings: { defaultCustomer: c.defaultCustomer, customerByEmail: c.customerByEmail },
+      };
+    }
     const [contract] = await db
       .select()
       .from(integrationContracts)
@@ -395,6 +408,54 @@ export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps
   app.patch('/api/customer/integration', { preHandler: auth }, async (req, reply) => {
     const integ = await tenantIntegration(req.user!.tenantId!);
     if (!integ) return reply.code(404).send({ error: 'No integration' });
+    if (integ.flowType === ADOPTED_FLOW_TYPE) {
+      const adopted = z
+        .object({
+          enabled: z.boolean().optional(),
+          settings: z
+            .object({
+              defaultCustomer: z.string().trim().min(1).max(100).optional(),
+              customerByEmail: z.record(z.string().email(), z.string().trim().min(1).max(100)).optional(),
+            })
+            .strict()
+            .optional(),
+        })
+        .strict()
+        .safeParse(req.body);
+      if (!adopted.success)
+        return reply.code(400).send({ error: adopted.error.issues.map((i) => i.message).join('; ') });
+      const s = adopted.data.settings;
+      // Merge into the full configuration so internal fields (e.g. validated compatibility rules) are kept.
+      const config = AdoptedConfigSchema.parse({
+        ...(integ.config as object),
+        ...(s?.defaultCustomer ? { defaultCustomer: s.defaultCustomer } : {}),
+        ...(s?.customerByEmail
+          ? {
+              customerByEmail: Object.fromEntries(
+                Object.entries(s.customerByEmail).map(([k, v]) => [k.toLowerCase(), v]),
+              ),
+            }
+          : {}),
+      });
+      const [updated] = await db
+        .update(integrations)
+        .set({
+          config,
+          ...(s ? { configVersion: integ.configVersion + 1 } : {}),
+          ...(adopted.data.enabled != null
+            ? { enabled: adopted.data.enabled, lifecycle: adopted.data.enabled ? 'active' : 'paused' }
+            : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(integrations.id, integ.id))
+        .returning();
+      await audit(req.user!.id, 'integration.update', 'integration', integ.id, adopted.data);
+      const c = AdoptedConfigSchema.parse(updated!.config);
+      return {
+        enabled: updated!.enabled,
+        settings: { defaultCustomer: c.defaultCustomer, customerByEmail: c.customerByEmail },
+      };
+    }
     const body = z
       .object({
         enabled: z.boolean().optional(),

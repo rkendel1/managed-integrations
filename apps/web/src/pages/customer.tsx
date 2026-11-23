@@ -196,6 +196,7 @@ export function CustomerIntegration() {
   };
   const d = q.data;
   if (!d) return <ErrorNote error={q.error} />;
+  if (d.kind === 'adopted') return <AdoptedSettings d={d} patch={patch} err={err} />;
   return (
     <>
       <Card>
@@ -316,5 +317,111 @@ export function CustomerIntegration() {
         </CardBody>
       </Card>
     </>
+  );
+}
+
+/**
+ * Settings for an integration executed by adopted software: the customer's own decisions only —
+ * which NetSuite customer receives each order. Everything else is operated by us.
+ */
+function AdoptedSettings({
+  d,
+  patch,
+  err,
+}: {
+  d: { flow: string; settings: { defaultCustomer: string; customerByEmail: Record<string, string> } };
+  patch: (body: unknown) => Promise<void>;
+  err: unknown;
+}) {
+  const [def, setDef] = useState(d.settings.defaultCustomer);
+  const [row, setRow] = useState({ email: '', code: '' });
+  const map = d.settings.customerByEmail;
+  return (
+    <Card data-testid="adopted-settings">
+      <CardHeader
+        title="Which NetSuite customer receives each order"
+        description="Business buyers are matched by e-mail to their NetSuite customer; every other order goes to your web-shop customer."
+      />
+      <CardBody className="space-y-5">
+        <ErrorNote error={err} />
+        <div className="flex flex-wrap items-end gap-2">
+          <Field label="Web-shop customer (NetSuite customer code)">
+            <input
+              aria-label="Web-shop customer"
+              className={inputClass}
+              value={def}
+              onChange={(e) => setDef(e.target.value)}
+            />
+          </Field>
+          <Button
+            size="sm"
+            disabled={!def.trim() || def === d.settings.defaultCustomer}
+            onClick={() => void patch({ settings: { defaultCustomer: def.trim() } })}
+          >
+            Save
+          </Button>
+        </div>
+        <div>
+          <p className="mb-2 text-sm font-medium">Business buyers</p>
+          {Object.keys(map).length === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-zinc-500">
+              None yet: every order goes to the web-shop customer.
+            </p>
+          ) : (
+            <Table head={['Buyer e-mail', 'NetSuite customer', '']}>
+              {Object.entries(map).map(([email, code]) => (
+                <tr key={email}>
+                  <Td>{email}</Td>
+                  <Td>{code}</Td>
+                  <Td>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        const next = { ...map };
+                        delete next[email];
+                        void patch({ settings: { customerByEmail: next } });
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </Td>
+                </tr>
+              ))}
+            </Table>
+          )}
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <Field label="Buyer e-mail">
+              <input
+                aria-label="Buyer e-mail"
+                className={inputClass}
+                value={row.email}
+                onChange={(e) => setRow({ ...row, email: e.target.value })}
+              />
+            </Field>
+            <Field label="NetSuite customer code">
+              <input
+                aria-label="NetSuite customer code"
+                className={inputClass}
+                value={row.code}
+                onChange={(e) => setRow({ ...row, code: e.target.value })}
+              />
+            </Field>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!row.email.trim() || !row.code.trim()}
+              onClick={() =>
+                void patch({
+                  settings: { customerByEmail: { ...map, [row.email.trim()]: row.code.trim() } },
+                }).then(() => setRow({ email: '', code: '' }))
+              }
+            >
+              Add buyer
+            </Button>
+          </div>
+        </div>
+      </CardBody>
+    </Card>
   );
 }
