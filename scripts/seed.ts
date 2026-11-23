@@ -34,8 +34,8 @@ try {
 
 /* pilot tenant and users */
 const prod = config.production;
-const customerPw = process.env.SEED_CUSTOMER_PASSWORD ?? (prod ? '' : 'customer-demo-password');
-const operatorPw = process.env.SEED_OPERATOR_PASSWORD ?? (prod ? '' : 'operator-demo-password');
+const customerPw = process.env.SEED_CUSTOMER_PASSWORD || (prod ? '' : 'customer-demo-password');
+const operatorPw = process.env.SEED_OPERATOR_PASSWORD || (prod ? '' : 'operator-demo-password');
 if (!customerPw || !operatorPw || customerPw.length < 12 || operatorPw.length < 12) {
   throw new Error('SEED_CUSTOMER_PASSWORD and SEED_OPERATOR_PASSWORD (>=12 chars) are required');
 }
