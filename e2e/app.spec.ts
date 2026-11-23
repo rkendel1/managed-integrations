@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { paceLogin } from './support/pace-login.ts';
 
 const CUSTOMER = {
   email: 'customer@acme.test',
@@ -10,6 +11,7 @@ const OPERATOR = {
 };
 
 async function login(page: Page, who: { email: string; password: string }) {
+  await paceLogin();
   await page.goto('/login');
   await page.getByLabel('Email').fill(who.email);
   await page.getByLabel('Password').fill(who.password);

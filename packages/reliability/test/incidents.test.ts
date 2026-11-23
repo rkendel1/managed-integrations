@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { incidentEvents, incidents, integrations, syncRuns } from '@mi/database';
-import { applyReconciliationResult, evaluateIntegration } from '../src/checks.ts';
+import { applyReconciliationResult, evaluateIntegration, recordAffectedOrders } from '../src/checks.ts';
 import {
   canTransition,
   InvalidIncidentTransition,
@@ -31,6 +31,33 @@ describe('incident detection and lifecycle (durable)', () => {
     (await h.dbh.db.select().from(incidentEvents).where(eq(incidentEvents.incidentId, id))).map(
       (e) => e.toStatus,
     );
+
+  it('refreshing an open incident keeps the affected orders recorded by the backlog (no lost update)', async () => {
+    const input = {
+      tenantId: h.tenantId,
+      integrationId: h.integrationId,
+      kind: 'schema_drift' as const,
+      severity: 'high' as const,
+      title: 't',
+      reason: 'r',
+      customerSummary: 's',
+      classifyAs: 'investigating' as const,
+      classificationNote: 'n',
+      affectedScope: { syncRunIds: ['a'] },
+    };
+    const [inc] = await openIncident(h.dbh.db, input);
+    await recordAffectedOrders(h.dbh.db, inc, [
+      { name: '#1', legacyId: '1', updatedAt: '2026-11-23T00:00:00Z' },
+    ]);
+    // a later evaluation refreshes the same incident with new sync-run evidence (stale row in hand)
+    await openIncident(h.dbh.db, { ...input, affectedScope: { syncRunIds: ['b', 'a'] } });
+    await recordAffectedOrders(h.dbh.db, inc, [
+      { name: '#1', legacyId: '1', updatedAt: '2026-11-23T00:00:00Z' },
+      { name: '#2', legacyId: '2', updatedAt: '2026-11-23T00:01:00Z' },
+    ]);
+    const [row] = await h.dbh.db.select().from(incidents).where(eq(incidents.id, inc.id));
+    expect(row!.affectedScope).toMatchObject({ syncRunIds: ['b', 'a'], affectedOrderCount: 2 });
+  });
 
   it('dedupes open incidents and rejects invalid transitions durably', async () => {
     const input = {
@@ -187,29 +214,25 @@ describe('incident detection and lifecycle (durable)', () => {
   });
 
   it('interrupted runs count toward sync failure detection', async () => {
-    await h.dbh.db
-      .insert(syncRuns)
-      .values([
-        {
-          integrationId: h.integrationId,
-          mode: 'incremental',
-          status: 'interrupted',
-          trigger: 'schedule',
-          errorClass: 'transient',
-        },
-      ]);
+    await h.dbh.db.insert(syncRuns).values([
+      {
+        integrationId: h.integrationId,
+        mode: 'incremental',
+        status: 'interrupted',
+        trigger: 'schedule',
+        errorClass: 'transient',
+      },
+    ]);
     await new Promise((r) => setTimeout(r, 5));
-    await h.dbh.db
-      .insert(syncRuns)
-      .values([
-        {
-          integrationId: h.integrationId,
-          mode: 'incremental',
-          status: 'interrupted',
-          trigger: 'schedule',
-          errorClass: 'transient',
-        },
-      ]);
+    await h.dbh.db.insert(syncRuns).values([
+      {
+        integrationId: h.integrationId,
+        mode: 'incremental',
+        status: 'interrupted',
+        trigger: 'schedule',
+        errorClass: 'transient',
+      },
+    ]);
     const ev = await evaluateIntegration(h.dbh.db, h.integrationId);
     expect(ev.openIncidents.map((i) => i.kind)).toContain('sync_failure');
   });

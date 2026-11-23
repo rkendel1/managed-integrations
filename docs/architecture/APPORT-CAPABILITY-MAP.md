@@ -42,6 +42,15 @@ Pinned AppPort packages (versions match the local AppPort source tree inspected 
 `TelemetrySink` persisted to `audit_log` (`appport.invocation`). Details, schemas and evidence:
 `docs/adoption/ADOPTION.md` §F. Permissions added: `integrations.operate`, `integrations.operate:any`.
 
+### Slice 3 additions (reconciliation of the adopted flow)
+
+`reconciliation.start@1` (consequential, `integrations.operate`), `reconciliation.runs@1` and
+`reconciliation.items@1` (observation, `integrations.read`), `reconciliation.recover@1` (consequential,
+`integrations.operate`; more than one order requires `confirm: true`) — MCP tools `reconciliation_start`,
+`reconciliation_runs`, `reconciliation_items`, `reconciliation_recover`. No new authorization
+infrastructure: `resourceTenantAuthorizer` additionally resolves `runId` → integration → tenant. They apply
+to adopted integrations only (`CONFLICT` otherwise). Contract and evidence: `docs/adoption/RECONCILIATION.md`.
+
 ### `integrations.list@1`
 
 The first registered business capability (slice 1).
@@ -264,8 +273,9 @@ Recorded output: `docs/evidence/runs/appport-manifest.log`, `docs/evidence/runs/
 
 ## 8. Not implemented (do not read this map as a roadmap)
 
-Business capabilities: `integrations.list` and, since slice 2, `deliveries.list` / `deliveries.get` /
-`deliveries.retry` (retry applies to the adopted executor only). There is no capability for creating,
-configuring, enabling, disabling or syncing integrations; no connection or credential capability; no
-sync, backlog, reconciliation, incident, maintenance or release capability. Those operations remain
+Business capabilities: `integrations.list`, since slice 2 `deliveries.list` / `deliveries.get` /
+`deliveries.retry`, and since slice 3 `reconciliation.start` / `runs` / `items` / `recover` (all adopted
+executor only). There is no capability for creating, configuring, enabling, disabling or syncing
+integrations; no connection or credential capability; no sync, backlog, incident, maintenance or release
+capability, and the native engine's reconciliation is not projected. Those operations remain
 in the pre-existing REST/worker paths and are **not** projected through AppPort yet.

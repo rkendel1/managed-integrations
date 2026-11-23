@@ -123,6 +123,8 @@ export interface ShopifyFixtureOptions {
   bucketSize?: number;
   restoreRate?: number;
   accessTokenTtlSeconds?: number;
+  /** First order id. Shopify order ids are globally unique, so separate fixture shops use separate ranges. */
+  firstOrderId?: bigint;
 }
 
 interface TokenRecord {
@@ -192,6 +194,7 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
   const shopDomain = opts.shopDomain ?? 'fixture-shop.myshopify.com';
   const clientId = opts.clientId ?? 'fixture-shopify-client-id';
   const clientSecret = opts.clientSecret ?? 'fixture-shopify-client-secret';
+  const firstOrderId = opts.firstOrderId ?? 5000000001n;
   const bucketSize = opts.bucketSize ?? 2000;
   const restoreRate = opts.restoreRate ?? 100;
   const tokenTtl = opts.accessTokenTtlSeconds ?? 3600;
@@ -206,7 +209,7 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
     revoked: false,
     bucket: { available: bucketSize, at: Date.now() },
     requestLog: [] as { at: string; kind: string; detail?: string }[],
-    nextLegacyId: 5000000001n,
+    nextLegacyId: firstOrderId,
   };
 
   const schemas: Record<SchemaVariant, GraphQLSchema> = {
@@ -377,7 +380,7 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
       state.revoked = false;
       state.bucket = { available: bucketSize, at: Date.now() };
       state.requestLog.length = 0;
-      state.nextLegacyId = 5000000001n;
+      state.nextLegacyId = firstOrderId;
     },
     webhookPayload(o: FixtureOrder) {
       return {

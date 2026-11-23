@@ -101,6 +101,23 @@ make reset && make demo-adopted
 
 Record of discovery, selection, boundary and provenance: [`docs/adoption/ADOPTION.md`](docs/adoption/ADOPTION.md).
 
+### Slice 3: reconciliation and missing-delivery recovery
+
+Bluewave's orders are read from Shopify independently of webhooks, classified against delivery evidence
+and NetSuite, and missed orders are recovered through the same adopted code and then verified in NetSuite
+(`reconciliation.start/runs/items/recover`, also as MCP tools; panel on the deliveries page). Bluewave's
+store is a second fixture shop on port 4011.
+
+```bash
+make reset
+```
+
+```bash
+make demo-reconcile
+```
+
+Contract, guarantees and gaps: [`docs/adoption/RECONCILIATION.md`](docs/adoption/RECONCILIATION.md).
+
 ## Develop locally (without Docker for the app)
 
 Requirements: Node ≥ 22.12, pnpm 10, PostgreSQL 16, Docker (only for the maintenance sandbox).

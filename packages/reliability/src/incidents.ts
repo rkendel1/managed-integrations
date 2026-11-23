@@ -1,4 +1,4 @@
-import { and, eq, ne } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import type { IncidentKind, IncidentStatus } from '@mi/contracts';
 import { incidentEvents, incidents, type Db } from '@mi/database';
 import { redact } from '@mi/observability';
@@ -61,7 +61,8 @@ export async function openIncident(db: Db, input: OpenIncidentInput): Promise<[I
     const [updated] = await db
       .update(incidents)
       .set({
-        affectedScope: (redact(input.affectedScope ?? existing.affectedScope) ?? {}) as object,
+        // Merged, not replaced: keys recorded by other writers (e.g. the backlog's affected orders) survive.
+        affectedScope: sql`coalesce(${incidents.affectedScope}, '{}'::jsonb) || ${JSON.stringify(redact(input.affectedScope ?? {}) ?? {})}::jsonb`,
         evidence: { ...(existing.evidence as object), ...((redact(input.evidence ?? {}) ?? {}) as object) },
         updatedAt: new Date(),
       })

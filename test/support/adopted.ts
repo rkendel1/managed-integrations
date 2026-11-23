@@ -28,7 +28,7 @@ export async function attachAdoptedTenant(h: Harness, opts: { name?: string; sho
     .returning();
   const shop = opts.shop ?? ADOPTED_SHOP;
   // The adopted tenant's own Shopify store: a separate fixture instance (stores do not share orders).
-  const shopify = createShopifyFixture({ shopDomain: shop });
+  const shopify = createShopifyFixture({ shopDomain: shop, firstOrderId: 6_000_000_001n });
   await shopify.app.listen({ port: 0, host: '127.0.0.1' });
   const shopifyUrl = `http://127.0.0.1:${(shopify.app.server.address() as AddressInfo).port}`;
   const closeHarness = h.close;

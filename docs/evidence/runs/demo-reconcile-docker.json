@@ -1,0 +1,315 @@
+{
+  "steps": [
+    {
+      "n": 1,
+      "title": "Order #R548C-1 created in Shopify; its webhook was received (200) and delivered to NetSuite by the adopted code",
+      "data": {
+        "legacyId": "6000000001",
+        "netsuite": [
+          {
+            "entity": {
+              "id": "501"
+            },
+            "tranDate": "2026-11-23",
+            "otherRefNum": "#R548C-1",
+            "memo": "",
+            "item": {
+              "items": [
+                {
+                  "item": {
+                    "id": "101"
+                  },
+                  "quantity": 2,
+                  "rate": 12.5
+                }
+              ]
+            },
+            "id": "9001",
+            "externalId": "shopify-6000000001",
+            "subsidiary": null,
+            "createdAt": "2026-11-23T20:43:17.535Z",
+            "lastModified": "2026-11-23T20:43:17.535Z"
+          }
+        ]
+      }
+    },
+    {
+      "n": 2,
+      "title": "Order #R548C-2 created in Shopify; NO webhook is sent (simulated lost delivery)",
+      "data": {
+        "legacyId": "6000000002"
+      }
+    },
+    {
+      "n": 3,
+      "title": "NetSuite has no sales order for #R548C-2 (externalId shopify-6000000002)",
+      "data": {}
+    },
+    {
+      "n": 4,
+      "title": "reconciliation_start (MCP) → run 82b2c4f4-a9ec-4e6e-b345-02ea0fc5d9dc: completed/discrepancies, 2 Shopify orders read in window 2026-11-22T20:43:11.431Z → 2026-11-23T20:43:18.476Z",
+      "data": {
+        "id": "82b2c4f4-a9ec-4e6e-b345-02ea0fc5d9dc",
+        "trigger": "manual",
+        "status": "completed",
+        "outcome": "discrepancies",
+        "windowFrom": "2026-11-22T20:43:11.431Z",
+        "windowTo": "2026-11-23T20:43:18.476Z",
+        "pagesScanned": 1,
+        "discovered": 2,
+        "counts": {
+          "delivered": 1,
+          "missing_delivery": 1,
+          "pending_delivery": 0,
+          "failed_delivery": 0,
+          "destination_exists_untracked": 0,
+          "ambiguous": 0,
+          "undetermined": 0,
+          "excluded": 0
+        },
+        "recovery": {},
+        "error": null,
+        "requestedBy": "928ed9af-8292-4724-be8a-0514cf44b0d4",
+        "startedAt": "2026-11-23T20:43:18.471Z",
+        "finishedAt": "2026-11-23T20:43:19.482Z"
+      }
+    },
+    {
+      "n": 5,
+      "title": "#R548C-1 → delivered; #R548C-2 → missing_delivery (“No webhook receipt, no delivery, and no NetSuite sales order”)",
+      "data": {
+        "delivered": {
+          "sourceOrderId": "gid://shopify/Order/6000000001",
+          "order": "#R548C-1",
+          "sourceCreatedAt": "2026-11-23T20:42:16.416Z",
+          "classification": "delivered",
+          "reason": "NetSuite sales order 9001",
+          "destinationIds": [
+            "9001"
+          ],
+          "deliveryId": "11d707f9-2c67-44c9-9c04-bfc655026bd5",
+          "recoveryState": "none",
+          "recoverable": false,
+          "verifiedDestinationId": null,
+          "verifiedAt": null
+        },
+        "missing": {
+          "sourceOrderId": "gid://shopify/Order/6000000002",
+          "order": "#R548C-2",
+          "sourceCreatedAt": "2026-11-23T20:42:16.416Z",
+          "classification": "missing_delivery",
+          "reason": "No webhook receipt, no delivery, and no NetSuite sales order",
+          "destinationIds": [],
+          "deliveryId": null,
+          "recoveryState": "none",
+          "recoverable": true,
+          "verifiedDestinationId": null,
+          "verifiedAt": null
+        }
+      }
+    },
+    {
+      "n": 6,
+      "title": "reconciliation_recover (MCP) for #R548C-2: accepted",
+      "data": {
+        "requested": 1,
+        "accepted": [
+          {
+            "sourceOrderId": "gid://shopify/Order/6000000002",
+            "itemId": "17477e79-7a61-4732-9c52-4099a92904db",
+            "mode": "new"
+          }
+        ],
+        "refused": []
+      }
+    },
+    {
+      "n": 7,
+      "title": "Executed by the adopted upstream code: attempt 1 delivered via adopted:d01b51d95993 (input origin: reconciliation/recovery_input)",
+      "data": {
+        "attempts": [
+          {
+            "id": "37177e19-d6af-4070-946a-6ddd8366ee79",
+            "deliveryId": "74452fea-5588-49db-9390-c5e3ba9b86b4",
+            "syncRunId": null,
+            "attemptNo": 1,
+            "outcome": "delivered",
+            "httpStatus": null,
+            "errorClass": null,
+            "errorMessage": null,
+            "destinationId": "9002",
+            "implementationVersionId": "adopted:d01b51d95993",
+            "evidence": {
+              "adopted": {
+                "commit": "d01b51d95993598580cdcffda6537a6f20a10a3a",
+                "repository": "https://github.com/Milo-ai-HQ/shopify-erp-order-sync"
+              },
+              "trigger": {
+                "kind": "reconciliation_recovery",
+                "reason": "Webhook never arrived (demo)",
+                "principalId": "928ed9af-8292-4724-be8a-0514cf44b0d4",
+                "appportRequestId": "req_01M852C73PYKKRTPJQFE8DCN5Y"
+              },
+              "upstreamResult": {
+                "erp": "netsuite",
+                "status": "created",
+                "erpOrder": {
+                  "id": "9002",
+                  "number": "9002"
+                },
+                "reference": "#R548C-2"
+              }
+            },
+            "startedAt": "2026-11-23T20:43:21.464Z",
+            "finishedAt": "2026-11-23T20:43:21.478Z"
+          }
+        ],
+        "input": {
+          "origin": "reconciliation",
+          "disposition": "recovery_input"
+        }
+      }
+    },
+    {
+      "n": 8,
+      "title": "NetSuite contains exactly one sales order for #R548C-2: id 9002",
+      "data": [
+        {
+          "entity": {
+            "id": "501"
+          },
+          "tranDate": "2026-11-23",
+          "otherRefNum": "#R548C-2",
+          "memo": "",
+          "item": {
+            "items": [
+              {
+                "item": {
+                  "id": "101"
+                },
+                "quantity": 2,
+                "rate": 12.5
+              }
+            ]
+          },
+          "id": "9002",
+          "externalId": "shopify-6000000002",
+          "subsidiary": null,
+          "createdAt": "2026-11-23T20:43:21.477Z",
+          "lastModified": "2026-11-23T20:43:21.477Z"
+        }
+      ]
+    },
+    {
+      "n": 9,
+      "title": "Verified by reading NetSuite back after execution: recovery recovered, destination 9002",
+      "data": {
+        "detail": "Sales order 9002 with externalId shopify-6000000002 and reference #R548C-2",
+        "verified": true,
+        "checkedAt": "2026-11-23T20:43:21.483Z",
+        "destinationId": "9002"
+      }
+    },
+    {
+      "n": 10,
+      "title": "Second run 58e6a6be-71b0-4885-9a99-a50278d7215f: #R548C-2 → delivered",
+      "data": {
+        "run": {
+          "id": "58e6a6be-71b0-4885-9a99-a50278d7215f",
+          "trigger": "manual",
+          "status": "completed",
+          "outcome": "consistent",
+          "windowFrom": "2026-11-22T20:43:11.431Z",
+          "windowTo": "2026-11-23T20:43:21.661Z",
+          "pagesScanned": 1,
+          "discovered": 2,
+          "counts": {
+            "delivered": 2,
+            "missing_delivery": 0,
+            "pending_delivery": 0,
+            "failed_delivery": 0,
+            "destination_exists_untracked": 0,
+            "ambiguous": 0,
+            "undetermined": 0,
+            "excluded": 0
+          },
+          "recovery": {},
+          "error": null,
+          "requestedBy": "928ed9af-8292-4724-be8a-0514cf44b0d4",
+          "startedAt": "2026-11-23T20:43:21.656Z",
+          "finishedAt": "2026-11-23T20:43:23.455Z"
+        },
+        "item": {
+          "sourceOrderId": "gid://shopify/Order/6000000002",
+          "order": "#R548C-2",
+          "sourceCreatedAt": "2026-11-23T20:42:16.416Z",
+          "classification": "delivered",
+          "reason": "NetSuite sales order 9002",
+          "destinationIds": [
+            "9002"
+          ],
+          "deliveryId": "74452fea-5588-49db-9390-c5e3ba9b86b4",
+          "recoveryState": "none",
+          "recoverable": false,
+          "verifiedDestinationId": null,
+          "verifiedAt": null
+        }
+      }
+    },
+    {
+      "n": 11,
+      "title": "Duplicate recovery refused: “Recovery already recovered” / “Classified delivered; only missing deliveries are recovered automatically”; NetSuite still has exactly one",
+      "data": {
+        "dup1": {
+          "requested": 1,
+          "accepted": [],
+          "refused": [
+            {
+              "sourceOrderId": "gid://shopify/Order/6000000002",
+              "reason": "Recovery already recovered"
+            }
+          ]
+        },
+        "dup2": {
+          "requested": 1,
+          "accepted": [],
+          "refused": [
+            {
+              "sourceOrderId": "gid://shopify/Order/6000000002",
+              "reason": "Classified delivered; only missing deliveries are recovered automatically"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "n": 12,
+      "title": "Acme (another tenant) is refused reconciliation_items / reconciliation_recover / reconciliation_start on Bluewave",
+      "data": {
+        "items": "FORBIDDEN: The resource belongs to another tenant",
+        "recover": "FORBIDDEN: The resource belongs to another tenant",
+        "start": "FORBIDDEN: The resource belongs to another tenant"
+      }
+    },
+    {
+      "n": 13,
+      "title": "Audit evidence (all-time counts)",
+      "data": [
+        {
+          "action": "appport.invocation",
+          "n": 19
+        },
+        {
+          "action": "reconciliation.recovery_requested",
+          "n": 1
+        },
+        {
+          "action": "reconciliation.requested",
+          "n": 2
+        }
+      ]
+    }
+  ],
+  "startedAt": "2026-11-23T20:43:15.170Z",
+  "providers": "deterministic fixtures (not Shopify or NetSuite)"
+}

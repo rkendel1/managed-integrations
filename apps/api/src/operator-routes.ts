@@ -280,10 +280,17 @@ export async function registerOperatorRoutes(app: FastifyInstance, deps: ApiDeps
   app.post('/api/operator/integrations/:id/reconcile', { preHandler: auth }, async (req, reply) => {
     const id = (req.params as { id: string }).id;
     if (!uuid.safeParse(id).success) return reply.code(404).send({ error: 'Not found' });
-    const [target] = await db.select({ flowType: integrations.flowType }).from(integrations).where(eq(integrations.id, id));
+    const [target] = await db
+      .select({ flowType: integrations.flowType })
+      .from(integrations)
+      .where(eq(integrations.id, id));
     if (!target) return reply.code(404).send({ error: 'Not found' });
     if (target.flowType !== FLOW_TYPE) {
-      return reply.code(409).send({ error: 'Adopted integrations are reconciled through the AppPort capability reconciliation.start' });
+      return reply
+        .code(409)
+        .send({
+          error: 'Adopted integrations are reconciled through the AppPort capability reconciliation.start',
+        });
     }
     await deps.boss.send(QUEUES.reconcile, { integrationId: id, incidentId: null, trigger: 'manual' });
     await db.insert(auditLog).values({

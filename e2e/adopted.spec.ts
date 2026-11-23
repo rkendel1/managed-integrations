@@ -4,8 +4,10 @@
  * Run after `make demo-adopted` (which produces one delivered and one recovered order).
  */
 import { expect, test, type Page } from '@playwright/test';
+import { paceLogin } from './support/pace-login.ts';
 
 async function login(page: Page, email: string, password: string) {
+  await paceLogin();
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);

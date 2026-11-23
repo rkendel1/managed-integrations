@@ -117,3 +117,51 @@ Inherited tests are the upstream repository's own suite; adoption tests are new.
 | Real Shopify / NetSuite                                  | BLOCKED            | no credentials; fixtures only                                                                                                                                  |
 
 Full suite after slice 2: 14 files, 115 tests passed; Playwright 10/10 against the Docker stack (3 new).
+
+## Slice 3 — reconciliation and missing-delivery recovery (2026-11-23)
+
+Contract, mechanisms and gaps: `docs/adoption/RECONCILIATION.md`. Providers are the deterministic fixtures
+throughout. Nothing below was run against a real Shopify store or a real NetSuite account.
+
+| Required test (§8)                                              | Status             | Where                                                                                                                                     |
+| --------------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 1–4 classify delivered / missing / untracked / ambiguous        | VERIFIED           | `packages/adopted-order-sync/test/reconciliation.test.ts` (classification against real fixture destination state; pending and failed too) |
+| 2–3 recover a never-webhooked order; next run shows delivered   | VERIFIED           | same file; Docker demo steps 2–10                                                                                                         |
+| 5 unknown SKU fails recovery with the upstream message          | VERIFIED           | same file                                                                                                                                 |
+| 6–7 transient NetSuite failure, then recovery after the outage  | VERIFIED           | same file                                                                                                                                 |
+| 8 duplicate starts / concurrent scans → one run, one scanner    | VERIFIED           | same file; `apps/api/test/reconciliation-appport.test.ts` (two concurrent `start` via AppPort)                                            |
+| 9 webhook concurrent with recovery → one execution              | VERIFIED           | same file (`joined_recovery`); recovery after webhook delivery refused                                                                    |
+| 10 concurrent recovery requests and executions → once           | VERIFIED           | same file                                                                                                                                 |
+| 11–12 worker dies mid-scan → resumed from cursor, no duplicates | VERIFIED           | same file                                                                                                                                 |
+| 13 provider failure mid-scan → partial run, next run completes  | VERIFIED           | same file (Shopify side and NetSuite side)                                                                                                |
+| 14 cross-tenant reconciliation denied                           | VERIFIED           | API test (UI client + MCP); Docker demo step 12                                                                                           |
+| 15 cross-tenant recovery denied                                 | VERIFIED           | API test (UI client + MCP); Docker demo step 12                                                                                           |
+| 16–17 excluded / ineligible orders not recovered                | VERIFIED           | same file; order cancelled between discovery and execution is not executed                                                                |
+| 18 executed but unverifiable → `unverified`, not recovered      | VERIFIED           | same file                                                                                                                                 |
+| destination re-check before execution                           | VERIFIED           | two state-change tests; both fail when the re-check is removed (mutation checked)                                                         |
+| bulk recovery requires confirmation                             | VERIFIED           | API test (MCP); e2e (UI button disabled until confirmed)                                                                                  |
+| UI and MCP report the same result                               | VERIFIED           | API test: `reconciliation.runs` via `@appport/client` deep-equals MCP `reconciliation_runs`                                               |
+| invocation and actor evidence                                   | VERIFIED           | API test: `reconciliation.requested`, `reconciliation.recovery_requested`, denied `appport.invocation` rows                               |
+| 12-step Docker demonstration                                    | VERIFIED (fixture) | `make demo-reconcile`; `runs/demo-reconcile-docker.{log,json}`                                                                            |
+| Real Shopify / NetSuite                                         | BLOCKED            | no credentials; fixtures only                                                                                                             |
+
+Fresh-stack verification (`make reset`, then `demo-reconcile`, `demo-adopted`, `demo-failure --auto-approve`,
+then Playwright): all three demos passed; Playwright 12/12 (`runs/playwright-slice3-docker.log`).
+Vitest: 16 files, 141 tests passed.
+
+Found and fixed during slice 3 verification:
+
+- `createAppPortRuntime` did not pass the reconciliation enqueue functions to the application, so `start`
+  and `recover` failed in the API process. The new API test caught it.
+- **Slice 1 lost update.** Re-evaluating an open incident replaced its `affectedScope` and dropped the
+  backlog's `affectedOrderCount`, which made `demo-failure` time-dependent. Both writers now merge in SQL
+  (`jsonb ||`). A regression test fails without the fix.
+- **Fixture order-id collision.** Both fixture shops numbered orders from the same sequence while both
+  tenants share one NetSuite fixture account. Bluewave's new orders could match Acme's
+  `shopify-<id>` records. Reconciliation classified them `destination_exists_untracked` and wrote nothing,
+  which is the correct behaviour. The second shop now uses its own id range, as real Shopify ids are
+  globally unique. The first demo pass in this slice ran before the collision occurred, so its evidence was
+  regenerated.
+- **e2e and the login rate limit.** The suite needs more logins than the product's 10/min login limit
+  allows. Login helpers now pace themselves (`e2e/support/pace-login.ts`); the limit itself is unchanged.
+  `app.spec.ts` "unmapped SKU" still needs a fresh stack, because it adds the mapping it tests (pre-existing).

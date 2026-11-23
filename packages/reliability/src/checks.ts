@@ -3,7 +3,7 @@
  * returns actions for the worker to execute. It performs no provider I/O itself — decisions
  * are separated from execution.
  */
-import { and, desc, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import type { IncidentKind, IntegrationContractDefinition } from '@mi/contracts';
 import {
   connections,
@@ -448,11 +448,11 @@ export async function recordAffectedOrders(
   await db
     .update(incidents)
     .set({
-      affectedScope: {
-        ...(incident.affectedScope as object),
+      // Atomic merge: a concurrent incident refresh cannot drop these keys, nor these drop its keys.
+      affectedScope: sql`coalesce(${incidents.affectedScope}, '{}'::jsonb) || ${JSON.stringify({
         affectedOrders: orders.slice(0, 500),
         affectedOrderCount: orders.length,
-      },
+      })}::jsonb`,
       impact: `${orders.length} order(s) updated since the last successful sync are waiting to be delivered.`,
       updatedAt: new Date(),
     })

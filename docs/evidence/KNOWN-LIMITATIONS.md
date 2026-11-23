@@ -83,6 +83,15 @@ single currency; one integration per tenant.
 ## Slice 2 — adopted executor (shopify-erp-order-sync)
 
 See `docs/adoption/ADOPTION.md` §I. In short: fixture-only verification; no subsidiary (OneWorld rejects);
-`orders/create` only; missed webhooks undetected; raw payloads (PII) retained encrypted without a retention job;
+`orders/create` only; missed webhooks undetected (addressed in slice 3); raw payloads (PII) retained encrypted without a retention job;
 single app-level webhook secret; asynchronous invocation-evidence writes; upstream repository has a single commit
 and author. The Docker build requires `git` and rewrites GitHub SSH URLs to HTTPS for the git-pinned dependency.
+
+## Slice 3 — reconciliation and missing-delivery recovery
+
+See `docs/adoption/RECONCILIATION.md` §6. In short: fixture-only (Shopify GraphQL search and fields as
+documented, not checked against a real store); the recovery input is a documented reconstruction of the
+fields upstream reads, not Shopify's webhook body; verification compares identity (externalId, order name),
+not lines or amounts; orders with more than 100 lines are excluded; `ambiguous` /
+`destination_exists_untracked` items have no resolution action; edits, cancellations after delivery and
+refunds are not reconciled.

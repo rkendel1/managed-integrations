@@ -211,7 +211,8 @@ if (process.env.DEMO_FIXTURES === 'true') {
 /* demo: a second tenant whose flow is executed by the ADOPTED shopify-erp-order-sync code */
 if (process.env.DEMO_FIXTURES === 'true') {
   await registerAdoptedContract(db);
-  const shopUrl = config.endpoints.shopifyBaseUrlOverride!;
+  // Bluewave's own store: a second fixture shop (stores do not share orders with Acme's).
+  const shopUrl = process.env.DEMO_ADOPTED_SHOPIFY_URL || 'http://fixtures:4011';
   const nsUrl = config.endpoints.netsuiteBaseUrlOverride!;
   const slug2 = 'bluewave-supply';
   let [t2] = await db.select().from(tenants).where(eq(tenants.slug, slug2));
@@ -243,17 +244,6 @@ if (process.env.DEMO_FIXTURES === 'true') {
     await post(`${nsUrl}/__fixture/config`, { oneWorld: false }); // the adopted code sends no subsidiary
     const kp = generateNetSuiteKeyPair();
     await post(`${nsUrl}/__fixture/public-key`, { pem: kp.publicKeyPem });
-    await db
-      .insert(connections)
-      .values({
-        tenantId: t2!.id,
-        providerId: 'shopify',
-        status: 'verified',
-        externalAccount: 'bluewave-supply.myshopify.com',
-        baseUrl: shopUrl,
-        grantedScopes: ['read_orders'],
-        lastVerifiedAt: new Date(),
-      });
     const [nc] = await db
       .insert(connections)
       .values({
@@ -282,6 +272,68 @@ if (process.env.DEMO_FIXTURES === 'true') {
       })
       .where(eq(connections.id, nc!.id));
   }
+  /* Shopify connection with a real (fixture-issued) token: reconciliation reads the store's order API. */
+  const shop2 = (await db.select().from(connections).where(eq(connections.tenantId, t2!.id))).find(
+    (c) => c.providerId === 'shopify',
+  );
+  if (!shop2?.credentialsCiphertext || shop2.baseUrl !== shopUrl) {
+    const r = await fetch(`${shopUrl}/__fixture/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    if (!r.ok) throw new Error(`fixture ${shopUrl}/__fixture/token → ${r.status}`);
+    const tok = (await r.json()) as {
+      access_token: string;
+      refresh_token: string;
+      expires_in: number;
+      refresh_token_expires_in: number;
+      scope: string;
+    };
+    const [sc] = shop2
+      ? await db
+          .update(connections)
+          .set({ baseUrl: shopUrl, status: 'verified', lastVerifiedAt: new Date() })
+          .where(eq(connections.id, shop2.id))
+          .returning()
+      : await db
+          .insert(connections)
+          .values({
+            tenantId: t2!.id,
+            providerId: 'shopify',
+            status: 'verified',
+            externalAccount: 'bluewave-supply.myshopify.com',
+            baseUrl: shopUrl,
+            grantedScopes: ['read_orders'],
+            lastVerifiedAt: new Date(),
+          })
+          .returning();
+    await db
+      .update(connections)
+      .set({
+        credentialsCiphertext: config.cipher!.encrypt(
+          {
+            accessToken: tok.access_token,
+            refreshToken: tok.refresh_token,
+            accessTokenExpiresAt: new Date(Date.now() + tok.expires_in * 1000).toISOString(),
+            refreshTokenExpiresAt: new Date(Date.now() + tok.refresh_token_expires_in * 1000).toISOString(),
+            scope: tok.scope,
+          },
+          `connection:${sc!.id}`,
+        ),
+        credentialsKeyId: config.cipher!.keyId,
+      })
+      .where(eq(connections.id, sc!.id));
+  }
+  // Demo contract window: reconcile from the start of the seeded day, with no grace period so a
+  // just-created order is in scope (the default grace of 10 minutes leaves room for webhooks).
+  const demoAdoptedConfig = {
+    erp: 'netsuite',
+    customerByEmail: {},
+    defaultCustomer: 'WEB',
+    reconcileFrom: new Date(Date.now() - 24 * 3600_000).toISOString(),
+    reconcileGraceMinutes: 0,
+  };
   await db
     .insert(integrations)
     .values({
@@ -289,11 +341,24 @@ if (process.env.DEMO_FIXTURES === 'true') {
       flowType: ADOPTED_FLOW_TYPE,
       displayName: 'Shopify orders → NetSuite (adopted: shopify-erp-order-sync)',
       contractVersion: ADOPTED_CONTRACT.version,
-      config: { erp: 'netsuite', customerByEmail: {}, defaultCustomer: 'WEB' },
+      config: demoAdoptedConfig,
       enabled: true,
       lifecycle: 'active',
     })
     .onConflictDoNothing();
+  const [i2] = await db.select().from(integrations).where(eq(integrations.tenantId, t2!.id));
+  if (i2 && !(i2.config as { reconcileFrom?: string }).reconcileFrom) {
+    await db
+      .update(integrations)
+      .set({
+        config: {
+          ...(i2.config as object),
+          reconcileFrom: demoAdoptedConfig.reconcileFrom,
+          reconcileGraceMinutes: 0,
+        },
+      })
+      .where(eq(integrations.id, i2.id));
+  }
   console.log(
     'demo: tenant Bluewave Supply attached to the adopted shopify-erp-order-sync executor (ops@bluewave.test)',
   );

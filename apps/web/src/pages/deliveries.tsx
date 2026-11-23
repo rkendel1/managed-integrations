@@ -15,6 +15,7 @@ import {
 } from '@/components/ui';
 import { callCapability } from '@/lib/capabilities';
 import { fmtDate } from '@/lib/utils';
+import { ReconciliationPanel } from './reconciliation-panel';
 
 interface DeliverySummary {
   id: string;
@@ -162,6 +163,7 @@ export function Deliveries() {
           />
         </CardBody>
       </Card>
+      {ex.kind === 'adopted' && integrationId ? <ReconciliationPanel integrationId={integrationId} /> : null}
       {selected && detail.data ? (
         <Card data-testid="delivery-detail">
           <CardHeader

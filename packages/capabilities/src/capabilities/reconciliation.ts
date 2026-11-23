@@ -14,7 +14,14 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { defineCapability, type CapabilityDefinition } from '@appport/core';
 import { errors } from '@appport/protocol';
 import { s } from '@appport/schema';
-import { ADOPTED_FLOW_TYPE, CLASSIFICATIONS, RECOVERY_STATES, requestRecovery, startReconciliation, type Classification } from '@mi/adopted-order-sync';
+import {
+  ADOPTED_FLOW_TYPE,
+  CLASSIFICATIONS,
+  RECOVERY_STATES,
+  requestRecovery,
+  startReconciliation,
+  type Classification,
+} from '@mi/adopted-order-sync';
 import { auditLog, integrations, reconciliationItems, reconciliationRuns, type Db } from '@mi/database';
 import { AppPortPermissions } from '../identity.ts';
 
@@ -29,29 +36,52 @@ const actorOf = (principal: { id?: string; attributes?: Record<string, unknown> 
 });
 const uuidOrNull = (v: string) => (/^[0-9a-f-]{36}$/i.test(v) ? v : null);
 
-export function createReconciliationStartCapability(db: Db, enqueue: EnqueueReconciliationScan | undefined): CapabilityDefinition<{ integrationId: string }, { runId: string; deduplicated: boolean; windowFrom: string; windowTo: string }> {
+export function createReconciliationStartCapability(
+  db: Db,
+  enqueue: EnqueueReconciliationScan | undefined,
+): CapabilityDefinition<
+  { integrationId: string },
+  { runId: string; deduplicated: boolean; windowFrom: string; windowTo: string }
+> {
   return defineCapability({
     name: 'reconciliation.start',
     version: 1,
-    description: 'Starts a reconciliation of an adopted integration: reads the Shopify order population for the contract window and classifies every order against delivery evidence and NetSuite. Joins a run already in progress.',
+    description:
+      'Starts a reconciliation of an adopted integration: reads the Shopify order population for the contract window and classifies every order against delivery evidence and NetSuite. Joins a run already in progress.',
     effect: 'consequential',
     authorization: [AppPortPermissions.operate],
     input: s.object({ integrationId: s.string({ pattern: UUID }) }),
-    output: s.object({ runId: s.string(), deduplicated: s.boolean(), windowFrom: s.string(), windowTo: s.string() }),
+    output: s.object({
+      runId: s.string(),
+      deduplicated: s.boolean(),
+      windowFrom: s.string(),
+      windowTo: s.string(),
+    }),
     async handler(input, context) {
       if (!enqueue) throw errors.internal('Reconciliation is not available in this process');
       const [integ] = await db.select().from(integrations).where(eq(integrations.id, input.integrationId));
       if (!integ) throw errors.notFound('Integration not found');
-      if (integ.flowType !== ADOPTED_FLOW_TYPE) throw errors.conflict('This capability reconciles adopted integrations; the native engine reconciles on its own schedule');
+      if (integ.flowType !== ADOPTED_FLOW_TYPE)
+        throw errors.conflict(
+          'This capability reconciles adopted integrations; the native engine reconciles on its own schedule',
+        );
       const actor = actorOf(context.principal);
-      const r = await startReconciliation(db, { integrationId: integ.id, trigger: 'manual', requestedBy: actor.id });
+      const r = await startReconciliation(db, {
+        integrationId: integ.id,
+        trigger: 'manual',
+        requestedBy: actor.id,
+      });
       await db.insert(auditLog).values({
         actorUserId: uuidOrNull(actor.id),
         actorRole: actor.role,
         action: 'reconciliation.requested',
         targetType: 'reconciliation_run',
         targetId: r.runId,
-        details: { integrationId: integ.id, deduplicated: r.deduplicated, appportRequestId: context.requestId },
+        details: {
+          integrationId: integ.id,
+          deduplicated: r.deduplicated,
+          appportRequestId: context.requestId,
+        },
       });
       await enqueue(r.runId);
       return r;
@@ -124,14 +154,20 @@ async function describeRun(db: Db, r: typeof reconciliationRuns.$inferSelect): P
   };
 }
 
-export function createReconciliationRunsCapability(db: Db): CapabilityDefinition<{ integrationId: string; limit?: number }, { runs: ReconciliationRun[] }> {
+export function createReconciliationRunsCapability(
+  db: Db,
+): CapabilityDefinition<{ integrationId: string; limit?: number }, { runs: ReconciliationRun[] }> {
   return defineCapability({
     name: 'reconciliation.runs',
     version: 1,
-    description: 'Lists reconciliation runs of an adopted integration (most recent first) with classification counts and recovery progress.',
+    description:
+      'Lists reconciliation runs of an adopted integration (most recent first) with classification counts and recovery progress.',
     effect: 'observation',
     authorization: [AppPortPermissions.read],
-    input: s.object({ integrationId: s.string({ pattern: UUID }), limit: s.optional(s.integer({ minimum: 1, maximum: 50 })) }),
+    input: s.object({
+      integrationId: s.string({ pattern: UUID }),
+      limit: s.optional(s.integer({ minimum: 1, maximum: 50 })),
+    }),
     output: s.object({ runs: s.array(runShape) }),
     async handler(input) {
       const rows = await db
@@ -161,11 +197,15 @@ export interface ReconciliationItemView {
 
 export function createReconciliationItemsCapability(
   db: Db,
-): CapabilityDefinition<{ runId: string; classification?: Classification; limit?: number }, { run: ReconciliationRun; items: ReconciliationItemView[] }> {
+): CapabilityDefinition<
+  { runId: string; classification?: Classification; limit?: number },
+  { run: ReconciliationRun; items: ReconciliationItemView[] }
+> {
   return defineCapability({
     name: 'reconciliation.items',
     version: 1,
-    description: 'Lists the orders discovered by one reconciliation run with their classification, destination matches and recovery state. Exceptions first.',
+    description:
+      'Lists the orders discovered by one reconciliation run with their classification, destination matches and recovery state. Exceptions first.',
     effect: 'observation',
     authorization: [AppPortPermissions.read],
     input: s.object({
@@ -197,8 +237,16 @@ export function createReconciliationItemsCapability(
       const rows = await db
         .select()
         .from(reconciliationItems)
-        .where(and(eq(reconciliationItems.runId, run.id), ...(input.classification ? [eq(reconciliationItems.classification, input.classification)] : [])))
-        .orderBy(sql`CASE ${reconciliationItems.classification} WHEN 'missing_delivery' THEN 0 WHEN 'ambiguous' THEN 1 WHEN 'undetermined' THEN 2 WHEN 'failed_delivery' THEN 3 WHEN 'destination_exists_untracked' THEN 4 WHEN 'pending_delivery' THEN 5 WHEN 'excluded' THEN 6 ELSE 7 END`, reconciliationItems.sourceCreatedAt)
+        .where(
+          and(
+            eq(reconciliationItems.runId, run.id),
+            ...(input.classification ? [eq(reconciliationItems.classification, input.classification)] : []),
+          ),
+        )
+        .orderBy(
+          sql`CASE ${reconciliationItems.classification} WHEN 'missing_delivery' THEN 0 WHEN 'ambiguous' THEN 1 WHEN 'undetermined' THEN 2 WHEN 'failed_delivery' THEN 3 WHEN 'destination_exists_untracked' THEN 4 WHEN 'pending_delivery' THEN 5 WHEN 'excluded' THEN 6 ELSE 7 END`,
+          reconciliationItems.sourceCreatedAt,
+        )
         .limit(input.limit ?? 200);
       return {
         run: await describeRun(db, run),
@@ -211,7 +259,9 @@ export function createReconciliationItemsCapability(
           destinationIds: i.destinationIds,
           deliveryId: i.deliveryId,
           recoveryState: i.recoveryState,
-          recoverable: (i.classification === 'missing_delivery' && i.recoveryState === 'none') || i.recoveryState === 'failed',
+          recoverable:
+            (i.classification === 'missing_delivery' && i.recoveryState === 'none') ||
+            i.recoveryState === 'failed',
           verifiedDestinationId: i.verifiedDestinationId,
           verifiedAt: i.verifiedAt?.toISOString() ?? null,
         })),
@@ -229,7 +279,10 @@ export interface RecoverOutput {
 export function createReconciliationRecoverCapability(
   db: Db,
   enqueue: EnqueueRecovery | undefined,
-): CapabilityDefinition<{ runId: string; sourceOrderIds: string[]; reason: string; confirm?: boolean }, RecoverOutput> {
+): CapabilityDefinition<
+  { runId: string; sourceOrderIds: string[]; reason: string; confirm?: boolean },
+  RecoverOutput
+> {
   return defineCapability({
     name: 'reconciliation.recover',
     version: 1,
@@ -252,12 +305,20 @@ export function createReconciliationRecoverCapability(
       if (!enqueue) throw errors.internal('Recovery is not available in this process');
       const ids = [...new Set(input.sourceOrderIds)];
       if (ids.length > 1 && input.confirm !== true) {
-        throw errors.invalidInput(`Recovering ${ids.length} orders creates up to ${ids.length} NetSuite sales orders; resend with confirm: true`);
+        throw errors.invalidInput(
+          `Recovering ${ids.length} orders creates up to ${ids.length} NetSuite sales orders; resend with confirm: true`,
+        );
       }
       const [run] = await db.select().from(reconciliationRuns).where(eq(reconciliationRuns.id, input.runId));
       if (!run) throw errors.notFound('Reconciliation run not found');
       const actor = actorOf(context.principal);
-      const decisions = await requestRecovery(db, { runId: run.id, sourceOrderIds: ids, principalId: actor.id, requestId: context.requestId, reason: input.reason });
+      const decisions = await requestRecovery(db, {
+        runId: run.id,
+        sourceOrderIds: ids,
+        principalId: actor.id,
+        requestId: context.requestId,
+        reason: input.reason,
+      });
       const accepted: RecoverOutput['accepted'] = [];
       const refused: RecoverOutput['refused'] = [];
       for (const d of decisions) {
@@ -269,7 +330,14 @@ export function createReconciliationRecoverCapability(
             action: 'reconciliation.recovery_requested',
             targetType: 'reconciliation_item',
             targetId: d.itemId,
-            details: { runId: run.id, sourceOrderId: d.sourceOrderId, deliveryId: d.deliveryId, mode: d.mode, reason: input.reason, appportRequestId: context.requestId },
+            details: {
+              runId: run.id,
+              sourceOrderId: d.sourceOrderId,
+              deliveryId: d.deliveryId,
+              mode: d.mode,
+              reason: input.reason,
+              appportRequestId: context.requestId,
+            },
           });
           await enqueue(d.itemId);
         } else {

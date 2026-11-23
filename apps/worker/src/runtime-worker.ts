@@ -254,7 +254,12 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
           .limit(1);
         if (!recent.length) {
           const started = await startReconciliation(db, { integrationId: integ.id, trigger: 'schedule' });
-          if (!started.deduplicated) await boss.send(QUEUES.adoptedReconcile, { runId: started.runId }, { singletonKey: `adopted-recon:${started.runId}` });
+          if (!started.deduplicated)
+            await boss.send(
+              QUEUES.adoptedReconcile,
+              { runId: started.runId },
+              { singletonKey: `adopted-recon:${started.runId}` },
+            );
         }
       }
       const active = await db
@@ -390,16 +395,32 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
       const [run] = await db.select().from(reconciliationRuns).where(eq(reconciliationRuns.id, job.runId));
       if (!run) return { skipped: 'unknown run' };
       const clients = await adoptedClients(db, config.cipher!, config.endpoints, run.integrationId);
-      return scanReconciliation({ db, runId: job.runId, workerId: deps.workerId, clients, ...(deps.retry ? { retry: deps.retry } : {}) });
+      return scanReconciliation({
+        db,
+        runId: job.runId,
+        workerId: deps.workerId,
+        clients,
+        ...(deps.retry ? { retry: deps.retry } : {}),
+      });
     },
 
     /** Executes one requested recovery through the adopted executor and verifies NetSuite. */
     async adoptedRecover(raw: unknown): Promise<unknown> {
       const job = AdoptedRecoverJobSchema.parse(raw);
-      const [item] = await db.select().from(reconciliationItems).where(eq(reconciliationItems.id, job.itemId));
+      const [item] = await db
+        .select()
+        .from(reconciliationItems)
+        .where(eq(reconciliationItems.id, job.itemId));
       if (!item) return { skipped: 'unknown item' };
       const clients = await adoptedClients(db, config.cipher!, config.endpoints, item.integrationId);
-      const r = await executeRecovery({ db, cipher: config.cipher!, endpoints: config.endpoints, itemId: job.itemId, clients, ...(deps.retry ? { retry: deps.retry } : {}) });
+      const r = await executeRecovery({
+        db,
+        cipher: config.cipher!,
+        endpoints: config.endpoints,
+        itemId: job.itemId,
+        clients,
+        ...(deps.retry ? { retry: deps.retry } : {}),
+      });
       if (!r.done && r.retryLater) throw new Error(`recovery deferred: ${r.reason}`); // pg-boss retries with backoff
       if (r.done) await evaluateAndAct(item.integrationId);
       return r;
