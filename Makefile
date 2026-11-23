@@ -7,7 +7,12 @@ COMPOSE := docker compose --env-file .env
 .PHONY: env build up down reset logs ps demo-failure e2e prod-up backup
 
 env:            ## create .env with a fresh encryption key (once)
-	@test -f .env || (cp .env.example .env && sed -i "s#^CREDENTIAL_ENCRYPTION_KEYS=.*#CREDENTIAL_ENCRYPTION_KEYS=k1:$$(openssl rand -base64 32)#" .env && echo "created .env")
+	@test -f .env || (cp .env.example .env && echo "created .env")
+	@# `sed -i` needs a backup suffix on macOS/BSD sed, so pass one and delete it (portable to GNU).
+	@if grep -q '^CREDENTIAL_ENCRYPTION_KEYS=.*REPLACE_WITH_BASE64_32_BYTES' .env; then \
+	  sed -i.bak "s#^CREDENTIAL_ENCRYPTION_KEYS=.*#CREDENTIAL_ENCRYPTION_KEYS=k1:$$(openssl rand -base64 32)#" .env && \
+	  rm -f .env.bak && echo "generated encryption key in .env"; \
+	fi
 
 build: env      ## build images (runtime + maintenance)
 	$(COMPOSE) --profile demo build
