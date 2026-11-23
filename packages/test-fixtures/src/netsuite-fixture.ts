@@ -80,7 +80,8 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
     inflight: 0,
     maxObservedInflight: 0,
     faults: new FaultQueue(),
-    publicKey: undefined as KeyObject | undefined,
+    /** Every certificate mapped in this account (one per integration/connection). */
+    publicKeys: [] as KeyObject[],
     tokens: new Map<string, number>(), // token -> expiry
     revoked: false,
     nextId: 9001,
@@ -95,7 +96,7 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
 
   const control = {
     registerPublicKey(pem: string) {
-      state.publicKey = createPublicKey(pem);
+      state.publicKeys.push(createPublicKey(pem));
     },
     setMandatoryBodyFields(fields: string[]) {
       state.mandatoryBodyFields = fields;
@@ -161,7 +162,7 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
       return reply.code(400).send({ error: 'unsupported_grant_type' });
     if (b.client_assertion_type !== 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer')
       return reply.code(400).send({ error: 'invalid_request' });
-    if (state.revoked || !state.publicKey) return reply.code(400).send({ error: 'invalid_grant' });
+    if (state.revoked || !state.publicKeys.length) return reply.code(400).send({ error: 'invalid_grant' });
     const parts = (b.client_assertion ?? '').split('.');
     if (parts.length !== 3) return reply.code(400).send({ error: 'invalid_request' });
     const [h, p, s] = parts as [string, string, string];
@@ -176,14 +177,15 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
     const alg = String(header.alg);
     const data = Buffer.from(`${h}.${p}`);
     const sig = Buffer.from(s, 'base64url');
-    let ok = false;
-    if (alg === 'PS256') {
-      ok = cryptoVerify('sha256', data, { key: state.publicKey, padding: 6, saltLength: 32 }, sig);
-    } else if (alg === 'RS256') {
-      ok = cryptoVerify('sha256', data, state.publicKey, sig);
-    } else if (alg === 'ES256') {
-      ok = cryptoVerify('sha256', data, { key: state.publicKey, dsaEncoding: 'ieee-p1363' }, sig);
-    }
+    const verifies = (key: KeyObject) =>
+      alg === 'PS256'
+        ? cryptoVerify('sha256', data, { key, padding: 6, saltLength: 32 }, sig)
+        : alg === 'RS256'
+          ? cryptoVerify('sha256', data, key, sig)
+          : alg === 'ES256'
+            ? cryptoVerify('sha256', data, { key, dsaEncoding: 'ieee-p1363' }, sig)
+            : false;
+    const ok = state.publicKeys.some(verifies);
     const now = Math.floor(Date.now() / 1000);
     if (
       !ok ||

@@ -1,0 +1,151 @@
+{
+  "steps": [
+    {
+      "n": 1,
+      "title": "Tenant identified via AppPort: Bluewave Supply",
+      "data": {
+        "mcpTools": [
+          "deliveries_get",
+          "deliveries_list",
+          "deliveries_retry",
+          "integrations_list"
+        ]
+      }
+    },
+    {
+      "n": 2,
+      "title": "Adopted implementation attached: https://github.com/Milo-ai-HQ/shopify-erp-order-sync @ d01b51d95993 (MIT)",
+      "data": {
+        "integrationId": "fcdb881c-7853-401f-844d-e11ff2f67886",
+        "flow": "adopted.shopify_erp_order_sync.netsuite"
+      }
+    },
+    {
+      "n": 3,
+      "title": "Configured with the adopted code’s own model: { erp: netsuite, customerByEmail, defaultCustomer: WEB }",
+      "data": {}
+    },
+    {
+      "n": 4,
+      "title": "Signed Shopify orders/create webhook received → 200 {\"received\":true,\"disposition\":\"accepted\"}",
+      "data": {}
+    },
+    {
+      "n": 5,
+      "title": "Upstream code performed the work: NetSuite sales order 9001",
+      "data": [
+        {
+          "attemptNo": 1,
+          "outcome": "delivered",
+          "errorClass": null,
+          "message": null,
+          "netsuiteId": "9001",
+          "executor": "adopted:d01b51d95993",
+          "trigger": {
+            "kind": "webhook"
+          },
+          "upstreamResult": {
+            "erp": "netsuite",
+            "status": "created",
+            "erpOrder": {
+              "id": "9001",
+              "number": "9001"
+            },
+            "reference": "#B-1001"
+          },
+          "startedAt": "2026-11-23T19:27:40.598Z",
+          "finishedAt": "2026-11-23T19:27:40.654Z"
+        }
+      ]
+    },
+    {
+      "n": 6,
+      "title": "Outcome durably recorded (deliveries + delivery_attempts, executor commit + upstream result per attempt)",
+      "data": {}
+    },
+    {
+      "n": 7,
+      "title": "Failure represented accurately: rejected — \"Items not found in NetSuite: SKU-PURPLE\"",
+      "data": [
+        {
+          "attemptNo": 1,
+          "outcome": "rejected",
+          "errorClass": "invalid_data",
+          "message": "Items not found in NetSuite: SKU-PURPLE",
+          "netsuiteId": null,
+          "executor": "adopted:d01b51d95993",
+          "trigger": {
+            "kind": "webhook"
+          },
+          "upstreamResult": {
+            "erp": "netsuite",
+            "status": "rejected",
+            "message": "Items not found in NetSuite: SKU-PURPLE",
+            "reference": "#B-1002"
+          },
+          "startedAt": "2026-11-23T19:27:42.585Z",
+          "finishedAt": "2026-11-23T19:27:42.600Z"
+        }
+      ]
+    },
+    {
+      "n": 8,
+      "title": "Other tenant's MCP client is refused: FORBIDDEN: The resource belongs to another tenant",
+      "data": {}
+    },
+    {
+      "n": 9,
+      "title": "FIXTURE stand-in for the customer’s fix: item SKU-PURPLE created in NetSuite",
+      "data": {}
+    },
+    {
+      "n": 10,
+      "title": "Recovery requested via MCP deliveries_retry → {\"deliveryId\":\"240e3157-74e9-47c6-b619-639c83d7b33b\",\"status\":\"queued\",\"previousOutcome\":\"rejected\"}; duplicate request → refused (CONFLICT)",
+      "data": {}
+    },
+    {
+      "n": 11,
+      "title": "Recovery succeeded: NetSuite sales order 9002",
+      "data": [
+        {
+          "n": 1,
+          "trigger": {
+            "kind": "webhook"
+          },
+          "outcome": "rejected",
+          "upstream": {
+            "erp": "netsuite",
+            "status": "rejected",
+            "message": "Items not found in NetSuite: SKU-PURPLE",
+            "reference": "#B-1002"
+          }
+        },
+        {
+          "n": 2,
+          "trigger": {
+            "kind": "manual_retry",
+            "reason": "Item SKU-PURPLE now exists in NetSuite",
+            "principalId": "a05d8f9d-278c-4478-96b4-36b684d8ede9",
+            "appportRequestId": "req_01M84Y1SB9EYAQ4RP0BVDEKB06"
+          },
+          "outcome": "delivered",
+          "upstream": {
+            "erp": "netsuite",
+            "status": "created",
+            "erpOrder": {
+              "id": "9002",
+              "number": "9002"
+            },
+            "reference": "#B-1002"
+          }
+        }
+      ]
+    },
+    {
+      "n": 12,
+      "title": "Evidence: 2 durable webhook receipts · 1 recorded human intervention · 16 AppPort invocation records",
+      "data": {}
+    }
+  ],
+  "startedAt": "2026-11-23T19:27:39.974Z"
+}

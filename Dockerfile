@@ -7,6 +7,20 @@ FROM ${DOCKER_CLI_IMAGE} AS dockercli
 
 FROM ${NODE_IMAGE} AS build
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH CI=true
+# git: the adopted integration (shopify-erp-order-sync) is a commit-pinned git dependency.
+# ripgrep: used by the maintenance agent's search tool. With an extra CA (TLS-intercepting proxy),
+# apt is switched to HTTPS and pointed at a readable copy of the CA for its unprivileged _apt user.
+RUN --mount=type=secret,id=extra_ca,required=false \
+    APTOPT=""; \
+    if [ -s /run/secrets/extra_ca ]; then \
+      sed -i 's#http://deb.debian.org#https://deb.debian.org#g' /etc/apt/sources.list.d/debian.sources; \
+      cp /run/secrets/extra_ca /tmp/build-extra-ca.crt && chmod 0644 /tmp/build-extra-ca.crt; \
+      APTOPT="-o Acquire::https::CAInfo=/tmp/build-extra-ca.crt"; \
+      if [ -n "${HTTPS_PROXY:-}" ]; then APTOPT="$APTOPT -o Acquire::https::Proxy=$HTTPS_PROXY"; fi; \
+    fi; \
+    apt-get $APTOPT update && apt-get $APTOPT install -y --no-install-recommends ca-certificates git ripgrep \
+    && rm -rf /var/lib/apt/lists/* /tmp/build-extra-ca.crt && git config --system --add safe.directory '*' \
+    && git config --system url."https://github.com/".insteadOf "git@github.com:"
 # Optional extra CA bundle for TLS-intercepting proxies (BuildKit secret `extra_ca`; used only at
 # build time, never stored in the image).
 RUN --mount=type=secret,id=extra_ca,required=false \
@@ -15,7 +29,7 @@ RUN --mount=type=secret,id=extra_ca,required=false \
 WORKDIR /app
 COPY . .
 RUN --mount=type=secret,id=extra_ca,required=false \
-    if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca npm_config_cafile=/run/secrets/extra_ca; fi; \
+    if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca npm_config_cafile=/run/secrets/extra_ca GIT_SSL_CAINFO=/run/secrets/extra_ca; fi; \
     pnpm install --frozen-lockfile && pnpm fetch --frozen-lockfile
 # ^ `pnpm fetch` guarantees every lockfile package is in the store, so the maintenance agent's repair
 #   worktrees can install fully offline (no registry access during repairs).
@@ -37,16 +51,7 @@ CMD ["pnpm", "exec", "tsx", "apps/api/src/main.ts"]
 # Maintenance worker: needs git (worktrees), ripgrep (search tool) and the docker CLI (sandbox).
 # It is deliberately given NO credential encryption keys.
 FROM build AS maintenance
-RUN --mount=type=secret,id=extra_ca,required=false \
-    APTOPT=""; \
-    if [ -s /run/secrets/extra_ca ]; then \
-      sed -i 's#http://deb.debian.org#https://deb.debian.org#g' /etc/apt/sources.list.d/debian.sources; \
-      cp /run/secrets/extra_ca /tmp/build-extra-ca.crt && chmod 0644 /tmp/build-extra-ca.crt; \
-      APTOPT="-o Acquire::https::CAInfo=/tmp/build-extra-ca.crt"; \
-      if [ -n "${HTTPS_PROXY:-}" ]; then APTOPT="$APTOPT -o Acquire::https::Proxy=$HTTPS_PROXY"; fi; \
-    fi; \
-    apt-get $APTOPT update && apt-get $APTOPT install -y --no-install-recommends ca-certificates git ripgrep \
-    && rm -rf /var/lib/apt/lists/* /tmp/build-extra-ca.crt && git config --system --add safe.directory '*'
+# git and ripgrep are inherited from the build stage.
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 # pnpm otherwise picks an (empty) store on the filesystem of the mounted repository.
 ENV NODE_ENV=production WORKER_ROLE=maintenance ARTIFACT_DIR=/data/artifacts npm_config_store_dir=/pnpm/store
