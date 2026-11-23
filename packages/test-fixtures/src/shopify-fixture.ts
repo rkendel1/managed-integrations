@@ -510,6 +510,8 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
     control.setVariant((req.body as { variant: SchemaVariant }).variant);
     return { variant: state.variant };
   });
+  /** Fixture convenience for demo seeding: issue a token without the browser OAuth step. */
+  app.post('/__fixture/token', async () => control.issueToken('read_orders'));
   app.post('/__fixture/revoke', async () => {
     control.revoke();
     return { revoked: true };

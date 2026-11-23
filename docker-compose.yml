@@ -1,0 +1,134 @@
+# Managed Integrations — local / demo stack.
+#   make up        (or: SOURCE_COMMIT=$(git rev-parse HEAD) docker compose --profile demo up -d --build)
+# Services: postgres, migrate (migrations + seed, one-shot), api (also serves the UI), worker,
+# maintenance (agent + independent validation; uses the host Docker daemon for sandboxes),
+# fixtures (DETERMINISTIC provider fixtures, `demo` profile only — not Shopify/NetSuite).
+name: managed-integrations
+
+x-app-env: &app-env
+  DATABASE_URL: postgres://mi:${POSTGRES_PASSWORD:-mi_dev_password}@postgres:5432/managed_integrations
+  CREDENTIAL_ENCRYPTION_KEYS: ${CREDENTIAL_ENCRYPTION_KEYS:?set CREDENTIAL_ENCRYPTION_KEYS (see .env.example)}
+  NODE_ENV: ${MI_NODE_ENV:-development}
+  SHOPIFY_CLIENT_ID: ${SHOPIFY_CLIENT_ID:-fixture-shopify-client-id}
+  SHOPIFY_CLIENT_SECRET: ${SHOPIFY_CLIENT_SECRET:-fixture-shopify-client-secret}
+  SHOPIFY_BASE_URL_OVERRIDE: ${SHOPIFY_BASE_URL_OVERRIDE:-http://fixtures:4010}
+  NETSUITE_BASE_URL_OVERRIDE: ${NETSUITE_BASE_URL_OVERRIDE:-http://fixtures:4020}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+  SESSION_SECRET: ${SESSION_SECRET:-}
+  SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-1}
+  RECONCILE_INTERVAL_MINUTES: ${RECONCILE_INTERVAL_MINUTES:-30}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+
+x-app: &app
+  image: managed-integrations:${SOURCE_COMMIT:-dev}
+  build:
+    context: .
+    target: runtime
+    args:
+      SOURCE_COMMIT: ${SOURCE_COMMIT:-}
+      NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
+  restart: unless-stopped
+  volumes:
+    - artifacts:/data/artifacts
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mi
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mi_dev_password}
+      POSTGRES_DB: managed_integrations
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mi -d managed_integrations']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  fixtures:
+    <<: *app
+    profiles: [demo]
+    command: ['pnpm', 'exec', 'tsx', 'packages/test-fixtures/src/cli.ts']
+    environment:
+      FIXTURE_HOST: 0.0.0.0
+    ports:
+      - '127.0.0.1:4010:4010'
+      - '127.0.0.1:4020:4020'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:4010/__fixture/state').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    <<: *app
+    restart: 'no'
+    command: ['pnpm', 'exec', 'tsx', 'scripts/seed.ts']
+    environment:
+      <<: *app-env
+      DEMO_FIXTURES: ${DEMO_FIXTURES:-true}
+      SEED_CUSTOMER_PASSWORD: ${SEED_CUSTOMER_PASSWORD:-}
+      SEED_OPERATOR_PASSWORD: ${SEED_OPERATOR_PASSWORD:-}
+    depends_on:
+      postgres: { condition: service_healthy }
+      fixtures: { condition: service_healthy, required: false }
+    healthcheck:
+      disable: true
+
+  api:
+    <<: *app
+    environment:
+      <<: *app-env
+      PORT: '3000'
+    ports:
+      - '${API_PORT:-3000}:3000'
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    <<: *app
+    command: ['pnpm', 'exec', 'tsx', 'apps/worker/src/main.ts']
+    environment:
+      <<: *app-env
+      WORKER_ROLE: runtime
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      disable: true
+
+  maintenance:
+    image: managed-integrations-maintenance:${SOURCE_COMMIT:-dev}
+    build:
+      context: .
+      target: maintenance
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-}
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
+        DOCKER_CLI_IMAGE: ${DOCKER_CLI_IMAGE:-docker:29-cli}
+    restart: unless-stopped
+    environment:
+      # No CREDENTIAL_ENCRYPTION_KEYS: the maintenance role cannot decrypt customer credentials.
+      DATABASE_URL: postgres://mi:${POSTGRES_PASSWORD:-mi_dev_password}@postgres:5432/managed_integrations
+      NODE_ENV: ${MI_NODE_ENV:-development}
+      WORKER_ROLE: maintenance
+      ARTIFACT_DIR: /data/artifacts
+      # The product's own source checkout, mounted at the SAME absolute path as on the host so the
+      # sandbox containers (started via the host daemon) can mount repair worktrees.
+      MAINTENANCE_REPO_DIR: ${MI_REPO_DIR:?run via make (sets MI_REPO_DIR to the checkout path)}
+      MAINTENANCE_WORK_DIR: ${MI_REPO_DIR}/.maintenance
+      MAINTENANCE_PLANNER: ${MAINTENANCE_PLANNER:-auto}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SANDBOX_NODE_IMAGE: ${SANDBOX_NODE_IMAGE:-node:22-bookworm-slim}
+      SANDBOX_POSTGRES_IMAGE: ${SANDBOX_POSTGRES_IMAGE:-postgres:16-alpine}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - artifacts:/data/artifacts
+      - ${MI_REPO_DIR}:${MI_REPO_DIR}
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:
+  artifacts:

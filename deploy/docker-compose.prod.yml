@@ -1,0 +1,49 @@
+# Production overlay for a single small Linux VPS:
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+# Adds HTTPS (Caddy, automatic certificates), nightly pg_dump backups, and removes fixture overrides.
+services:
+  api:
+    ports: !reset []
+    environment:
+      NODE_ENV: production
+      SHOPIFY_BASE_URL_OVERRIDE: ''
+      NETSUITE_BASE_URL_OVERRIDE: ''
+  worker:
+    environment:
+      NODE_ENV: production
+      SHOPIFY_BASE_URL_OVERRIDE: ''
+      NETSUITE_BASE_URL_OVERRIDE: ''
+  migrate:
+    environment:
+      NODE_ENV: production
+      DEMO_FIXTURES: 'false'
+      SHOPIFY_BASE_URL_OVERRIDE: ''
+      NETSUITE_BASE_URL_OVERRIDE: ''
+  maintenance:
+    environment:
+      NODE_ENV: production
+  caddy:
+    image: ${CADDY_IMAGE:-caddy:2}
+    restart: unless-stopped
+    ports: ['80:80', '443:443']
+    environment:
+      MI_DOMAIN: ${MI_DOMAIN:?set MI_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [api]
+  backup:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - backups:/backups
+      - ./deploy/backup.sh:/backup.sh:ro
+    entrypoint: ['/bin/sh', '-c', 'while true; do /bin/sh /backup.sh; sleep 86400; done']
+    depends_on:
+      postgres: { condition: service_healthy }
+volumes:
+  caddy_data:
+  backups:

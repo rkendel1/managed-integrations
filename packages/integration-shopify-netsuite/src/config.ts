@@ -34,7 +34,9 @@ export interface ServiceConfig {
 }
 
 export function loadServiceConfig(role: ServiceRole, source: NodeJS.ProcessEnv = process.env): ServiceConfig {
-  const parsed = EnvSchema.safeParse(source);
+  // Empty values (e.g. `VAR=` in compose overlays) mean "unset".
+  const cleaned = Object.fromEntries(Object.entries(source).filter(([, v]) => v !== undefined && v !== ''));
+  const parsed = EnvSchema.safeParse(cleaned);
   if (!parsed.success) {
     throw new Error(`Invalid configuration: ${parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
   }
