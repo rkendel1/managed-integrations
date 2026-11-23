@@ -111,10 +111,20 @@ function Shell({ me, nav, children }: { me: Me; nav: [string, string][]; childre
     navigate('/login');
   }
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-slate-200 bg-white">
+    // The customer product renders dark; the operator console stays light.
+    <div
+      className={
+        me.user.role === 'customer'
+          ? 'dark min-h-screen bg-zinc-950 text-zinc-100 antialiased'
+          : 'min-h-screen'
+      }
+    >
+      <header className="border-b border-slate-200 bg-white dark:border-white/10 dark:bg-zinc-950/80 dark:backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
-          <Link to="/" className="text-sm font-semibold">
+          <Link to="/" className="flex items-center gap-2 text-sm font-semibold">
+            <span className="grid h-6 w-6 place-items-center rounded-md bg-slate-900 text-[10px] font-bold text-white dark:bg-white dark:text-zinc-900">
+              MI
+            </span>
             Managed Integrations{me.user.role === 'operator' ? ' · Operator' : ''}
           </Link>
           <nav className="flex flex-wrap gap-1">
@@ -122,16 +132,20 @@ function Shell({ me, nav, children }: { me: Me; nav: [string, string][]; childre
               <NavLink
                 key={to}
                 to={to}
-                end
+                end={to === '/app' || to === '/ops'}
                 className={({ isActive }) =>
-                  `rounded px-2 py-1 text-sm ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`
+                  `rounded-md px-2.5 py-1 text-sm ${
+                    isActive
+                      ? 'bg-slate-900 text-white dark:bg-white/10 dark:text-white'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-100'
+                  }`
                 }
               >
                 {label}
               </NavLink>
             ))}
           </nav>
-          <div className="ml-auto flex items-center gap-3 text-xs text-slate-500">
+          <div className="ml-auto flex items-center gap-3 text-xs text-slate-500 dark:text-zinc-400">
             {me.user.email}
             <Button size="sm" variant="outline" onClick={logout}>
               Sign out

@@ -83,7 +83,15 @@ const eventSchema = s.object({
     basis: s.string(),
   }),
   customerAction: s.object({ required: s.boolean('customer action required'), text: s.nullable(s.string()) }),
-  timeline: s.array(s.object({ at: s.string(), text: s.string() })),
+  timeline: s.array(
+    s.object({
+      at: s.string(),
+      step: s.string(),
+      title: s.string(),
+      text: s.string(),
+      details: s.array(s.object({ label: s.string(), value: s.string() })),
+    }),
+  ),
 });
 
 interface IntegrationAssessment {

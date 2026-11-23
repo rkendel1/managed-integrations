@@ -295,7 +295,7 @@ export async function recordInputContractFinding(
       actor: MAINTENANCE_ACTOR,
       note: `We noticed that Shopify changed the format of the order data it sends (${affectedLabels(finding)}). Affected orders are held safely; nothing incorrect was written.`,
       customerVisible: true,
-      evidence: { receiptId: receipt.id, apiVersion: receipt.apiVersion },
+      evidence: { step: 'noticed', receiptId: receipt.id, apiVersion: receipt.apiVersion },
     });
   }
   // The first observation is the finding; later held orders attach to the same event.
@@ -940,7 +940,7 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
         inc,
         `We traced the change to the part of your integration that reads ${affectedLabels(inc.finding as Finding)} and confirmed that, left alone, it would have produced incorrect sales orders.`,
         true,
-        { risk: investigation.risk, codePaths: investigation.codePaths },
+        { step: 'investigated', heldOrders: investigation.heldOrders, risk: investigation.risk, codePaths: investigation.codePaths },
       );
       return { state: 'continue', detail: 'investigated' };
     }
@@ -971,7 +971,7 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
         inc,
         'We tested the fix against earlier orders and against Shopify’s own records of the affected orders before switching it on.',
         true,
-        { checks: validation.checks },
+        { step: 'tested', checks: validation.checks },
       );
       return { state: 'continue', detail: 'validated' };
     }
@@ -1009,6 +1009,7 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       note: 'We switched the fix on.',
       // Technical detail for operators lives in the evidence of this timeline entry.
       evidence: {
+        step: 'switched_on',
         boundary: 'adoption boundary (integration configuration); upstream code unchanged',
         rules: correction.rules!.map((r) => ({ target: r.target, source: r.source })),
         configVersion,
@@ -1049,7 +1050,7 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
         inc,
         `The ${orders(rows.length)} we held ${rows.length === 1 ? 'was' : 'were'} delivered to NetSuite (${delivered} of ${rows.length}).`,
         true,
-        { released: ids, path: 'normal execution path (maintenance_recovery)' },
+        { step: 'delivered', delivered, held: rows.length, released: ids, path: 'normal execution path (maintenance_recovery)' },
       );
       await setProgress(db, inc.id, { phase: 'reconcile' });
       return { state: 'continue', detail: 'released orders finished' };
@@ -1118,7 +1119,7 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
             : 'None were missing.'
         }`,
         true,
-        { runId: run!.id },
+        { step: 'checked', checked: run!.sourceCount ?? 0, missing: missing.length, runId: run!.id },
       );
       await setProgress(db, inc.id, { phase: 'await_recovery' });
       return { state: 'continue', detail: `recovery requested for ${missing.length}` };
@@ -1137,6 +1138,7 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       await transitionIncident(db, inc.id, 'verification', {
         actor: MAINTENANCE_ACTOR,
         note: 'Recovery finished. We are now checking every order from the affected period in NetSuite.',
+        evidence: { step: 'verifying' },
       });
       await setProgress(db, inc.id, { phase: 'verify_reconcile' });
       return { state: 'continue', detail: 'to verification' };
@@ -1200,6 +1202,7 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
         resolution:
           'Compatibility correction applied at the adoption boundary; affected orders delivered and verified.',
         verification: evidence,
+        evidence: { step: 'verified', verified: accounting.verified, duplicates: accounting.duplicates },
       });
       return { state: 'resolved', detail: 'verified and resolved' };
     }

@@ -202,6 +202,32 @@ describe('customer product through AppPort', () => {
       /line_items|adopted|contract|null rate|configuration version|upstream|webhook/i,
     );
     expect(timeline).toMatch(/We noticed that Shopify changed the format/);
+    // structured steps, with customer-safe details behind each (derived from persisted evidence)
+    const steps = (
+      ev as unknown as {
+        timeline: { step: string; title: string; details: { label: string; value: string }[] }[];
+      }
+    ).timeline;
+    expect(steps.map((t) => t.step)).toEqual([
+      'noticed',
+      'investigated',
+      'tested',
+      'switched_on',
+      'delivered',
+      'checked',
+      'verifying',
+      'verified',
+    ]);
+    expect(steps.find((t) => t.step === 'noticed')!.details).toEqual(
+      expect.arrayContaining([{ label: 'Shopify data format', value: '2026-10 → 2027-01' }]),
+    );
+    expect(steps.find((t) => t.step === 'tested')!.details).toEqual(
+      expect.arrayContaining([{ label: 'Earlier orders unaffected', value: 'Passed (2 of 2)' }]),
+    );
+    expect(steps.find((t) => t.step === 'verified')!.details).toEqual([
+      { label: 'Orders verified in NetSuite', value: '4' },
+      { label: 'Duplicates', value: '0' },
+    ]);
     expect(fact('Transactions recovered')).toBe('3 of 3.');
     expect(fact('Final outcome')).toMatch(/^All 4 orders .* exactly once/);
     expect(fact('Customer action')).toBe('None required.');

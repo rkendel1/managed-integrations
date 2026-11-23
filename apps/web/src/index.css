@@ -1,1 +1,4 @@
 @import 'tailwindcss';
+
+/* The customer product renders dark (scoped by a `.dark` ancestor); the operator console stays light. */
+@custom-variant dark (&:where(.dark, .dark *));

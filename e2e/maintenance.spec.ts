@@ -38,10 +38,19 @@ test('customer sees the completed maintenance as an outcome, with no internal ma
   const ev = page.getByTestId('maintenance-event');
   await expect(ev).toHaveAttribute('data-state', 'completed');
   await expect(page.getByTestId('event-headline')).toHaveText('We resolved a compatibility issue');
+  // outcome first
   await expect(page.getByTestId('zero-loss')).toContainText('Zero transactions lost.');
+  await expect(ev.getByText('Zero transactions lost').first()).toBeVisible();
+  // details on demand: a step's details, the order breakdown, the full report
+  const tested = page.locator('[data-step="tested"]');
+  await expect(tested.getByText('Earlier orders unaffected')).toBeHidden();
+  await tested.getByText('Details').click();
+  await expect(tested.getByText('Earlier orders unaffected')).toBeVisible();
+  await page.getByText('Order breakdown').click();
+  await expect(page.getByTestId('accounting')).toContainText('verified in NetSuite');
+  await page.getByRole('tab', { name: 'Report' }).click();
   await expect(ev.locator('[data-fact="Change detected"]')).toContainText('unit price of each order line');
   await expect(ev.locator('[data-fact="Customer action"]')).toHaveText('None required.');
-  await expect(page.getByTestId('accounting')).toContainText('verified in NetSuite');
   // internal details stay internal
   for (const word of ['line_items', 'inputCompat', 'reconciliation', 'incident', 'mapping.js', 'stack'])
     await expect(page.getByText(word, { exact: false })).toHaveCount(0);

@@ -185,7 +185,88 @@ export interface CustomerEvent {
   } | null;
   claim: { zeroLoss: boolean; statement: string | null; basis: string };
   customerAction: { required: boolean; text: string | null };
-  timeline: { at: string; text: string }[];
+  timeline: TimelineItem[];
+}
+
+/** One step of the customer timeline. `details` are shown only when the customer expands the step. */
+export interface TimelineItem {
+  at: string;
+  step: string;
+  title: string;
+  text: string;
+  details: { label: string; value: string }[];
+}
+
+const STEP_TITLES: Record<string, string> = {
+  noticed: 'Change detected',
+  investigated: 'Investigated',
+  tested: 'Fix tested',
+  switched_on: 'Fix switched on',
+  delivered: 'Held orders delivered',
+  checked: 'Every order checked',
+  verifying: 'Verifying',
+  verified: 'Verified',
+};
+const STATUS_TITLES: Record<string, string> = {
+  detected: 'Detected',
+  classified: 'Assessed',
+  investigating: 'Investigating',
+  recoverable: 'Recovering',
+  recovery: 'Recovering',
+  verification: 'Verifying',
+  requires_action: 'Waiting for you',
+  resolved: 'Resolved',
+};
+const CHECK_LABELS: Record<string, string> = {
+  'upstream unmodified': 'Integration software unchanged',
+  'regression: baseline orders unchanged': 'Earlier orders unaffected',
+  'changed inputs map correctly': 'Held orders read correctly',
+  'mapped values match Shopify Admin API': 'Matches Shopify’s own records',
+};
+
+/** Customer-safe details for a timeline step, from that step's persisted evidence and the event's facts. */
+function stepDetails(step: string, ev: Record<string, unknown>, finding: Finding | null): { label: string; value: string }[] {
+  const n = (k: string) => (typeof ev[k] === 'number' ? (ev[k] as number) : null);
+  switch (step) {
+    case 'noticed': {
+      if (!finding) return [];
+      const from = finding.expected.baseline?.apiVersion;
+      const to = finding.observed.apiVersion;
+      return [
+        ...(from && to && from !== to ? [{ label: 'Shopify data format', value: `${from} → ${to}` }] : []),
+        { label: 'What moved', value: finding.observed.violations.map((v) => labelOf(v.path)).join(', ') },
+        { label: 'Orders written incorrectly', value: 'None: affected orders were held' },
+      ];
+    }
+    case 'investigated':
+      return n('heldOrders') != null ? [{ label: 'Orders held safely', value: String(n('heldOrders')) }] : [];
+    case 'tested':
+      return ((ev['checks'] as { name: string; passed: boolean; detail: string }[] | undefined) ?? []).map((c) => {
+        const count = c.detail.match(/^(\d+)\/(\d+)/);
+        return {
+          label: CHECK_LABELS[c.name] ?? c.name,
+          value: `${c.passed ? 'Passed' : 'Failed'}${count ? ` (${count[1]} of ${count[2]})` : ''}`,
+        };
+      });
+    case 'delivered':
+      return n('held') != null ? [{ label: 'Delivered to NetSuite', value: `${n('delivered')} of ${n('held')}` }] : [];
+    case 'checked':
+      return n('checked') != null
+        ? [
+            { label: 'Orders in the affected period', value: String(n('checked')) },
+            { label: 'Never reached us (recovered)', value: String(n('missing') ?? 0) },
+          ]
+        : [];
+    case 'verified':
+      return n('verified') != null
+        ? [
+            { label: 'Orders verified in NetSuite', value: String(n('verified')) },
+            { label: 'Duplicates', value: String(n('duplicates') ?? 0) },
+          ]
+        : [];
+    default:
+      return [];
+  }
 }
 
 /** A maintenance event as the customer sees it — derived entirely from persisted facts. */
@@ -324,7 +405,17 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
     timeline: events
       .filter((e) => e.customerVisible)
       .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())
-      .map((e) => ({ at: e.createdAt.toISOString(), text: e.note })),
+      .map((e) => {
+        const ev = (e.evidence ?? {}) as Record<string, unknown>;
+        const step = typeof ev['step'] === 'string' ? (ev['step'] as string) : e.toStatus;
+        return {
+          at: e.createdAt.toISOString(),
+          step,
+          title: STEP_TITLES[step] ?? STATUS_TITLES[e.toStatus] ?? 'Update',
+          text: e.note,
+          details: stepDetails(step, ev, finding),
+        };
+      }),
   };
 }
 
