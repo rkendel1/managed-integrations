@@ -6,18 +6,18 @@ docker compose --env-file .env --profile demo exec -T worker pnpm exec tsx scrip
 [   4.2s]  5. Integration failed safely (schema); cursor not advanced
 [   4.2s]  6. Reliability system detected the failure
 [   4.2s]  7. Incident created: "Provider response no longer matches the integration implementation"
-[   6.2s]  8. Affected records identified: 5 order(s)
-[   6.2s]  9. Maintenance agent received a bounded, sanitized task
-[  42.3s] 10. Agent investigated with 17 restricted tool calls (planner: playbook)
-[  42.3s] 11. Repair candidate created in an isolated worktree
-[  42.3s] 12. Acceptance tests not altered by the agent
-[  80.4s] 13. Independent validation passed (protected suite intact: true)
-[  80.4s] 14. Approval recorded via operator API (--auto-approve: SCRIPTED stand-in for a human click)
-[  82.4s] 15. Candidate released via canary (released)
-[  82.4s] 16. Synchronization resumed on the new version
-[  82.4s] 17. Reconciliation: consistent — 35/35 expected orders matched; missing 0, duplicates 0
-[  82.4s] 18. Incident resolved with verification evidence
-[  82.4s] 19. Customer sees a clear status and history
+[   6.3s]  8. Affected records identified: 5 order(s)
+[   6.3s]  9. Maintenance agent received a bounded, sanitized task
+[  46.3s] 10. Agent investigated with 17 restricted tool calls (planner: playbook)
+[  46.3s] 11. Repair candidate created in an isolated worktree
+[  46.3s] 12. Acceptance tests not altered by the agent
+[  84.4s] 13. Independent validation passed (protected suite intact: true)
+[  84.4s] 14. Approval recorded via operator API (--auto-approve: SCRIPTED stand-in for a human click)
+[  86.4s] 15. Candidate released via canary (released)
+[  86.5s] 16. Synchronization resumed on the new version
+[  86.5s] 17. Reconciliation: consistent — 35/35 expected orders matched; missing 0, duplicates 0
+[  86.5s] 18. Incident resolved with verification evidence
+[  86.5s] 19. Customer sees a clear status and history
 
-DONE in 82s — NetSuite fixture: 45 sales orders, 45 unique externalIds (no duplicates: true)
-evidence written to /data/artifacts/evidence/demo-failure-1795470349485.json
+DONE in 86s — NetSuite fixture: 45 sales orders, 45 unique externalIds (no duplicates: true)
+evidence written to /data/artifacts/evidence/demo-failure-1795471551935.json

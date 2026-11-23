@@ -3,12 +3,12 @@ docker compose --env-file .env --profile demo exec -T api pnpm exec tsx apps/api
 [  0.2s]  2. Adopted implementation attached: https://github.com/Milo-ai-HQ/shopify-erp-order-sync @ d01b51d95993 (MIT)
 [  0.2s]  3. Configured with the adopted code’s own model: { erp: netsuite, customerByEmail, defaultCustomer: WEB }
 [  0.2s]  4. Signed Shopify orders/create webhook received → 200 {"received":true,"disposition":"accepted"}
-[  1.3s]  5. Upstream code performed the work: NetSuite sales order 9039
-[  1.3s]  6. Outcome durably recorded (deliveries + delivery_attempts, executor commit + upstream result per attempt)
-[  3.3s]  7. Failure represented accurately: rejected — "Items not found in NetSuite: SKU-PURPLE"
-[  3.4s]  8. Other tenant's MCP client is refused: FORBIDDEN: The resource belongs to another tenant
-[  3.4s]  9. FIXTURE stand-in for the customer’s fix: item SKU-PURPLE created in NetSuite
-[  3.4s] 10. Recovery requested via MCP deliveries_retry → {"deliveryId":"fba85b61-c63e-4475-96d4-273789236b2c","status":"queued","previousOutcome":"rejected"}; duplicate request → refused (CONFLICT)
-[  4.4s] 11. Recovery succeeded: NetSuite sales order 9040
-[  4.5s] 12. Evidence: 10 durable webhook receipts · 1 recorded human intervention · 77 AppPort invocation records
-DONE in 4s — evidence: /data/artifacts/evidence/demo-adopted-1795470265765.json
+[  2.3s]  5. Upstream code performed the work: NetSuite sales order 9039
+[  2.3s]  6. Outcome durably recorded (deliveries + delivery_attempts, executor commit + upstream result per attempt)
+[  4.3s]  7. Failure represented accurately: rejected — "Items not found in NetSuite: SKU-PURPLE"
+[  4.4s]  8. Other tenant's MCP client is refused: FORBIDDEN: The resource belongs to another tenant
+[  4.4s]  9. FIXTURE stand-in for the customer’s fix: item SKU-PURPLE created in NetSuite
+[  4.4s] 10. Recovery requested via MCP deliveries_retry → {"deliveryId":"d053d71f-bcb3-46b8-bdc5-ea9712882011","status":"queued","previousOutcome":"rejected"}; duplicate request → refused (CONFLICT)
+[  6.5s] 11. Recovery succeeded: NetSuite sales order 9040
+[  6.5s] 12. Evidence: 10 durable webhook receipts · 1 recorded human intervention · 80 AppPort invocation records
+DONE in 6s — evidence: /data/artifacts/evidence/demo-adopted-1795471464071.json

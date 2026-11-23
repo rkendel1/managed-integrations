@@ -1,16 +1,16 @@
 docker compose --env-file .env --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-maintenance.ts
-[  7.5s]  1. Customer sees "Shopify → NetSuite orders" — Protected: On 2026-11-23 21:43 UTC we checked 2 order(s) from Shopify against NetSuite: all accounted for.
+[  7.5s]  1. Customer sees "Shopify → NetSuite orders" — Protected: On 2026-11-23 22:03 UTC we checked 2 order(s) from Shopify against NetSuite: all accounted for.
          (Protected means: No open issues, and a check completed in the last 24 hours found every order accounted for in both systems.)
 [  7.5s]  2. FIXTURE: Shopify switches its order webhooks to format 2027-01 (unit price moved). 2 new orders arrive (200/2027-01, 200/2027-01); a 3rd order's notification is lost.
 [  9.6s]  3. Detected: order webhook format 2026-10 → 2027-01; removed line_items[].price (read by the adopted code)
 [  9.6s]  4. Affected integration identified (Shopify → NetSuite orders); scope: orders arriving in the new format are held, not written
 [  9.6s]  5. Maintenance event created — customer sees: "We are handling a change in how Shopify sends orders" (in_progress)
-[ 28.9s]  6. Investigated: src/mapping.js:11 `.map((l) => ({ sku: l.sku, qty: Number(l.quantity), unitPrice: round2(Number(l.price)) }));` (pinned: true). Without the guard, upstream would send 1 line(s) with a null rate to NetSuite (rejected, or priced by NetSuite instead of Shopify).
-[ 28.9s]  7. Corrected at the adoption boundary: line_items[].price ← line_items[].price_set.shop_money.amount (configuration v2; upstream modified: false)
-[ 28.9s]  8. Validated before activation: upstream unmodified ✓ (7 files match d01b51d95993); regression: baseline orders unchanged ✓ (2/2 stored pre-change orders map identically); changed inputs map correctly ✓ (1/1 held orders satisfy the contract and map without error); mapped values match Shopify Admin API ✓ (1/1 orders: quantities and unit prices equal Shopify's order record)
-         #P3461-3: attempt 1 held (webhook) → attempt 2 delivered (maintenance_recovery)
-         #P3461-4: attempt 1 held (webhook) → attempt 2 delivered (maintenance_recovery)
-[ 28.9s]  9. Recovered 3 order(s): #P3461-3 (delayed), #P3461-4 (delayed), #P3461-5 (discovered)
+[ 28.8s]  6. Investigated: src/mapping.js:11 `.map((l) => ({ sku: l.sku, qty: Number(l.quantity), unitPrice: round2(Number(l.price)) }));` (pinned: true). Without the guard, upstream would send 1 line(s) with a null rate to NetSuite (rejected, or priced by NetSuite instead of Shopify).
+[ 28.8s]  7. Corrected at the adoption boundary: line_items[].price ← line_items[].price_set.shop_money.amount (configuration v2; upstream modified: false)
+[ 28.8s]  8. Validated before activation: upstream unmodified ✓ (7 files match d01b51d95993); regression: baseline orders unchanged ✓ (2/2 stored pre-change orders map identically); changed inputs map correctly ✓ (2/2 held orders satisfy the contract and map without error); mapped values match Shopify Admin API ✓ (2/2 orders: quantities and unit prices equal Shopify's order record)
+         #P2293-3: attempt 1 held (webhook) → attempt 2 delivered (maintenance_recovery)
+         #P2293-4: attempt 1 held (webhook) → attempt 2 delivered (maintenance_recovery)
+[ 28.9s]  9. Recovered 3 order(s): #P2293-3 (delayed), #P2293-4 (delayed), #P2293-5 (discovered)
 [ 28.9s] 10. Verified independently (verification run: consistent, recovery run: discrepancies): every order in the affected period is in NetSuite with Shopify's items, quantities and prices
 [ 28.9s] 11. Zero duplicates: NetSuite holds 5 sales orders, 5 distinct externalIds; accounting duplicates = 0
 [ 28.9s] 12. Customer sees the completed event and status "Verified" — no intervention was asked for
@@ -20,7 +20,7 @@ docker compose --env-file .env --profile demo exec -T api pnpm exec tsx apps/api
            We detected a change that threatened order processing. We resolved it and verified all 4 orders from the affected period against NetSuite.
            • Change detected: Shopify changed the order data it sends (format 2026-10 → 2027-01): the unit price of each order line is no longer where your integration reads it.
            • Why it mattered: Orders could have been created in NetSuite without the unit price of each order line. We held them instead of writing them.
-           • Action taken: We updated how your integration reads the unit price of each order line to match Shopify’s new format. Before switching it on, we confirmed it changes nothing for 2 earlier orders and gives the same values as Shopify’s own records for 1 affected order.
+           • Action taken: We updated how your integration reads the unit price of each order line to match Shopify’s new format. Before switching it on, we confirmed it changes nothing for 2 earlier orders and gives the same values as Shopify’s own records for 2 affected orders.
            • Transactions affected: 3 orders: 2 held safely and delivered after the fix; 1 never reached us and was found by checking Shopify directly.
            • Transactions recovered: 3 of 3.
            • Final outcome: All 4 orders created in the affected period are in NetSuite exactly once, with the items, quantities and prices Shopify has for them.
@@ -29,5 +29,5 @@ docker compose --env-file .env --profile demo exec -T api pnpm exec tsx apps/api
          
          Operator evidence (maintenance_events_evidence) embeds the identical customer projection.
          Another tenant is refused: FORBIDDEN: The resource belongs to another tenant
-         A new order in the 2027-01 format (#P3461-6) now flows normally.
-DONE in 31s — evidence: /data/artifacts/evidence/demo-maintenance-1795470250031.json
+         A new order in the 2027-01 format (#P2293-6) now flows normally.
+DONE in 31s — evidence: /data/artifacts/evidence/demo-maintenance-1795471443753.json
