@@ -6,9 +6,6 @@
  * which is recorded verbatim as execution evidence.
  */
 import { and, eq, inArray, lt, or, sql } from 'drizzle-orm';
-import { createNetSuiteAdapter } from 'shopify-sync/src/adapters/netsuite.js';
-import { toCanonicalOrder } from 'shopify-sync/src/mapping.js';
-import { syncOrder } from 'shopify-sync/src/sync.js';
 import type { UpstreamSyncResult } from 'shopify-sync/types';
 import {
   deliveries,
@@ -26,7 +23,8 @@ import {
 import { describeError, redact } from '@mi/observability';
 import { AdoptedConfigSchema } from './contract.ts';
 import { ADOPTED } from './provenance.ts';
-import { applyInputCompat, checkInputContract, type ContractViolation } from './input-contract.ts';
+import { type ContractViolation } from './input-contract.ts';
+import { evaluateInput, runtimeFor, type RuntimeSelection } from './adaptation.ts';
 
 /** Deliveries in `running`/`pending` longer than this are considered stuck and may be reclaimed. */
 export const STUCK_AFTER_MS = 10 * 60_000;
@@ -98,6 +96,8 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
   let violations: ContractViolation[] | undefined;
   let compatApplied: { target: string; source: string; count: number }[] = [];
   let apiVersion: string | null = null;
+  // What runs: the adopted artifact (original or patched) and the active adapters (adaptations registry).
+  let runtime: RuntimeSelection | null = null;
   try {
     const [receipt] = await db
       .select()
@@ -114,9 +114,10 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
     // Adoption boundary: apply validated compatibility rules, then check the input contract BEFORE upstream
     // runs. Upstream does not validate its input (a missing price becomes a null NetSuite rate), so an
     // input that violates the contract is held — nothing is written — and maintenance takes over.
-    const adapted = applyInputCompat(JSON.parse(raw.toString('utf8')), config.inputCompat);
+    runtime = await runtimeFor(db, integ!.id);
+    const adapted = evaluateInput(JSON.parse(raw.toString('utf8')), runtime);
     compatApplied = adapted.applied;
-    const found = checkInputContract(adapted.payload);
+    const found = adapted.violations;
     if (found.length) {
       violations = found;
       throw Object.assign(
@@ -137,7 +138,7 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
     // ---- upstream code from here on ----
     let order;
     try {
-      order = toCanonicalOrder(adapted.payload, {
+      order = runtime.artifact.modules.toCanonicalOrder(adapted.payload, {
         customerByEmail: config.customerByEmail,
         defaultCustomer: config.defaultCustomer,
       });
@@ -145,7 +146,8 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
       // Deterministic data problem (e.g. no line with a SKU): re-running cannot help.
       throw Object.assign(new Error(describeError(err).message), { mi: 'invalid_data' });
     }
-    upstream = await syncOrder(createNetSuiteAdapter({ baseUrl: conn.baseUrl, accessToken }), order);
+    const m = runtime.artifact.modules;
+    upstream = await m.syncOrder(m.createNetSuiteAdapter({ baseUrl: conn.baseUrl, accessToken }), order);
     // ---- end upstream ----
 
     if (upstream.status === 'created' || upstream.status === 'duplicate') {
@@ -176,6 +178,14 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
     trigger: p.trigger,
     upstreamResult: upstream ? (redact(upstream) as object) : null,
     apiVersion,
+    // Exactly what ran: artifact id (pinned commit + patches) and the adaptations in force.
+    artifact: runtime
+      ? {
+          id: runtime.artifact.id,
+          patches: runtime.artifact.patches.map((x) => x.id),
+          adaptations: runtime.adaptationIds,
+        }
+      : null,
     ...(compatApplied.length ? { inputCompatApplied: compatApplied } : {}),
     ...(violations ? { contractViolations: violations } : {}),
   };
@@ -198,7 +208,7 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
       errorClass,
       errorMessage: message ? String(redact(message)).slice(0, 1000) : null,
       destinationId,
-      implementationVersionId: `adopted:${ADOPTED.commit.slice(0, 12)}`,
+      implementationVersionId: runtime?.artifact.id ?? `adopted:${ADOPTED.commit.slice(0, 12)}`,
       evidence,
       startedAt,
       finishedAt,

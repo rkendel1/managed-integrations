@@ -65,7 +65,8 @@ export interface DestinationRecord {
   id: string;
   externalId: string | null;
   otherRefNum: string | null;
-  lines: { itemId: string; quantity: number; rateMinor: number }[];
+  /** `rate`: the exact rate NetSuite holds (for checks finer than minor units). */
+  lines: { itemId: string; quantity: number; rateMinor: number; rate?: number }[];
 }
 
 export interface DeliveryEvidence {
@@ -338,6 +339,7 @@ export async function readDestination(
         itemId: String(l.item),
         quantity: Math.abs(Number(l.quantity)),
         rateMinor: Math.abs(minor(l.rate)),
+        rate: Math.abs(Number(l.rate)),
       });
     }
   }

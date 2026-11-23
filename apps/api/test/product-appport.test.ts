@@ -13,7 +13,7 @@ import type { FastifyInstance } from 'fastify';
 import { PgBoss } from 'pg-boss';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { adoptedClients, scanReconciliation, startReconciliation } from '@mi/adopted-order-sync';
-import { integrations, users } from '@mi/database';
+import { adaptations, integrations, users } from '@mi/database';
 import { loadServiceConfig } from '@mi/integration-shopify-netsuite';
 import { buildApp } from '../src/app.ts';
 import { hashPassword } from '../src/auth.ts';
@@ -297,7 +297,7 @@ describe('customer product through AppPort', () => {
     const h2 = { cookie: ck, 'x-csrf-token': csrf, 'content-type': 'application/json' };
     const got = await (await fetch(`${base}/api/customer/integration`, { headers: { cookie: ck } })).json();
     expect(got).toMatchObject({ kind: 'adopted', settings: { defaultCustomer: 'WEB', customerByEmail: {} } });
-    expect(JSON.stringify(got)).not.toMatch(/inputCompat|line_items|reconcile/);
+    expect(JSON.stringify(got)).not.toMatch(/inputCompat|line_items|reconcile|adaptation/);
     const bad = await fetch(`${base}/api/customer/integration`, {
       method: 'PATCH',
       headers: h2,
@@ -317,9 +317,14 @@ describe('customer product through AppPort', () => {
     });
     expect(ok.status).toBe(200);
     const [integ] = await h.dbh.db.select().from(integrations).where(eq(integrations.id, a.integrationId));
-    const cfg = integ!.config as { customerByEmail: Record<string, string>; inputCompat: unknown[] };
+    const cfg = integ!.config as { customerByEmail: Record<string, string> };
     expect(cfg.customerByEmail).toEqual({ 'buyer@corp.test': 'C-100' });
-    expect(cfg.inputCompat).toHaveLength(1); // the validated correction survived the customer's edit
+    // the validated correction lives in the registry, which the customer product cannot write
+    const active = await h.dbh.db
+      .select()
+      .from(adaptations)
+      .where(eq(adaptations.integrationId, a.integrationId));
+    expect(active.map((x) => x.status)).toEqual(['active']);
   });
 
   it('nothing on the AppPort surface can write maintenance state (test 15, boundary side)', async () => {

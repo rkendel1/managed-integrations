@@ -86,7 +86,11 @@ export const UPSTREAM_INPUT_CONTRACT: readonly ContractField[] = [
 export interface ContractViolation {
   path: string;
   expected: string;
-  observed: 'absent' | 'null' | 'wrong_type';
+  /**
+   * precision: more decimal places than the artifact preserves (upstream rounds prices to 2);
+   * conflict: a field and its documented replacement are both present and disagree.
+   */
+  observed: 'absent' | 'null' | 'wrong_type' | 'precision' | 'conflict';
   /** How many lines (for line fields) or 1. */
   occurrences: number;
 }
@@ -116,8 +120,24 @@ function matches(kind: Kind, v: unknown): boolean {
 const observedOf = (v: unknown): ContractViolation['observed'] =>
   v === undefined ? 'absent' : v === null ? 'null' : 'wrong_type';
 
-/** Checks a payload against the adopted input contract. Empty result = upstream can map it correctly. */
-export function checkInputContract(payload: unknown): ContractViolation[] {
+/**
+ * Precision the ORIGINAL artifact preserves, per field: upstream `mapping.js` computes
+ * `round2(Number(l.price))`, so a price with more than 2 decimals is silently rounded. A reviewed patch
+ * may declare a different precision for the artifact it produces (see artifact.ts).
+ */
+export const ORIGINAL_PRECISION: Readonly<Record<string, number>> = { 'line_items[].price': 2 };
+
+const decimals = (v: unknown): number => {
+  const m = String(v).match(/\.(\d+)$/);
+  return m ? m[1]!.replace(/0+$/, '').length : 0;
+};
+
+/** Checks a payload against the adopted input contract. Empty result = the artifact can map it correctly. */
+export function checkInputContract(
+  payload: unknown,
+  opts: { precision?: Readonly<Record<string, number>> } = {},
+): ContractViolation[] {
+  const precision = opts.precision ?? ORIGINAL_PRECISION;
   const out: ContractViolation[] = [];
   const o = (payload ?? {}) as Record<string, unknown>;
   for (const f of UPSTREAM_INPUT_CONTRACT) {
@@ -142,6 +162,17 @@ export function checkInputContract(payload: unknown): ContractViolation[] {
         observed: observedOf(bad[0]![key]),
         occurrences: bad.length,
       });
+    const max = precision[f.path];
+    if (max != null && !bad.length) {
+      const lossy = lines.filter((l) => l && l['sku'] && decimals(l[key]) > max);
+      if (lossy.length)
+        out.push({
+          path: f.path,
+          expected: `at most ${max} decimal places (the running code rounds to ${max})`,
+          observed: 'precision',
+          occurrences: lossy.length,
+        });
+    }
   }
   return out;
 }
@@ -169,16 +200,15 @@ export function shapeOf(payload: unknown): string[] {
 /* ------------------------------------------------------------------ compatibility rules */
 
 const PATH = /^[a-z_]+(\[\])?(\.[a-z_]+)*$/;
-export const InputCompatRuleSchema = z.object({
-  /** Path upstream reads (must be a contract field). */
+/** A field-moved adapter: the provider now sends the value upstream reads under another path. */
+export const FieldMovedSpecSchema = z.object({
+  type: z.literal('field_moved'),
+  /** Path upstream reads (a contract field). */
   target: z.string().regex(PATH),
   /** Path the provider now sends the same value under. Same array level as `target`. */
   source: z.string().regex(PATH),
-  /** The maintenance event that derived and validated this rule (provenance). */
-  maintenanceEventId: z.string().uuid(),
-  activatedAt: z.string(),
 });
-export type InputCompatRule = z.infer<typeof InputCompatRuleSchema>;
+export type FieldMovedSpec = z.infer<typeof FieldMovedSpecSchema>;
 
 const get = (o: unknown, path: string[]): unknown =>
   path.reduce<unknown>(
@@ -186,40 +216,80 @@ const get = (o: unknown, path: string[]): unknown =>
     o,
   );
 
+/** A usable scalar: non-empty string or finite number. Objects, arrays, null and '' are never copied. */
+const usable = (v: unknown) =>
+  (typeof v === 'string' && v.trim() !== '') || (typeof v === 'number' && Number.isFinite(v));
+const same = (a: unknown, b: unknown) =>
+  usable(a) &&
+  usable(b) &&
+  (Number.isFinite(Number(a)) && Number.isFinite(Number(b))
+    ? Number(a) === Number(b)
+    : String(a) === String(b));
+
+export interface AdapterConflict {
+  target: string;
+  source: string;
+  line: number | null;
+}
+
 /**
- * Applies compatibility rules to a parsed payload (copy, never overwrite). Pure: returns a new object;
- * a payload that already has the target is returned unchanged for that rule.
+ * Applies field-moved adapters to a parsed payload. Pure and idempotent (applying twice changes nothing).
+ * - target absent, source usable → copied;
+ * - target and source both present and equal → nothing to do;
+ * - target and source both present and DIFFERENT → conflict (never resolved silently: the order is held);
+ * - source missing, null, empty or not a scalar → nothing copied (the contract check then reports it).
  */
 export function applyInputCompat(
   payload: unknown,
-  rules: readonly Pick<InputCompatRule, 'target' | 'source'>[],
-): { payload: unknown; applied: { target: string; source: string; count: number }[] } {
+  rules: readonly Pick<FieldMovedSpec, 'target' | 'source'>[],
+): {
+  payload: unknown;
+  applied: { target: string; source: string; count: number }[];
+  conflicts: AdapterConflict[];
+} {
   const out = structuredClone(payload) as Record<string, unknown>;
   const applied: { target: string; source: string; count: number }[] = [];
+  const conflicts: AdapterConflict[] = [];
   for (const r of rules) {
     let count = 0;
     const [tHead, tRest] = r.target.split('[].') as [string, string | undefined];
     const [sHead, sRest] = r.source.split('[].') as [string, string | undefined];
-    if (tRest !== undefined) {
-      if (sRest === undefined || sHead !== tHead || !Array.isArray(out[tHead])) continue;
-      for (const line of out[tHead] as Record<string, unknown>[]) {
-        if (!line || line[tRest] !== undefined) continue;
-        const v = get(line, sRest.split('.'));
-        if (v !== undefined && v !== null) {
-          line[tRest] = v;
-          count++;
-        }
+    const one = (holder: Record<string, unknown>, tKey: string, sPath: string[], line: number | null) => {
+      const t = holder[tKey];
+      const v = get(holder, sPath);
+      if (t !== undefined && t !== null && t !== '') {
+        if (v !== undefined && v !== null && !same(t, v))
+          conflicts.push({ target: r.target, source: r.source, line });
+        return;
       }
-    } else if (out[r.target] === undefined) {
-      const v = get(out, r.source.split('.'));
-      if (v !== undefined && v !== null) {
-        out[r.target] = v;
+      if (usable(v)) {
+        holder[tKey] = v;
         count++;
       }
+    };
+    if (tRest !== undefined) {
+      if (sRest === undefined || sHead !== tHead || !Array.isArray(out[tHead])) continue;
+      (out[tHead] as Record<string, unknown>[]).forEach((line, i) => {
+        if (line && typeof line === 'object') one(line, tRest, sRest.split('.'), i);
+      });
+    } else {
+      one(out, r.target, r.source.split('.'), null);
     }
     if (count) applied.push({ target: r.target, source: r.source, count });
   }
-  return { payload: out, applied };
+  return { payload: out, applied, conflicts };
+}
+
+/** Conflicts as contract violations (so the guard holds the order). */
+export function conflictViolations(conflicts: AdapterConflict[]): ContractViolation[] {
+  const by = new Map<string, number>();
+  for (const c of conflicts) by.set(c.target, (by.get(c.target) ?? 0) + 1);
+  return [...by].map(([path, n]) => ({
+    path,
+    expected: 'the field and its documented replacement to agree',
+    observed: 'conflict' as const,
+    occurrences: n,
+  }));
 }
 
 /* ------------------------------------------------------------------ upstream code references */

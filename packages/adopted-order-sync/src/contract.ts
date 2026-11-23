@@ -4,7 +4,6 @@
  */
 import type { IntegrationContractDefinition } from '@mi/contracts';
 import { z } from 'zod';
-import { InputCompatRuleSchema } from './input-contract.ts';
 
 /** Flow identifier stored on `integrations.flow_type` for integrations executed by the adopted code. */
 export const ADOPTED_FLOW_TYPE = 'adopted.shopify_erp_order_sync.netsuite';
@@ -21,11 +20,6 @@ export const AdoptedConfigSchema = z.object({
   reconcileFrom: z.string().datetime({ offset: true }).optional(),
   /** Orders newer than this are not reconciled yet (their webhook may still be in flight). */
   reconcileGraceMinutes: z.number().int().min(0).max(1440).default(10),
-  /**
-   * Managed Integrations (not upstream): input compatibility rules applied before upstream mapping.
-   * Written only by the maintenance lifecycle after validation; each names the event that justified it.
-   */
-  inputCompat: z.array(InputCompatRuleSchema).default([]),
 });
 export type AdoptedConfig = z.infer<typeof AdoptedConfigSchema>;
 

@@ -567,3 +567,68 @@ export const releases = pgTable('releases', {
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
+
+/**
+ * Slice 5 — the correction registry for adopted integrations: every adapter or patch that changes how the
+ * adopted code behaves for one integration, with its provenance, validation and activation history. This
+ * is the single authority for "what code is running and why" (the executor reads ACTIVE rows; nothing
+ * else changes adopted behaviour). Lifecycle: proposed → validating → validated → active → rolled_back,
+ * or rejected / unsupported.
+ */
+export const adaptations = pgTable(
+  'adaptations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    integrationId: uuid('integration_id')
+      .notNull()
+      .references(() => integrations.id),
+    /** The maintenance event (incident) that motivated it; null for operator-initiated proposals. */
+    maintenanceEventId: uuid('maintenance_event_id').references(() => incidents.id),
+    /** adapter | patch | unsupported */
+    kind: text('kind').notNull(),
+    status: text('status').notNull(),
+    /** The adopted artifact it applies to: repository, commit, package, file hashes it relies on. */
+    artifact: jsonb('artifact').notNull(),
+    /** The provider/dependency contract that changed: provider, topic, version, field or behaviour. */
+    dependency: jsonb('dependency').notNull(),
+    /** The adopted code path it affects (file, line, expression, file sha256). */
+    codePath: jsonb('code_path').notNull(),
+    /** adapter: { type, target, source }; patch: { patchId, file, find, replace, sha256 before/after }. */
+    spec: jsonb('spec').notNull(),
+    rationale: text('rationale').notNull(),
+    evidence: jsonb('evidence').notNull().default({}),
+    validation: jsonb('validation'),
+    /** Append-only transitions: { at, from, to, actor, note }. */
+    history: jsonb('history').notNull().default([]),
+    activatedAt: ts('activated_at'),
+    rolledBackAt: ts('rolled_back_at'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('adaptations_integration_status_idx').on(t.integrationId, t.status)],
+);
+
+/**
+ * Slice 5 — one customer's onboarding: Connect → Discover → Confirm → Protect. Durable so an
+ * interrupted onboarding resumes where it stopped. Discovery evidence and the customer's explicit
+ * confirmation (who, when, which responsibilities) are kept as facts.
+ */
+export const onboardings = pgTable('onboardings', {
+  tenantId: uuid('tenant_id')
+    .primaryKey()
+    .references(() => tenants.id),
+  /** connect | discovering | confirm | select | activating | managed | blocked */
+  status: text('status').notNull().default('connect'),
+  discovery: jsonb('discovery'),
+  /** The candidate the customer confirmed (or selected) and the responsibilities they authorized. */
+  confirmation: jsonb('confirmation'),
+  integrationId: uuid('integration_id').references(() => integrations.id),
+  /** Activation progress and baseline facts. */
+  activation: jsonb('activation'),
+  problem: text('problem'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});

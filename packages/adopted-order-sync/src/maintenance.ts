@@ -19,10 +19,10 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { and, asc, desc, eq, inArray, lt, sql } from 'drizzle-orm';
-import { toCanonicalOrder } from 'shopify-sync/src/mapping.js';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '@mi/database';
 import {
+  adaptations,
   deliveries,
   deliveryAttempts,
   incidentEvents,
@@ -50,15 +50,23 @@ import {
 import { AdoptedConfigSchema, ADOPTED_FLOW_TYPE } from './contract.ts';
 import type { ExecutionTrigger } from './execute.ts';
 import {
-  applyInputCompat,
-  checkInputContract,
   locateUpstreamRead,
   shapeOf,
   UPSTREAM_INPUT_CONTRACT,
-  upstreamDir,
   type ContractViolation,
-  type InputCompatRule,
 } from './input-contract.ts';
+import {
+  activateAdaptation,
+  baselineReceipts,
+  evaluateInput,
+  payloadOf,
+  previouslyRolledBack,
+  proposeAdaptation,
+  runtimeFor,
+  validateAdaptation,
+  type AdaptationValidation,
+} from './adaptation.ts';
+import { patchCatalog } from './artifact.ts';
 import { ADOPTED } from './provenance.ts';
 import {
   ReconciliationBusy,
@@ -70,7 +78,6 @@ import { RECOVERY_ORDER_QUERY, type RecoveryOrder } from './source.ts';
 
 export const MAINTENANCE_KIND = 'input_contract_change' as const;
 export const MAINTENANCE_ACTOR = 'system:maintenance';
-const BASELINE_SAMPLE = 50;
 
 const docsDir = () =>
   process.env.PROVIDER_DOCS_DIR ??
@@ -136,6 +143,20 @@ export interface Accounting {
   computedAt: string;
 }
 
+/** The incident's `correction` fact: which registry entry corrects this event. */
+export interface CorrectionFact {
+  adaptationId?: string;
+  kind: 'adapter' | 'patch' | 'unsupported';
+  derivable: boolean;
+  rules?: { target: string; source: string; evidence: Record<string, unknown> }[];
+  patchId?: string;
+  reason?: string;
+  boundary: string;
+  upstreamModified: false;
+  derivedAt: string;
+  activatedAt?: string;
+}
+
 interface Progress {
   phase?:
     | 'release'
@@ -150,45 +171,12 @@ interface Progress {
   verifyRunId?: string;
   window?: { from: string; to: string };
   reconcileAttempts?: number;
+  /** A validated patch (or a validation with limitations) is waiting for an operator. */
+  awaitingDecision?: boolean;
   escalated?: string;
 }
 
 /* ================================================================== detection */
-
-async function payloadOf(cipher: CredentialCipher, r: typeof webhookReceipts.$inferSelect): Promise<unknown> {
-  const raw = Buffer.from(cipher.decrypt<string>(r.payloadCiphertext, `receipt:${r.id}`), 'base64');
-  return JSON.parse(raw.toString('utf8'));
-}
-
-/** Recent webhook receipts that satisfied the contract as received (no compatibility rule needed). */
-export async function baselineReceipts(
-  db: Db,
-  cipher: CredentialCipher,
-  integrationId: string,
-  before: Date,
-  limit = BASELINE_SAMPLE,
-) {
-  const rows = await db
-    .select()
-    .from(webhookReceipts)
-    .where(
-      and(
-        eq(webhookReceipts.integrationId, integrationId),
-        eq(webhookReceipts.origin, 'webhook'),
-        eq(webhookReceipts.topic, 'orders/create'),
-        lt(webhookReceipts.receivedAt, before),
-      ),
-    )
-    .orderBy(desc(webhookReceipts.receivedAt))
-    .limit(limit * 2);
-  const out: { receipt: typeof webhookReceipts.$inferSelect; payload: unknown }[] = [];
-  for (const r of rows) {
-    const payload = await payloadOf(cipher, r);
-    if (checkInputContract(payload).length === 0) out.push({ receipt: r, payload });
-    if (out.length >= limit) break;
-  }
-  return out;
-}
 
 /**
  * Start of the affected window, by order CREATION time (what reconciliation selects on): the creation
@@ -215,9 +203,8 @@ export async function recordInputContractFinding(
   const [receipt] = await db.select().from(webhookReceipts).where(eq(webhookReceipts.id, d.receiptId));
   const [integ] = await db.select().from(integrations).where(eq(integrations.id, d.integrationId));
   if (!receipt || !integ || integ.flowType !== ADOPTED_FLOW_TYPE) return null;
-  const config = AdoptedConfigSchema.parse(integ.config);
   const payload = await payloadOf(cipher, receipt);
-  const violations = checkInputContract(applyInputCompat(payload, config.inputCompat).payload);
+  const violations = evaluateInput(payload, await runtimeFor(db, integ.id)).violations;
   if (!violations.length) return null;
 
   const [base] = await baselineReceipts(db, cipher, integ.id, receipt.receivedAt, 1);
@@ -293,7 +280,9 @@ export async function recordInputContractFinding(
       fromStatus: inc.status,
       toStatus: inc.status,
       actor: MAINTENANCE_ACTOR,
-      note: `We noticed that Shopify changed the format of the order data it sends (${affectedLabels(finding)}). Affected orders are held safely; nothing incorrect was written.`,
+      note: violations.every((v) => v.observed === 'precision')
+        ? `We noticed Shopify orders where ${affectedLabels(finding)} has more decimal places than your integration keeps. Affected orders are held safely; nothing incorrect was written.`
+        : `We noticed that Shopify changed the format of the order data it sends (${affectedLabels(finding)}). Affected orders are held safely; nothing incorrect was written.`,
       customerVisible: true,
       evidence: { step: 'noticed', receiptId: receipt.id, apiVersion: receipt.apiVersion },
     });
@@ -372,9 +361,13 @@ export async function investigate(db: Db, cipher: CredentialCipher, inc: Inciden
     .from(webhookReceipts)
     .where(eq(webhookReceipts.id, finding.observed.receiptId));
   const payload = await payloadOf(cipher, receipt!);
+  // The code that runs for this integration right now (pinned artifact + active corrections).
+  const rt = await runtimeFor(db, inc.integrationId!);
+  const input = evaluateInput(payload, rt).payload as { line_items?: { sku?: string; price?: unknown }[] };
+  const sentPrices = (input.line_items ?? []).filter((l) => l.sku).map((l) => Number(l.price));
   let dryRun: Record<string, unknown>;
   try {
-    const order = toCanonicalOrder(payload, {
+    const order = rt.artifact.modules.toCanonicalOrder(input, {
       customerByEmail: config.customerByEmail,
       defaultCustomer: config.defaultCustomer,
     });
@@ -385,8 +378,18 @@ export async function investigate(db: Db, cipher: CredentialCipher, inc: Inciden
     }[];
     dryRun = {
       upstreamFunction: 'src/mapping.js#toCanonicalOrder',
-      lines: sent.map((l) => ({ sku: l.sku, qty: l.qty, unitPriceAsSentToNetSuite: l.unitPrice })),
+      artifact: rt.artifact.id,
+      lines: sent.map((l, i) => ({
+        sku: l.sku,
+        qty: l.qty,
+        priceFromShopify: sentPrices[i] ?? null,
+        unitPriceAsSentToNetSuite: l.unitPrice,
+      })),
       wouldSendInvalidRate: sent.filter((l) => typeof l.unitPrice !== 'number').length,
+      wouldChangeAmount: sent.filter(
+        (l, i) =>
+          typeof l.unitPrice === 'number' && Number.isFinite(sentPrices[i]) && l.unitPrice !== sentPrices[i],
+      ).length,
     };
   } catch (err) {
     dryRun = { upstreamFunction: 'src/mapping.js#toCanonicalOrder', threw: describeError(err).message };
@@ -400,7 +403,9 @@ export async function investigate(db: Db, cipher: CredentialCipher, inc: Inciden
   const risk =
     typeof dryRun['wouldSendInvalidRate'] === 'number' && (dryRun['wouldSendInvalidRate'] as number) > 0
       ? `Without the guard, upstream would send ${dryRun['wouldSendInvalidRate']} line(s) with a null rate to NetSuite (rejected, or priced by NetSuite instead of Shopify).`
-      : 'Upstream cannot map the changed input correctly.';
+      : typeof dryRun['wouldChangeAmount'] === 'number' && (dryRun['wouldChangeAmount'] as number) > 0
+        ? `Without the guard, upstream would write ${dryRun['wouldChangeAmount']} line(s) to NetSuite with a different price than Shopify's (rounded).`
+        : 'Upstream cannot map the changed input correctly.';
   return { codePaths, dryRun, risk, heldOrders: heldCount, investigatedAt: new Date().toISOString() };
 }
 
@@ -435,33 +440,112 @@ const at = (o: unknown, path: string) =>
       o,
     );
 
-/**
- * Derives a correction: the provider's documented replacement for each removed field, accepted only if
- * the stored baseline shows the replacement carried the same value for every line observed.
- */
-export async function deriveCorrection(db: Db, cipher: CredentialCipher, inc: IncidentRow) {
-  const finding = inc.finding as Finding;
-  let entries: ChangelogEntry[];
-  let changelogSha256: string;
-  try {
-    const doc = readFileSync(join(docsDir(), PROVIDER_CHANGELOG));
-    changelogSha256 = createHash('sha256').update(doc).digest('hex');
-    entries = parseWebhookChangelog(doc.toString('utf8'));
-  } catch (err) {
-    return {
-      rules: [],
-      derivable: false,
-      reason: `Provider changelog unavailable: ${describeError(err).message}`,
+/** A proposed correction, before it is written to the registry. */
+export type CorrectionProposal =
+  | {
+      kind: 'adapter' | 'patch';
+      spec: Record<string, unknown>;
+      rationale: string;
+      dependency: Record<string, unknown>;
+      codePath: Record<string, unknown>;
+      evidence: Record<string, unknown>;
+    }
+  | {
+      kind: 'unsupported';
+      reason: string;
+      dependency: Record<string, unknown>;
+      codePath: Record<string, unknown>;
+      evidence: Record<string, unknown>;
     };
-  }
-  const baseline = await baselineReceipts(
-    db,
-    cipher,
-    inc.integrationId!,
-    new Date(finding.observed.receivedAt),
-  );
-  const rules: (Pick<InputCompatRule, 'target' | 'source'> & { evidence: Record<string, unknown> })[] = [];
-  for (const v of finding.observed.violations) {
+
+/**
+ * Derives a correction from the finding — deterministically, never by guessing:
+ *  - a field went missing  → a field-moved ADAPTER, only if the provider documents the replacement AND stored
+ *    orders show the two fields always carried the same value;
+ *  - precision would be lost → a reviewed PATCH from the catalog that addresses exactly this, for this artifact;
+ *  - anything else (conflicting values, wrong type, several fields at once, or a correction rolled back before)
+ *    → UNSUPPORTED, with the reason. A person decides.
+ */
+export async function deriveCorrection(
+  db: Db,
+  cipher: CredentialCipher,
+  inc: IncidentRow,
+): Promise<CorrectionProposal> {
+  const finding = inc.finding as Finding;
+  const inv = inc.investigation as { codePaths?: Record<string, unknown>[] } | null;
+  const codePath = (inv?.codePaths?.[0] ?? {}) as Record<string, unknown>;
+  const dependency = {
+    provider: finding.provider,
+    topic: finding.topic,
+    baselineVersion: finding.expected.baseline?.apiVersion ?? null,
+    observedVersion: finding.observed.apiVersion,
+    fields: finding.observed.violations.map((v) => ({ path: v.path, observed: v.observed })),
+  };
+  const unsupported = (reason: string, evidence: Record<string, unknown> = {}): CorrectionProposal => ({
+    kind: 'unsupported',
+    reason,
+    dependency,
+    codePath,
+    evidence,
+  });
+  const vs = finding.observed.violations;
+  if (vs.some((v) => v.observed === 'conflict'))
+    return unsupported(
+      'A field and its documented replacement carry different values; which one is right is a business decision.',
+    );
+  if (new Set(vs.map((v) => v.path)).size !== 1)
+    return unsupported(
+      `More than one field changed at once (${vs.map((v) => v.path).join(', ')}); no single reviewed correction covers it.`,
+    );
+  const v = vs[0]!;
+  let proposal: CorrectionProposal;
+  if (v.observed === 'precision') {
+    const patch = patchCatalog().find(
+      (p) =>
+        p.addresses.path === v.path &&
+        p.addresses.observed === 'precision' &&
+        p.artifact.commit === ADOPTED.commit &&
+        p.baseSha256 === ADOPTED.fileSha256[p.file as keyof typeof ADOPTED.fileSha256],
+    );
+    if (!patch)
+      return unsupported(
+        `No reviewed patch preserves the precision of ${v.path} for ${ADOPTED.commit.slice(0, 12)}.`,
+      );
+    proposal = {
+      kind: 'patch',
+      spec: {
+        patchId: patch.id,
+        file: patch.file,
+        baseSha256: patch.baseSha256,
+        resultSha256: patch.resultSha256,
+        find: patch.find,
+        replace: patch.replace,
+      },
+      rationale: patch.reason,
+      dependency,
+      codePath,
+      evidence: {
+        patch: {
+          id: patch.id,
+          title: patch.title,
+          originalBehavior: patch.originalBehavior,
+          replacementBehavior: patch.replacementBehavior,
+        },
+        providerEvidence: patch.providerEvidence,
+        assumptions: patch.assumptions,
+        rollback: patch.rollback,
+      },
+    };
+  } else if (v.observed === 'absent' || v.observed === 'null') {
+    let entries: ChangelogEntry[];
+    let changelogSha256: string;
+    try {
+      const doc = readFileSync(join(docsDir(), PROVIDER_CHANGELOG));
+      changelogSha256 = createHash('sha256').update(doc).digest('hex');
+      entries = parseWebhookChangelog(doc.toString('utf8'));
+    } catch (err) {
+      return unsupported(`Provider changelog unavailable: ${describeError(err).message}`);
+    }
     const entry = entries.find(
       (e) =>
         e.topic === finding.topic &&
@@ -469,171 +553,61 @@ export async function deriveCorrection(db: Db, cipher: CredentialCipher, inc: In
         (!finding.observed.apiVersion || e.version === finding.observed.apiVersion),
     );
     if (!entry)
-      return {
-        rules: [],
-        derivable: false,
-        reason: `No documented replacement for ${v.path} (${finding.observed.apiVersion})`,
-      };
+      return unsupported(`No documented replacement for ${v.path} (${finding.observed.apiVersion})`);
     const [tHead, tKey] = v.path.split('[].') as [string, string | undefined];
     const [sHead, sRest] = entry.replacement.split('[].') as [string, string | undefined];
     if ((tKey === undefined) !== (sRest === undefined) || (tKey && tHead !== sHead))
-      return {
-        rules: [],
-        derivable: false,
-        reason: `Replacement ${entry.replacement} is not at the level of ${v.path}`,
-      };
+      return unsupported(`Replacement ${entry.replacement} is not at the level of ${v.path}`);
     // Baseline equivalence: in orders received before the change, both fields were present and equal.
+    const baseline = await baselineReceipts(
+      db,
+      cipher,
+      inc.integrationId!,
+      new Date(finding.observed.receivedAt),
+    );
     let compared = 0;
     let mismatches = 0;
     for (const b of baseline) {
       const lines = tKey ? (((b.payload as Record<string, unknown>)[tHead] as unknown[]) ?? []) : [b.payload];
       for (const l of lines) {
         const t = tKey ? (l as Record<string, unknown>)[tKey] : at(l, v.path);
-        const s = at(l, sRest ?? entry.replacement);
-        if (t === undefined || s === undefined) continue;
+        const sv = at(l, sRest ?? entry.replacement);
+        if (t === undefined || sv === undefined) continue;
         compared++;
-        if (num(t) !== num(s)) mismatches++;
+        if (num(t) !== num(sv)) mismatches++;
       }
     }
     if (compared === 0 || mismatches > 0)
-      return {
-        rules: [],
-        derivable: false,
-        reason:
-          compared === 0
-            ? `Stored orders never carried both ${v.path} and ${entry.replacement}; equivalence cannot be shown`
-            : `${mismatches} of ${compared} stored lines disagree between ${v.path} and ${entry.replacement}`,
-      };
-    rules.push({
-      target: v.path,
-      source: entry.replacement,
+      return unsupported(
+        compared === 0
+          ? `Stored orders never carried both ${v.path} and ${entry.replacement}; equivalence cannot be shown`
+          : `${mismatches} of ${compared} stored lines disagree between ${v.path} and ${entry.replacement}`,
+      );
+    proposal = {
+      kind: 'adapter',
+      spec: { type: 'field_moved', target: v.path, source: entry.replacement },
+      rationale: `${finding.provider} no longer sends ${v.path} (version ${finding.observed.apiVersion}); its documented replacement ${entry.replacement} carried the same value in every stored order.`,
+      dependency,
+      codePath,
       evidence: {
         changelog: { file: `docs/provider-docs/${PROVIDER_CHANGELOG}`, sha256: changelogSha256, entry },
         baselineEquivalence: { receipts: baseline.length, linesCompared: compared, mismatches },
       },
-    });
-  }
-  return {
-    derivable: true,
-    boundary: 'adoption boundary: integration configuration `inputCompat` applied before upstream mapping',
-    upstreamModified: false,
-    rules,
-    derivedAt: new Date().toISOString(),
-  };
-}
-
-/* ================================================================== validation (separate from correction) */
-
-/**
- * Validates proposed rules WITHOUT activating them, with the real upstream code:
- *  1. upstream files are byte-identical to the pinned commit;
- *  2. regression: every stored baseline order maps to exactly the same canonical order with and without the rules;
- *  3. the changed inputs (held orders) now satisfy the contract and map without error;
- *  4. the mapped quantities and prices equal Shopify's own record of each order (Admin API, independent source).
- */
-export async function validateCorrection(
-  db: Db,
-  cipher: CredentialCipher,
-  inc: IncidentRow,
-  rules: Pick<InputCompatRule, 'target' | 'source'>[],
-  clients: AdoptedClients,
-  retry: RetryPolicy = DEFAULT_RETRY,
-) {
-  const finding = inc.finding as Finding;
-  const [integ] = await db.select().from(integrations).where(eq(integrations.id, inc.integrationId!));
-  const config = AdoptedConfigSchema.parse(integ!.config);
-  const opts = { customerByEmail: config.customerByEmail, defaultCustomer: config.defaultCustomer };
-  const checks: { name: string; passed: boolean; detail: string }[] = [];
-
-  // 1. provenance
-  const dir = upstreamDir();
-  const drift = Object.entries(ADOPTED.fileSha256).filter(
-    ([f, h]) =>
-      createHash('sha256')
-        .update(readFileSync(join(dir, f)))
-        .digest('hex') !== h,
-  );
-  checks.push({
-    name: 'upstream unmodified',
-    passed: drift.length === 0,
-    detail: drift.length
-      ? `changed: ${drift.map(([f]) => f).join(', ')}`
-      : `${Object.keys(ADOPTED.fileSha256).length} files match ${ADOPTED.commit.slice(0, 12)}`,
-  });
-
-  // 2. regression on stored baseline orders
-  const baseline = await baselineReceipts(db, cipher, integ!.id, new Date(finding.observed.receivedAt));
-  let same = 0;
-  const differ: string[] = [];
-  for (const b of baseline) {
-    const before = JSON.stringify(toCanonicalOrder(b.payload, opts));
-    const after = JSON.stringify(toCanonicalOrder(applyInputCompat(b.payload, rules).payload, opts));
-    if (before === after) same++;
-    else differ.push(b.receipt.id);
-  }
-  checks.push({
-    name: 'regression: baseline orders unchanged',
-    passed: baseline.length > 0 && differ.length === 0,
-    detail: `${same}/${baseline.length} stored pre-change orders map identically${differ.length ? `; differ: ${differ.join(', ')}` : ''}`,
-  });
-
-  // 3 + 4. changed inputs, against the independent source
-  const held = await db
-    .select()
-    .from(deliveries)
-    .where(and(eq(deliveries.integrationId, integ!.id), eq(deliveries.outcome, 'held')))
-    .orderBy(asc(deliveries.createdAt));
-  let mapped = 0;
-  let matchedSource = 0;
-  const problems: string[] = [];
-  for (const d of held) {
-    const [r] = await db.select().from(webhookReceipts).where(eq(webhookReceipts.id, d.receiptId!));
-    const adapted = applyInputCompat(await payloadOf(cipher, r!), rules).payload;
-    const remaining = checkInputContract(adapted);
-    if (remaining.length) {
-      problems.push(`${d.sourceName}: still violates ${remaining.map((x) => x.path).join(', ')}`);
-      continue;
-    }
-    let canonical;
-    try {
-      canonical = toCanonicalOrder(adapted, opts);
-      mapped++;
-    } catch (err) {
-      problems.push(`${d.sourceName}: ${describeError(err).message}`);
-      continue;
-    }
-    const res = await withRetry(
-      () => clients.shopify.graphql(RECOVERY_ORDER_QUERY, { id: d.sourceId }),
-      retry,
+    };
+  } else {
+    return unsupported(
+      `${v.path} changed representation (${v.observed}); no reviewed correction preserves its meaning.`,
     );
-    const order = (res.data as { order?: RecoveryOrder | null }).order;
-    const expected = (order?.lineItems.nodes ?? [])
-      .filter((l) => !!l.sku)
-      .map((l) => ({
-        sku: l.sku,
-        qty: l.quantity,
-        unitPrice: Math.round(Number(l.originalUnitPriceSet.shopMoney.amount) * 100) / 100,
-      }));
-    if (JSON.stringify(expected) === JSON.stringify(canonical.lines)) matchedSource++;
-    else problems.push(`${d.sourceName}: mapped lines differ from Shopify's order record`);
   }
-  checks.push({
-    name: 'changed inputs map correctly',
-    passed: held.length > 0 && mapped === held.length,
-    detail: `${mapped}/${held.length} held orders satisfy the contract and map without error`,
-  });
-  checks.push({
-    name: 'mapped values match Shopify Admin API',
-    passed: held.length > 0 && matchedSource === held.length,
-    detail: `${matchedSource}/${held.length} orders: quantities and unit prices equal Shopify's order record`,
-  });
-  return {
-    passed: checks.every((c) => c.passed),
-    checks,
-    problems,
-    upstreamCommit: ADOPTED.commit,
-    validatedAt: new Date().toISOString(),
-  };
+  const before = await previouslyRolledBack(db, inc.integrationId!, proposal.spec);
+  if (before)
+    return unsupported(
+      `This correction was rolled back before (adaptation ${before.id}); re-applying it needs an operator decision.`,
+      {
+        rolledBack: before.id,
+      },
+    );
+  return proposal;
 }
 
 /* ================================================================== verification and accounting */
@@ -719,12 +693,13 @@ export async function verifyDestinations(
       .map((l) => ({
         itemId: itemIds.get(l.sku!) ?? '?',
         quantity: l.quantity,
-        rateMinor: Math.round(Number(l.originalUnitPriceSet.shopMoney.amount) * 100),
+        // exact: Shopify's decimal amount vs the rate NetSuite holds (catches rounding, not just minor units)
+        rate: Number(l.originalUnitPriceSet.shopMoney.amount),
       }));
     const actual = matches[0]!.lines.map((l) => ({
       itemId: String(l.itemId),
       quantity: Math.abs(l.quantity),
-      rateMinor: l.rateMinor,
+      rate: l.rate ?? l.rateMinor / 100,
     }));
     const ok = JSON.stringify(expected) === JSON.stringify(actual);
     return {
@@ -949,25 +924,63 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       );
       return { state: 'continue', detail: 'investigated' };
     }
-    const correction = inc.correction as
-      (Awaited<ReturnType<typeof deriveCorrection>> & { activatedAt?: string }) | null;
+    let correction = inc.correction as CorrectionFact | null;
     if (!correction) {
-      const derived = await deriveCorrection(db, p.cipher, inc);
-      await setFacts(db, inc.id, { correction: derived });
-      if (!derived.derivable) return escalate(db, inc, derived.reason ?? 'no correction derivable');
-      return { state: 'continue', detail: 'correction derived' };
+      const proposal = await deriveCorrection(db, p.cipher, inc);
+      const row = await proposeAdaptation(db, {
+        integrationId: inc.integrationId!,
+        maintenanceEventId: inc.id,
+        kind: proposal.kind,
+        dependency: proposal.dependency,
+        codePath: proposal.codePath,
+        spec: proposal.kind === 'unsupported' ? { reason: proposal.reason } : proposal.spec,
+        rationale: proposal.kind === 'unsupported' ? proposal.reason : proposal.rationale,
+        evidence: proposal.evidence,
+        actor: MAINTENANCE_ACTOR,
+      });
+      correction = {
+        adaptationId: row.id,
+        kind: proposal.kind,
+        derivable: proposal.kind !== 'unsupported',
+        ...(proposal.kind === 'adapter'
+          ? {
+              rules: [
+                {
+                  target: String(proposal.spec['target']),
+                  source: String(proposal.spec['source']),
+                  evidence: proposal.evidence,
+                },
+              ],
+            }
+          : {}),
+        ...(proposal.kind === 'patch' ? { patchId: String(proposal.spec['patchId']) } : {}),
+        ...(proposal.kind === 'unsupported' ? { reason: proposal.reason } : {}),
+        boundary:
+          proposal.kind === 'patch'
+            ? 'reviewed patch applied to a content-addressed copy of the pinned upstream package'
+            : 'adoption boundary: adapter applied before the adopted code runs',
+        upstreamModified: false,
+        derivedAt: new Date().toISOString(),
+      };
+      await setFacts(db, inc.id, { correction });
+      if (proposal.kind === 'unsupported') return escalate(db, inc, proposal.reason);
+      return { state: 'continue', detail: `${proposal.kind} proposed` };
     }
-    if (!correction.derivable)
-      return escalate(db, inc, (correction as { reason?: string }).reason ?? 'no correction');
-    if (!inc.validation) {
-      const validation = await validateCorrection(db, p.cipher, inc, correction.rules!, p.clients, p.retry);
+    if (!correction.adaptationId) return escalate(db, inc, correction.reason ?? 'no correction');
+    const [row] = await db.select().from(adaptations).where(eq(adaptations.id, correction.adaptationId));
+    if (!row) return escalate(db, inc, 'correction record missing');
+    if (['unsupported', 'rejected', 'rolled_back'].includes(row.status))
+      return escalate(db, inc, `correction ${row.status}: ${row.rationale}`);
+    if (row.status === 'proposed' || row.status === 'validating') {
+      const validated = await validateAdaptation(db, p.cipher, row.id, p.clients, p.retry);
+      const validation = validated.validation as AdaptationValidation;
       await setFacts(db, inc.id, { validation });
-      if (!validation.passed)
+      if (validated.status !== 'validated')
         return escalate(
           db,
           inc,
           `validation failed: ${validation.checks
-            .filter((c) => !c.passed)
+            .filter((c) => c.status === 'failed')
             .map((c) => c.name)
             .join(', ')}`,
         );
@@ -980,48 +993,50 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       );
       return { state: 'continue', detail: 'validated' };
     }
-    if (!(inc.validation as { passed?: boolean }).passed) return escalate(db, inc, 'validation failed');
-    // Activate: write the validated rules to the integration's configuration, atomically.
-    const activatedAt = new Date().toISOString();
-    const configVersion = await db.transaction(async (tx) => {
-      const [integ] = await tx
-        .select()
-        .from(integrations)
-        .where(eq(integrations.id, inc.integrationId!))
-        .for('update');
-      const config = AdoptedConfigSchema.parse(integ!.config);
-      const add = correction
-        .rules!.filter((r) => !config.inputCompat.some((x) => x.target === r.target && x.source === r.source))
-        .map((r) => ({ target: r.target, source: r.source, maintenanceEventId: inc.id, activatedAt }));
-      const next = integ!.configVersion + (add.length ? 1 : 0);
-      if (add.length)
-        await tx
-          .update(integrations)
-          .set({
-            config: { ...(integ!.config as object), inputCompat: [...config.inputCompat, ...add] },
-            configVersion: next,
-            updatedAt: new Date(),
-          })
-          .where(eq(integrations.id, integ!.id));
-      await tx
-        .update(incidents)
-        .set({ correction: { ...correction, activatedAt, configVersion: next }, updatedAt: new Date() })
-        .where(eq(incidents.id, inc.id));
-      return next;
-    });
+    if (row.status === 'validated') {
+      const v = row.validation as AdaptationValidation;
+      if (row.kind === 'adapter' && !v.requiresDecision) {
+        await activateAdaptation(db, row.id, MAINTENANCE_ACTOR, `Activated by maintenance event ${inc.id}`);
+        return { state: 'continue', detail: 'adapter activated' };
+      }
+      // Patches (and validations with limitations) are switched on by a person.
+      if (!prog.awaitingDecision) {
+        await setProgress(db, inc.id, { awaitingDecision: true });
+        await note(
+          db,
+          inc,
+          'We prepared and tested a fix. An engineer is reviewing it before we switch it on.',
+          true,
+          {
+            step: 'reviewing',
+            adaptationId: row.id,
+            kind: row.kind,
+          },
+        );
+      }
+      return { state: 'escalated', detail: 'awaiting operator activation' };
+    }
+    // active
+    const activatedAt = row.activatedAt!.toISOString();
+    await db
+      .update(incidents)
+      .set({ correction: { ...correction, activatedAt }, updatedAt: new Date() })
+      .where(eq(incidents.id, inc.id));
+    const rt = await runtimeFor(db, inc.integrationId!);
     await transitionIncident(db, inc.id, 'recovery', {
       actor: MAINTENANCE_ACTOR,
       note: 'We switched the fix on.',
       // Technical detail for operators lives in the evidence of this timeline entry.
       evidence: {
         step: 'switched_on',
-        boundary: 'adoption boundary (integration configuration); upstream code unchanged',
-        rules: correction.rules!.map((r) => ({ target: r.target, source: r.source })),
-        configVersion,
+        adaptationId: row.id,
+        kind: row.kind,
+        artifact: rt.artifact.id,
+        upstreamModified: false,
       },
     });
     await setProgress(db, inc.id, { phase: 'release' });
-    return { state: 'continue', detail: 'correction activated' };
+    return { state: 'continue', detail: 'correction active' };
   }
 
   if (inc.status === 'recovery') {
@@ -1215,6 +1230,26 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
         verification: evidence,
         evidence: { step: 'verified', verified: accounting.verified, duplicates: accounting.duplicates },
       });
+      // The correction's own record carries what was proven after it went live.
+      const adaptationId = (inc.correction as CorrectionFact | null)?.adaptationId;
+      if (adaptationId)
+        await db
+          .update(adaptations)
+          .set({
+            validation: sql`jsonb_set(${adaptations.validation}, '{postActivation}', ${JSON.stringify({
+              maintenanceEventId: inc.id,
+              verifiedAt: new Date().toISOString(),
+              population: accounting.population,
+              verified: accounting.verified,
+              recovered: accounting.recovered,
+              unresolved: accounting.unresolved,
+              duplicates: accounting.duplicates,
+              zeroLoss: accounting.zeroLoss,
+              verificationRunId: run!.id,
+            })}::jsonb)`,
+            updatedAt: new Date(),
+          })
+          .where(eq(adaptations.id, adaptationId));
       return { state: 'resolved', detail: 'verified and resolved' };
     }
   }

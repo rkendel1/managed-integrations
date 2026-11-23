@@ -10,11 +10,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { and, eq } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { deliveries, incidentEvents, incidents, integrations } from '@mi/database';
+import { adaptations, deliveries, incidentEvents, incidents, integrations } from '@mi/database';
 import { InvalidIncidentTransition, transitionIncident } from '@mi/reliability';
 import {
   ADOPTED,
-  AdoptedConfigSchema,
   adoptedClients,
   advanceMaintenance,
   MAINTENANCE_KIND,
@@ -123,32 +122,53 @@ describe('maintenance lifecycle: provider input change on the adopted flow', () 
     ]);
     expect(inv.dryRun.wouldSendInvalidRate).toBe(1);
 
-    // correction: configuration at the adoption boundary, upstream untouched
-    const [integ] = await db().select().from(integrations).where(eq(integrations.id, a.integrationId));
-    const config = AdoptedConfigSchema.parse(integ!.config);
-    expect(config.inputCompat).toEqual([
+    // correction: an active ADAPTER in the registry, linked to this event; upstream untouched
+    const active = await db()
+      .select()
+      .from(adaptations)
+      .where(eq(adaptations.integrationId, a.integrationId));
+    expect(active).toEqual([
       expect.objectContaining({
-        target: 'line_items[].price',
-        source: 'line_items[].price_set.shop_money.amount',
+        kind: 'adapter',
+        status: 'active',
         maintenanceEventId: incidentId,
+        spec: {
+          type: 'field_moved',
+          target: 'line_items[].price',
+          source: 'line_items[].price_set.shop_money.amount',
+        },
       }),
     ]);
+    expect((active[0]!.history as { to: string }[]).map((h) => h.to)).toEqual([
+      'proposed',
+      'validating',
+      'validated',
+      'active',
+    ]);
+    expect((active[0]!.validation as { postActivation: { zeroLoss: boolean } }).postActivation).toMatchObject(
+      { zeroLoss: true },
+    );
     const mapping = readFileSync(join(upstreamDir(), 'src/mapping.js'));
     expect(createHash('sha256').update(mapping).digest('hex')).toBe(ADOPTED.fileSha256['src/mapping.js']);
 
     // validation ran separately, with real checks
     const val = inc.validation as {
       passed: boolean;
-      checks: { name: string; passed: boolean; detail: string }[];
+      checks: { name: string; status: string; detail: string }[];
+      requiresDecision: boolean;
     };
     expect(val.passed).toBe(true);
-    expect(val.checks.map((c) => c.name)).toEqual([
-      'upstream unmodified',
-      'regression: baseline orders unchanged',
-      'changed inputs map correctly',
-      'mapped values match Shopify Admin API',
+    expect(val.requiresDecision).toBe(false);
+    expect(val.checks.map((c) => [c.name, c.status])).toEqual([
+      ['applies to the adopted artifact', 'passed'],
+      ['original adopted code unchanged', 'passed'],
+      ['regression: stored orders unchanged', 'passed'],
+      ['affected orders handled', 'passed'],
+      ['business data preserved (Shopify Admin API)', 'passed'],
+      ['no conflicting data accepted', 'passed'],
+      ['rollback target available', 'passed'],
     ]);
-    expect(val.checks[1]!.detail).toMatch(/^2\/2 /);
+    expect(val.checks[2]!.detail).toMatch(/^2\/2 /);
 
     // accounting
     const acc = inc.accounting as Accounting;
@@ -231,8 +251,10 @@ describe('maintenance lifecycle: provider input change on the adopted flow', () 
       /changelog unavailable/i,
     );
     expect(inc.accounting).toBeNull();
-    const [integ] = await db().select().from(integrations).where(eq(integrations.id, a.integrationId));
-    expect(AdoptedConfigSchema.parse(integ!.config).inputCompat).toEqual([]);
+    // nothing active; the change is recorded as UNSUPPORTED with its reason
+    const rows = await db().select().from(adaptations).where(eq(adaptations.integrationId, a.integrationId));
+    expect(rows.map((r) => [r.kind, r.status])).toEqual([['unsupported', 'unsupported']]);
+    expect(rows[0]!.rationale).toMatch(/changelog unavailable/i);
     for (const r of s.held) {
       const [d] = await db().select().from(deliveries).where(eq(deliveries.id, r.deliveryId));
       expect(d!.outcome).toBe('held');

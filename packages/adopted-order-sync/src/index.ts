@@ -6,3 +6,5 @@ export * from './source.ts';
 export * from './reconcile.ts';
 export * from './input-contract.ts';
 export * from './maintenance.ts';
+export * from './artifact.ts';
+export * from './adaptation.ts';

@@ -1,0 +1,36 @@
+{
+  "id": "p0001-preserve-price-precision",
+  "title": "Keep the order line price exactly as Shopify sends it (no rounding to 2 decimals)",
+  "artifact": {
+    "repository": "https://github.com/Milo-ai-HQ/shopify-erp-order-sync",
+    "commit": "d01b51d95993598580cdcffda6537a6f20a10a3a"
+  },
+  "file": "src/mapping.js",
+  "baseSha256": "f6b29ae7ff357ac7acbccaa012af5af9bc6e9f46d381462b9f3fab52c94bf01f",
+  "resultSha256": "d5422365deaf1875ecf4548df4810d26b9daf5289fbe6e3b7c20b0d5d58a82fd",
+  "find": "unitPrice: round2(Number(l.price))",
+  "replace": "unitPrice: Number(l.price)",
+  "addresses": { "path": "line_items[].price", "observed": "precision" },
+  "precision": { "line_items[].price": 4 },
+  "reason": "Upstream rounds every unit price to 2 decimals. Currencies with three minor units (ISO 4217: KWD, BHD, JOD, OMR, TND) carry prices such as 12.345, which upstream turns into 12.35: the NetSuite order then has a different amount than the Shopify order. An input adapter cannot fix this because the input is already correct; the loss happens inside upstream code.",
+  "originalBehavior": "src/mapping.js:11 — unitPrice: round2(Number(l.price)) (price rounded to 2 decimals).",
+  "replacementBehavior": "src/mapping.js:11 — unitPrice: Number(l.price) (price kept as the decimal Shopify sent; Shopify amounts are already at currency precision).",
+  "providerEvidence": [
+    "ISO 4217 defines three minor-unit digits for KWD, BHD, JOD, OMR and TND.",
+    "Shopify sends line prices as decimal strings at the currency's precision (REST line_items[].price, GraphQL originalUnitPriceSet.shopMoney.amount).",
+    "Fixture scenario: a KWD order with price 12.345. Not verified against a live Shopify store or NetSuite account."
+  ],
+  "assumptions": [
+    "Shopify amounts are exact decimals at currency precision; no further rounding is needed before NetSuite.",
+    "NetSuite accepts line rates with more than 2 decimals (rates are not limited to currency precision).",
+    "For 2-decimal prices the patched code produces the same numbers as the original (verified by regression replay)."
+  ],
+  "validation": [
+    "Base file hash equals the pinned upstream file; result hash equals this reviewed patch.",
+    "Every other upstream file is unchanged.",
+    "Regression: every stored order maps to exactly the same canonical order with and without the patch.",
+    "Held orders map without error and their prices equal Shopify's own order record exactly.",
+    "Rollback target: the original artifact loads and its files match the pinned commit."
+  ],
+  "rollback": "Rolling back deactivates the patch; the next execution selects the original artifact (installed upstream package, unchanged). Orders already written are not rewritten."
+}

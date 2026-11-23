@@ -218,6 +218,15 @@ const STATUS_TITLES: Record<string, string> = {
   resolved: 'Resolved',
 };
 const CHECK_LABELS: Record<string, string> = {
+  'applies to the adopted artifact': 'Fits your integration’s software',
+  'original adopted code unchanged': 'Integration software unchanged',
+  'patch reproduces the reviewed change exactly': 'Exactly the reviewed fix',
+  'regression: stored orders unchanged': 'Earlier orders unaffected',
+  'affected orders handled': 'Held orders read correctly',
+  'business data preserved (Shopify Admin API)': 'Matches Shopify’s own records',
+  'no conflicting data accepted': 'No conflicting data',
+  'rollback target available': 'Can be undone safely',
+  // slice-4 names (events recorded before slice 5)
   'upstream unmodified': 'Integration software unchanged',
   'regression: baseline orders unchanged': 'Earlier orders unaffected',
   'changed inputs map correctly': 'Held orders read correctly',
@@ -245,15 +254,19 @@ function stepDetails(
     case 'investigated':
       return n('heldOrders') != null ? [{ label: 'Orders held safely', value: String(n('heldOrders')) }] : [];
     case 'tested':
-      return ((ev['checks'] as { name: string; passed: boolean; detail: string }[] | undefined) ?? []).map(
-        (c) => {
+      return (
+        (ev['checks'] as { name: string; passed?: boolean; status?: string; detail: string }[] | undefined) ??
+        []
+      )
+        .filter((c) => c.name !== 'problems')
+        .map((c) => {
           const count = c.detail.match(/^(\d+)\/(\d+)/);
+          const status = c.status ?? (c.passed ? 'passed' : 'failed'); // slice-4 records used `passed`
           return {
             label: CHECK_LABELS[c.name] ?? c.name,
-            value: `${c.passed ? 'Passed' : 'Failed'}${count ? ` (${count[1]} of ${count[2]})` : ''}`,
+            value: `${status === 'passed' ? 'Passed' : status === 'failed' ? 'Failed' : 'Not applicable'}${count ? ` (${count[1]} of ${count[2]})` : ''}`,
           };
-        },
-      );
+        });
     case 'delivered':
       return n('held') != null
         ? [{ label: 'Delivered to NetSuite', value: `${n('delivered')} of ${n('held')}` }]
@@ -300,6 +313,7 @@ export function windowText(w: { from: string; to: string }): string {
 export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEvent {
   const finding = inc.finding as Finding | null;
   const correction = inc.correction as {
+    kind?: string;
     activatedAt?: string;
     rules?: { target: string; source: string }[];
   } | null;
@@ -322,13 +336,18 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
       finding.observed.apiVersion !== finding.expected.baseline.apiVersion
         ? ` (format ${finding.expected.baseline.apiVersion} → ${finding.observed.apiVersion})`
         : '';
+    const precision = finding.observed.violations.every((v) => v.observed === 'precision');
     facts.push({
       label: 'Change detected',
-      value: `Shopify changed the order data it sends${version}: ${what} is no longer where your integration reads it.`,
+      value: precision
+        ? `Shopify sent orders where ${what} has more decimal places than your integration keeps.`
+        : `Shopify changed the order data it sends${version}: ${what} is no longer where your integration reads it.`,
     });
     facts.push({
       label: 'Why it mattered',
-      value: `Orders could have been created in NetSuite without ${what}. We held them instead of writing them.`,
+      value: precision
+        ? 'Those orders would have reached NetSuite with rounded amounts. We held them instead of writing them.'
+        : `Orders could have been created in NetSuite without ${what}. We held them instead of writing them.`,
     });
   } else {
     facts.push({ label: 'What happened', value: inc.title });
@@ -340,10 +359,14 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
     const checks = validation.checks ?? [];
     const regression = checks.find((c) => c.name.startsWith('regression'))?.detail.match(/^(\d+)\//)?.[1];
     const source = checks.find((c) => c.name.includes('Shopify Admin API'))?.detail.match(/^(\d+)\//)?.[1];
+    const what =
+      correction.kind === 'patch'
+        ? `We corrected how your integration handles ${(finding?.observed.violations ?? []).map((v) => labelOf(v.path)).join(' and ') || 'this data'}, so it keeps exactly what Shopify sends. `
+        : `We updated how your integration reads ${rules.map((r) => labelOf(r.target)).join(' and ')} to match Shopify’s new format. `;
     facts.push({
       label: 'Action taken',
       value:
-        `We updated how your integration reads ${rules.map((r) => labelOf(r.target)).join(' and ')} to match Shopify’s new format. ` +
+        what +
         `Before switching it on, we confirmed it changes nothing for ${plural(Number(regression ?? 0), 'earlier order')} and gives the same values as Shopify’s own records for ${plural(Number(source ?? 0), 'affected order')}.`,
     });
   } else if (resolved && inc.resolution) {
