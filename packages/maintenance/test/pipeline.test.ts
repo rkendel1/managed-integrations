@@ -100,7 +100,9 @@ describe.skipIf(!dockerOk)('maintenance pipeline (requires Docker)', () => {
     const [relRow] = await db.select().from(releases).where(eq(releases.id, releaseId));
     expect(relRow!.postReleaseReconciliationId).not.toBeNull();
     const [integ] = await db.select().from(integrations).where(eq(integrations.id, h.integrationId));
-    expect(integ!.implementationVersionId).toBe(cand!.integrationVersionId);
+    const [candAfter] = await db.select().from(repairCandidates).where(eq(repairCandidates.id, cand!.id));
+    expect(candAfter!.status).toBe('released');
+    expect(integ!.implementationVersionId).toBe(candAfter!.integrationVersionId);
     expect(integ!.canaryVersionId).toBeNull();
     expect(h.netsuite.state.salesOrders.size).toBe(10);
 
