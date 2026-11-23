@@ -74,7 +74,8 @@ describe.skipIf(!dockerOk)('maintenance pipeline (requires Docker)', () => {
     const [mr] = await db.insert(maintenanceRuns).values({ incidentId: inc!.id, integrationId: h.integrationId, trigger: 'incident', status: 'queued', baseVersionId: baseVersion }).returning();
     const sandbox = { ...DEFAULT_SANDBOX, mode: 'docker' as const };
     const m = await runMaintenance({ db, repoDir: clone, workDir: join(work, 'wt'), sandbox, planner: new PlaybookPlanner() }, mr!.id);
-    expect(m.status).toBe('candidate_submitted');
+    const [mrRow] = await db.select().from(maintenanceRuns).where(eq(maintenanceRuns.id, mr!.id));
+    expect(m.status, JSON.stringify({ outcome: mrRow!.outcome, tools: (mrRow!.toolCalls as { tool: string; ok: boolean; result: string }[]).map((t) => `${t.tool}:${t.ok}:${t.result.slice(0, 300)}`) }, null, 1)).toBe('candidate_submitted');
     const [cand] = await db.select().from(repairCandidates).where(eq(repairCandidates.id, m.candidateId!));
     expect(cand!.changedFiles.every((f) => f.startsWith('packages/integration-shopify-netsuite/src/implementation/') || f.startsWith('packages/integration-shopify-netsuite/test/regression/'))).toBe(true);
     expect(cand!.changedFiles.some((f) => f.includes('/test/acceptance/'))).toBe(false);

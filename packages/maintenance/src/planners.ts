@@ -48,7 +48,13 @@ export class PlaybookPlanner implements MaintenancePlanner {
 
     await tb.invoke('read_incident');
     const obs = await tb.invoke('read_observations', { limit: 30 });
-    const m = obs.match(FIELD_REMOVED);
+    let messages: string[] = [];
+    try {
+      messages = (JSON.parse(obs) as { message?: string }[]).map((o) => o.message ?? '');
+    } catch {
+      messages = [obs];
+    }
+    const m = messages.map((msg) => msg.match(FIELD_REMOVED)).find(Boolean);
     if (!m) return none('No known failure signature in observations; escalating to a human (or the Claude planner).');
     const [, field, type] = m as unknown as [string, string, string];
 
