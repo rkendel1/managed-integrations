@@ -15,6 +15,10 @@ export const AppPortPermissions = {
   read: 'integrations.read',
   /** Read integrations for any tenant (operators only). */
   readAny: 'integrations.read:any',
+  /** Request recovery operations (e.g. delivery retry) on the caller's own tenant. */
+  operate: 'integrations.operate',
+  /** Request recovery operations on any tenant (operators only). */
+  operateAny: 'integrations.operate:any',
 } as const;
 
 export type AppPortPermission = (typeof AppPortPermissions)[keyof typeof AppPortPermissions];
@@ -37,8 +41,15 @@ export interface AppPortIdentity {
 
 /** Permissions are derived from the durable role and tenant, never from request input. */
 export function permissionsFor(caller: AuthenticatedCaller): AppPortPermission[] {
-  if (caller.role === 'operator') return [AppPortPermissions.read, AppPortPermissions.readAny];
-  if (caller.tenantId) return [AppPortPermissions.read];
+  if (caller.role === 'operator') {
+    return [
+      AppPortPermissions.read,
+      AppPortPermissions.readAny,
+      AppPortPermissions.operate,
+      AppPortPermissions.operateAny,
+    ];
+  }
+  if (caller.tenantId) return [AppPortPermissions.read, AppPortPermissions.operate];
   return [];
 }
 
@@ -54,10 +65,7 @@ export function tenantIdOf(principal: Principal | undefined): string | undefined
  * `session.id` is the durable application session id, so it is stable for the whole browser or
  * MCP client session (AppPort scopes idempotency keys to it).
  */
-export function toAppPortIdentity(
-  caller: AuthenticatedCaller,
-  applicationId: string,
-): AppPortIdentity {
+export function toAppPortIdentity(caller: AuthenticatedCaller, applicationId: string): AppPortIdentity {
   const attributes: Record<string, JsonValue> = {
     role: caller.role,
     ...(caller.tenantId ? { tenantId: caller.tenantId } : {}),

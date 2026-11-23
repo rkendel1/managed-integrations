@@ -8,6 +8,8 @@ import type { PgBoss } from 'pg-boss';
 import { sql } from 'drizzle-orm';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
+import { QUEUES } from '@mi/contracts';
+import { auditLogTelemetrySink } from '@mi/capabilities';
 import { users, type Db } from '@mi/database';
 import type { ServiceConfig } from '@mi/integration-shopify-netsuite';
 import { newCorrelationId, redact, withCorrelation } from '@mi/observability';
@@ -25,6 +27,8 @@ export interface ApiDeps {
   /** Built web UI directory (served at /). */
   webDir?: string;
   logLevel?: string;
+  /** Override the AppPort invocation evidence sink (tests). */
+  invocationEvidence?: import('@appport/core').TelemetrySink;
 }
 
 export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
@@ -89,6 +93,19 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
       warn: (obj, msg) => app.log.warn(obj, msg),
       error: (obj, msg) => app.log.error(obj, msg),
     }),
+    // Retry requests run through the same durable job the webhook path uses.
+    enqueueDeliveryExecution: async (deliveryId, trigger) => {
+      await deps.boss.send(
+        QUEUES.adoptedExecute,
+        { deliveryId, trigger },
+        { singletonKey: `adopted:${deliveryId}` },
+      );
+    },
+    telemetry:
+      deps.invocationEvidence ??
+      auditLogTelemetrySink(deps.db, (err) =>
+        app.log.error({ err: String(err) }, 'invocation evidence write failed'),
+      ),
   });
   registerAppPortRoutes(app, appPort);
 

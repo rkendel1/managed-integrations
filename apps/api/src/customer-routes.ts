@@ -224,15 +224,13 @@ export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps
           updatedAt: new Date(),
         })
         .where(eq(connections.id, conn.id));
-      await db
-        .insert(auditLog)
-        .values({
-          actorRole: 'customer',
-          action: 'connection.shopify.authorized',
-          targetType: 'connection',
-          targetId: conn.id,
-          details: { scopes },
-        });
+      await db.insert(auditLog).values({
+        actorRole: 'customer',
+        action: 'connection.shopify.authorized',
+        targetType: 'connection',
+        targetId: conn.id,
+        details: { scopes },
+      });
       return reply.redirect('/app/connections?connected=shopify');
     } catch (err) {
       req.log.warn({ err: describeError(err) }, 'shopify code exchange failed');

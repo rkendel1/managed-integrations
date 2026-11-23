@@ -12,7 +12,9 @@ import {
   type AppPortLogger,
   type AppPortRuntime,
   type CallerHeaders,
+  type EnqueueDeliveryExecution,
 } from '@mi/capabilities';
+import type { TelemetrySink } from '@appport/core';
 import type { Db } from '@mi/database';
 import { loadSession, SESSION_COOKIE } from './auth.ts';
 
@@ -51,6 +53,8 @@ export function pinoToAppPortLogger(log: {
 export function createApiAppPortRuntime(deps: {
   db: Db;
   logger?: AppPortLogger;
+  enqueueDeliveryExecution?: EnqueueDeliveryExecution;
+  telemetry?: TelemetrySink;
 }): AppPortRuntime {
   const resolveIdentity = async (headers: CallerHeaders) => {
     const token = readCookie(firstHeader(headers['cookie']), SESSION_COOKIE);
@@ -74,5 +78,7 @@ export function createApiAppPortRuntime(deps: {
     db: deps.db,
     resolveIdentity,
     ...(deps.logger ? { logger: deps.logger } : {}),
+    ...(deps.enqueueDeliveryExecution ? { enqueueDeliveryExecution: deps.enqueueDeliveryExecution } : {}),
+    ...(deps.telemetry ? { telemetry: deps.telemetry } : {}),
   });
 }

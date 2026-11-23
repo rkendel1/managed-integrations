@@ -40,3 +40,15 @@ export {
   type ResolveIdentity,
 } from './runtime.ts';
 export type { Logger as AppPortLogger } from '@appport/core';
+export {
+  DELIVERY_OUTCOMES,
+  createDeliveriesListCapability,
+  createDeliveryGetCapability,
+  createDeliveryRetryCapability,
+  type DeliveriesListOutput,
+  type DeliveryGetOutput,
+  type DeliveryRetryOutput,
+  type EnqueueDeliveryExecution,
+} from './capabilities/deliveries.ts';
+export { resourceTenantAuthorizer } from './authorization.ts';
+export { APPPORT_INVOCATION_ACTION, auditLogTelemetrySink } from './invocation-evidence.ts';

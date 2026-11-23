@@ -25,6 +25,8 @@ export type ResolveIdentity = (headers: CallerHeaders) => Promise<AppPortIdentit
 export interface AppPortRuntimeOptions {
   db: Db;
   resolveIdentity: ResolveIdentity;
+  enqueueDeliveryExecution?: import('./capabilities/deliveries.ts').EnqueueDeliveryExecution;
+  telemetry?: import('@appport/core').TelemetrySink;
   /** Host logger (for example the API's pino instance). */
   logger?: Logger;
 }
@@ -43,6 +45,10 @@ export interface AppPortRuntime {
 export function createAppPortRuntime(options: AppPortRuntimeOptions): AppPortRuntime {
   const application = createIntegrationsApplication({
     db: options.db,
+    ...(options.enqueueDeliveryExecution
+      ? { enqueueDeliveryExecution: options.enqueueDeliveryExecution }
+      : {}),
+    ...(options.telemetry ? { telemetry: options.telemetry } : {}),
     ...(options.logger ? { logger: options.logger } : {}),
   });
 
@@ -59,9 +65,7 @@ export function createAppPortRuntime(options: AppPortRuntimeOptions): AppPortRun
   const mcpHandler = createMcpHandler(application, {
     context: async ({ headers }) => {
       const identity = await options.resolveIdentity(headers);
-      return identity
-        ? { session: identity.session, principal: identity.principal }
-        : undefined;
+      return identity ? { session: identity.session, principal: identity.principal } : undefined;
     },
   });
 

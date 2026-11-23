@@ -29,8 +29,7 @@ const OMIT_RESPONSE_HEADERS = new Set([
 function toWebRequest(req: FastifyRequest): Request {
   const host = req.headers.host ?? 'localhost';
   const forwardedProto = req.headers['x-forwarded-proto'];
-  const proto =
-    (Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto)?.split(',')[0] ?? 'http';
+  const proto = (Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto)?.split(',')[0] ?? 'http';
   const url = new URL(req.url, `${proto}://${host}`);
 
   const headers = new Headers();

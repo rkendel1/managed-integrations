@@ -279,15 +279,13 @@ export async function registerOperatorRoutes(app: FastifyInstance, deps: ApiDeps
     const id = (req.params as { id: string }).id;
     if (!uuid.safeParse(id).success) return reply.code(404).send({ error: 'Not found' });
     await deps.boss.send(QUEUES.reconcile, { integrationId: id, incidentId: null, trigger: 'manual' });
-    await db
-      .insert(auditLog)
-      .values({
-        actorUserId: req.user!.id,
-        actorRole: 'operator',
-        action: 'integration.reconcile',
-        targetType: 'integration',
-        targetId: id,
-      });
+    await db.insert(auditLog).values({
+      actorUserId: req.user!.id,
+      actorRole: 'operator',
+      action: 'integration.reconcile',
+      targetType: 'integration',
+      targetId: id,
+    });
     return { queued: true };
   });
 
@@ -299,15 +297,13 @@ export async function registerOperatorRoutes(app: FastifyInstance, deps: ApiDeps
       { integrationId: id, trigger: 'manual', mode: 'auto' },
       { singletonKey: `sync:${id}` },
     );
-    await db
-      .insert(auditLog)
-      .values({
-        actorUserId: req.user!.id,
-        actorRole: 'operator',
-        action: 'integration.sync',
-        targetType: 'integration',
-        targetId: id,
-      });
+    await db.insert(auditLog).values({
+      actorUserId: req.user!.id,
+      actorRole: 'operator',
+      action: 'integration.sync',
+      targetType: 'integration',
+      targetId: id,
+    });
     return { queued: true };
   });
 

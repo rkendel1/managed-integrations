@@ -45,8 +45,7 @@ export function createIntegrationsListCapability(
   return defineCapability<IntegrationsListInput, IntegrationsListOutput>({
     name: INTEGRATIONS_LIST,
     version: 1,
-    description:
-      'Lists the integrations visible to the authenticated principal, scoped to its tenant.',
+    description: 'Lists the integrations visible to the authenticated principal, scoped to its tenant.',
     effect: 'observation',
     authorization: [AppPortPermissions.read],
     input: s.object({
