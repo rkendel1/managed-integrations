@@ -33,6 +33,40 @@ const BASE_SDL = /* GraphQL */ `
       reverse: Boolean
     ): OrderConnection!
     order(id: ID!): Order
+    webhookSubscriptions(first: Int): WebhookSubscriptionConnection!
+  }
+  # App webhook subscriptions (shape of the Admin API; FIXTURE delivers orders/create to them).
+  type Mutation {
+    webhookSubscriptionCreate(
+      topic: WebhookSubscriptionTopic!
+      webhookSubscription: WebhookSubscriptionInput!
+    ): WebhookSubscriptionCreatePayload
+  }
+  enum WebhookSubscriptionTopic {
+    ORDERS_CREATE
+  }
+  enum WebhookSubscriptionFormat {
+    JSON
+  }
+  input WebhookSubscriptionInput {
+    callbackUrl: String!
+    format: WebhookSubscriptionFormat
+  }
+  type WebhookSubscription {
+    id: ID!
+    topic: WebhookSubscriptionTopic!
+    callbackUrl: String!
+  }
+  type WebhookSubscriptionConnection {
+    nodes: [WebhookSubscription!]!
+  }
+  type UserError {
+    field: [String!]
+    message: String!
+  }
+  type WebhookSubscriptionCreatePayload {
+    webhookSubscription: WebhookSubscription
+    userErrors: [UserError!]!
   }
   type Shop {
     name: String!
@@ -218,6 +252,9 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
      * (see docs/provider-docs/shopify/FIXTURE-webhook-changelog.md).
      */
     webhookVersion: '2026-10' as WebhookVersion,
+    /** App webhook subscriptions and every delivery attempt made to them (fixture evidence). */
+    subscriptions: [] as { id: string; topic: 'ORDERS_CREATE'; callbackUrl: string }[],
+    webhookDeliveries: [] as { at: string; orderId: string; callbackUrl: string; status: number | null; error?: string }[],
   };
 
   const schemas: Record<SchemaVariant, GraphQLSchema> = {
@@ -259,7 +296,42 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
   let lastPage: { request: string; response: unknown } | undefined;
   let pendingFault: string | undefined;
 
+  /** Shopify sends orders/create to every app subscription, signed with the app's client secret. */
+  function deliverOrderCreated(o: FixtureOrder) {
+    for (const sub of state.subscriptions) {
+      const raw = Buffer.from(JSON.stringify(control.webhookPayload(o)));
+      const rec: (typeof state.webhookDeliveries)[number] = { at: new Date().toISOString(), orderId: o.legacyId, callbackUrl: sub.callbackUrl, status: null };
+      state.webhookDeliveries.push(rec);
+      void fetch(sub.callbackUrl, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-shopify-hmac-sha256': createHmac('sha256', clientSecret).update(raw).digest('base64'),
+          'x-shopify-shop-domain': shopDomain,
+          'x-shopify-topic': 'orders/create',
+          'x-shopify-webhook-id': `fx-${o.legacyId}-${sub.id.split('/').pop()}`,
+          'x-shopify-api-version': state.webhookVersion,
+        },
+        body: raw,
+      })
+        .then((r) => {
+          rec.status = r.status;
+        })
+        .catch((err: unknown) => {
+          rec.error = String(err);
+        });
+    }
+  }
+
   const rootValue = {
+    webhookSubscriptions: () => ({ nodes: state.subscriptions }),
+    webhookSubscriptionCreate: (args: { topic: 'ORDERS_CREATE'; webhookSubscription: { callbackUrl: string } }) => {
+      if (state.subscriptions.some((x) => x.topic === args.topic && x.callbackUrl === args.webhookSubscription.callbackUrl))
+        return { webhookSubscription: null, userErrors: [{ field: ['webhookSubscription', 'callbackUrl'], message: 'Address for this topic has already been taken' }] };
+      const sub = { id: `gid://shopify/WebhookSubscription/${state.subscriptions.length + 1}`, topic: args.topic, callbackUrl: args.webhookSubscription.callbackUrl };
+      state.subscriptions.push(sub);
+      return { webhookSubscription: sub, userErrors: [] };
+    },
     shop: () => ({ name: 'Fixture Shop', myshopifyDomain: shopDomain, currencyCode: 'USD' }),
     order: ({ id }: { id: string }) => {
       const legacy = id.split('/').pop()!;
@@ -350,6 +422,7 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
         lineItems: o.lineItems,
       };
       state.orders.set(legacyId, order);
+      if (!existing) deliverOrderCreated(order);
       return order;
     },
     seedOrders(count: number, opts: { start?: Date; stepMs?: number; skus?: string[] } = {}) {
@@ -390,6 +463,8 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
       state.requestLog.length = 0;
       state.nextLegacyId = firstOrderId;
       state.webhookVersion = '2026-10';
+      state.subscriptions.length = 0;
+      state.webhookDeliveries.length = 0;
     },
     setWebhookVersion(v: WebhookVersion) {
       state.webhookVersion = v;
@@ -638,6 +713,8 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
     fired: state.faults.fired,
     revoked: state.revoked,
     webhookVersion: state.webhookVersion,
+    subscriptions: state.subscriptions,
+    webhookDeliveries: state.webhookDeliveries.slice(-50),
   }));
 
   return { app, state, control, shopDomain, clientId, clientSecret };

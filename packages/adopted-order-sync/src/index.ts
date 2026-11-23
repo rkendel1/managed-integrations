@@ -8,3 +8,4 @@ export * from './input-contract.ts';
 export * from './maintenance.ts';
 export * from './artifact.ts';
 export * from './adaptation.ts';
+export * from './onboarding.ts';

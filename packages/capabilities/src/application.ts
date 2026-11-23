@@ -38,6 +38,13 @@ import {
   createAdaptationValidateCapability,
   type EnqueueAdaptationValidation,
 } from './capabilities/adaptations.ts';
+import {
+  createOnboardingConfirmCapability,
+  createOnboardingDiscoverCapability,
+  createOnboardingStatusCapability,
+  type EnqueueOnboardingActivation,
+  type RunOnboardingDiscovery,
+} from './capabilities/onboarding.ts';
 
 export const APPPORT_APPLICATION = {
   id: 'io.managedintegrations.app',
@@ -53,6 +60,10 @@ export interface IntegrationsApplicationOptions {
   enqueueReconciliationScan?: EnqueueReconciliationScan;
   /** Queues the execution of one requested recovery (host-provided). */
   enqueueRecovery?: EnqueueRecovery;
+  /** Runs onboarding discovery against the tenant's providers (host-provided). */
+  runOnboardingDiscovery?: RunOnboardingDiscovery;
+  /** Queues onboarding activation in the worker (host-provided). */
+  enqueueOnboardingActivation?: EnqueueOnboardingActivation;
   /** Queues validation of an adaptation in the worker (host-provided). */
   enqueueAdaptationValidation?: EnqueueAdaptationValidation;
   /** How often the worker reconciles (stated to customers as a responsibility). */
@@ -79,6 +90,9 @@ export function createIntegrationsApplication(options: IntegrationsApplicationOp
       createPortfolioIntegrationCapability(options.db, options.reconcileIntervalMinutes ?? null),
       createMaintenanceEventGetCapability(options.db),
       createMaintenanceEvidenceCapability(options.db),
+      createOnboardingStatusCapability(options.db),
+      createOnboardingDiscoverCapability(options.db, options.runOnboardingDiscovery),
+      createOnboardingConfirmCapability(options.db, options.enqueueOnboardingActivation),
       createAdaptationsInspectCapability(options.db),
       createAdaptationProposeCapability(options.db, options.enqueueAdaptationValidation),
       createAdaptationValidateCapability(options.db, options.enqueueAdaptationValidation),

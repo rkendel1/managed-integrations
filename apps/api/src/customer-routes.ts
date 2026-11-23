@@ -14,6 +14,7 @@ import {
   incidents,
   integrationContracts,
   integrations,
+  onboardings,
   reconciliationRuns,
   syncRuns,
 } from '@mi/database';
@@ -232,7 +233,9 @@ export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps
         targetId: conn.id,
         details: { scopes },
       });
-      return reply.redirect('/app/connections?connected=shopify');
+      // Back to onboarding if the customer is still setting up; otherwise to their connections.
+      const [ob] = await db.select().from(onboardings).where(eq(onboardings.tenantId, tenantId));
+      return reply.redirect(ob && ob.status !== 'managed' ? '/app/welcome?connected=shopify' : '/app/connections?connected=shopify');
     } catch (err) {
       req.log.warn({ err: describeError(err) }, 'shopify code exchange failed');
       return fail('Shopify did not complete authorization');

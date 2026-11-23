@@ -70,6 +70,13 @@ export {
   createPortfolioListCapability,
 } from './capabilities/product.ts';
 export {
+  createOnboardingConfirmCapability,
+  createOnboardingDiscoverCapability,
+  createOnboardingStatusCapability,
+  type EnqueueOnboardingActivation,
+  type RunOnboardingDiscovery,
+} from './capabilities/onboarding.ts';
+export {
   createAdaptationActivateCapability,
   createAdaptationProposeCapability,
   createAdaptationRejectCapability,

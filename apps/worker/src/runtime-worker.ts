@@ -11,6 +11,7 @@ import {
   AdoptedRecoverJobSchema,
   AdoptedMaintenanceJobSchema,
   AdoptedAdaptationValidateJobSchema,
+  OnboardingActivateJobSchema,
   BacklogJobSchema,
   FLOW_TYPE,
   ProviderError,
@@ -49,6 +50,9 @@ import {
   openMaintenanceEvents,
   recordInputContractFinding,
   validateAdaptation,
+  advanceOnboarding,
+  onboardingsActivating,
+  tenantClients,
   scanReconciliation,
   startReconciliation,
   ADOPTED_FLOW_TYPE,
@@ -91,6 +95,7 @@ export const RUNTIME_QUEUES = [
   QUEUES.adoptedRecover,
   QUEUES.adoptedMaintenance,
   QUEUES.adoptedAdaptationValidate,
+  QUEUES.onboardingActivate,
 ];
 
 export async function ensureQueues(boss: PgBoss): Promise<void> {
@@ -262,6 +267,9 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
         if (f) await enqueueMaintenance(f.incidentId);
       }
       for (const incidentId of await openMaintenanceEvents(db)) await enqueueMaintenance(incidentId);
+      // Onboarding activations resume after a crash or restart.
+      for (const tenantId of await onboardingsActivating(db))
+        await boss.send(QUEUES.onboardingActivate, { tenantId }, { singletonKey: `onboarding:${tenantId}` });
       // Scheduled completeness check for adopted integrations (bounded: one run per interval).
       const adoptedActive = await db
         .select()
@@ -487,6 +495,30 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
       return { state: r.state, steps };
     },
 
+    /** Drives one tenant's onboarding activation step by step (idempotent; resumes after crashes). */
+    async onboardingActivate(raw: unknown): Promise<unknown> {
+      const job = OnboardingActivateJobSchema.parse(raw);
+      const clients = await tenantClients(db, config.cipher!, config.endpoints, job.tenantId);
+      let r: Awaited<ReturnType<typeof advanceOnboarding>> = { state: 'continue', detail: '' };
+      const steps: string[] = [];
+      for (let i = 0; i < 20 && r.state === 'continue'; i++) {
+        r = await advanceOnboarding({
+          db,
+          tenantId: job.tenantId,
+          clients,
+          webhookBaseUrl: config.env.WEBHOOK_BASE_URL ?? config.env.PUBLIC_BASE_URL,
+          enqueueReconciliation: async (runId) => {
+            await boss.send(QUEUES.adoptedReconcile, { runId }, { singletonKey: `adopted-recon:${runId}` });
+          },
+          ...(deps.retry ? { retry: deps.retry } : {}),
+        });
+        steps.push(r.detail);
+      }
+      if (r.state === 'wait' || r.state === 'continue')
+        await boss.sendAfter(QUEUES.onboardingActivate, { tenantId: job.tenantId }, { singletonKey: `onboarding:${job.tenantId}` }, 2);
+      return { state: r.state, steps };
+    },
+
     /** Validates one adaptation against stored and affected orders (operator-requested). */
     async adoptedAdaptationValidate(raw: unknown): Promise<unknown> {
       const job = AdoptedAdaptationValidateJobSchema.parse(raw);
@@ -569,6 +601,7 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     await wrap(QUEUES.adoptedRecover, handlers.adoptedRecover);
     await wrap(QUEUES.adoptedMaintenance, handlers.adoptedMaintenance);
     await wrap(QUEUES.adoptedAdaptationValidate, handlers.adoptedAdaptationValidate);
+    await wrap(QUEUES.onboardingActivate, handlers.onboardingActivate);
     await boss.schedule(QUEUES.reliabilityTick, '* * * * *');
   }
 

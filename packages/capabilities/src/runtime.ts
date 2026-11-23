@@ -30,6 +30,8 @@ export interface AppPortRuntimeOptions {
   enqueueRecovery?: import('./capabilities/reconciliation.ts').EnqueueRecovery;
   reconcileIntervalMinutes?: number;
   enqueueAdaptationValidation?: import('./capabilities/adaptations.ts').EnqueueAdaptationValidation;
+  runOnboardingDiscovery?: import('./capabilities/onboarding.ts').RunOnboardingDiscovery;
+  enqueueOnboardingActivation?: import('./capabilities/onboarding.ts').EnqueueOnboardingActivation;
   telemetry?: import('@appport/core').TelemetrySink;
   /** Host logger (for example the API's pino instance). */
   logger?: Logger;
@@ -62,6 +64,8 @@ export function createAppPortRuntime(options: AppPortRuntimeOptions): AppPortRun
     ...(options.enqueueAdaptationValidation
       ? { enqueueAdaptationValidation: options.enqueueAdaptationValidation }
       : {}),
+    ...(options.runOnboardingDiscovery ? { runOnboardingDiscovery: options.runOnboardingDiscovery } : {}),
+    ...(options.enqueueOnboardingActivation ? { enqueueOnboardingActivation: options.enqueueOnboardingActivation } : {}),
     ...(options.telemetry ? { telemetry: options.telemetry } : {}),
     ...(options.logger ? { logger: options.logger } : {}),
   });

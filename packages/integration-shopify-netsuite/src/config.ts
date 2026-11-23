@@ -22,6 +22,10 @@ const EnvSchema = z.object({
   SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(5),
   RECONCILE_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(10080).default(60),
   LOG_LEVEL: z.string().default('info'),
+  /** Self-service signup (slice 5). Default: on outside production, off in production unless 'true'. */
+  ALLOW_SIGNUP: z.enum(['true', 'false']).optional(),
+  /** Base URL providers use to reach our webhook endpoints (defaults to PUBLIC_BASE_URL). */
+  WEBHOOK_BASE_URL: z.string().url().optional(),
 });
 
 export type ServiceRole = 'api' | 'worker' | 'maintenance';

@@ -16,6 +16,8 @@ export const QUEUES = {
   adoptedMaintenance: 'adopted.maintenance',
   /** Validates one adaptation (adapter or patch) against stored and affected orders (slice 5). */
   adoptedAdaptationValidate: 'adopted.adaptation.validate',
+  /** Drives one tenant's onboarding activation (webhook, baseline, verification) (slice 5). */
+  onboardingActivate: 'onboarding.activate',
 } as const;
 
 export const SyncJobSchema = z.object({
@@ -53,3 +55,4 @@ export const AdoptedReconcileJobSchema = z.object({ runId: z.string().uuid() });
 export const AdoptedRecoverJobSchema = z.object({ itemId: z.string().uuid() });
 export const AdoptedMaintenanceJobSchema = z.object({ incidentId: z.string().uuid() });
 export const AdoptedAdaptationValidateJobSchema = z.object({ adaptationId: z.string().uuid() });
+export const OnboardingActivateJobSchema = z.object({ tenantId: z.string().uuid() });
