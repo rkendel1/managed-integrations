@@ -10,3 +10,4 @@ export * from './loader.ts';
 export * from './runtime.ts';
 export { implementation as sourceImplementation } from './implementation/index.ts';
 export * from './bootstrap.ts';
+export * from './config.ts';

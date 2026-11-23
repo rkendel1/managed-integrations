@@ -136,7 +136,7 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
     findByExternalId,
   };
 
-  const app: FastifyInstance = Fastify({ logger: false });
+  const app: FastifyInstance = Fastify({ logger: false, forceCloseConnections: true });
   app.addContentTypeParser(
     'application/x-www-form-urlencoded',
     { parseAs: 'string' },

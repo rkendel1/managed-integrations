@@ -328,7 +328,7 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
     },
   };
 
-  const app: FastifyInstance = Fastify({ logger: false });
+  const app: FastifyInstance = Fastify({ logger: false, forceCloseConnections: true });
   app.addContentTypeParser(
     'application/x-www-form-urlencoded',
     { parseAs: 'string' },
