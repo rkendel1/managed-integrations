@@ -141,7 +141,16 @@ export async function tenantClients(
 export class OnboardingError extends Error {}
 
 export async function getOnboarding(db: Db, tenantId: string) {
-  await db.insert(onboardings).values({ tenantId }).onConflictDoNothing();
+  // Tenants that already have an active integration (enrolled before self-service onboarding) are managed.
+  const [active] = await db
+    .select({ id: integrations.id })
+    .from(integrations)
+    .where(and(eq(integrations.tenantId, tenantId), eq(integrations.lifecycle, 'active')))
+    .limit(1);
+  await db
+    .insert(onboardings)
+    .values({ tenantId, status: active ? 'managed' : 'connect', integrationId: active?.id ?? null })
+    .onConflictDoNothing();
   const [row] = await db.select().from(onboardings).where(eq(onboardings.tenantId, tenantId));
   return row!;
 }

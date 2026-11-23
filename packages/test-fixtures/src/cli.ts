@@ -20,6 +20,15 @@ const shopify2 = createShopifyFixture({
 });
 await shopify2.app.listen({ port: shopify2Port, host });
 console.log(`[fixture] shopify  http://${host}:${shopify2Port} (bluewave-supply.myshopify.com)`);
+// A third shop: a NEW customer who onboards themselves (slice 5 demo); its existing integration history
+// is created by the demo running the pinned upstream code.
+const shopify3Port = Number(process.env.FIXTURE_SHOPIFY3_PORT ?? 4012);
+const shopify3 = createShopifyFixture({
+  shopDomain: 'northwind-goods.myshopify.com',
+  firstOrderId: 9000000001n,
+});
+await shopify3.app.listen({ port: shopify3Port, host });
+console.log(`[fixture] shopify  http://${host}:${shopify3Port} (northwind-goods.myshopify.com)`);
 await netsuite.app.listen({ port: netsuitePort, host });
 console.log(`[fixture] shopify  http://${host}:${shopifyPort}`);
 console.log(`[fixture] netsuite http://${host}:${netsuitePort}`);

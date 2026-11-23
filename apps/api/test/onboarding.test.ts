@@ -135,7 +135,6 @@ async function customer(email = 'owner@northwind.test') {
       const res = (await (
         await rest('/api/customer/connections/netsuite', {
           accountDomain: '1234567-sb1.suitetalk.api.netsuite.com',
-          accountId: '1234567_SB1',
           clientId: h.netsuite.clientId,
           certificateId: h.netsuite.certificateId,
         })

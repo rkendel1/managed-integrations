@@ -277,7 +277,12 @@ export function Portfolio() {
         ) : null}
       </section>
       {all.length === 0 ? (
-        <Empty>No integrations are entrusted to us yet.</Empty>
+        <div className="text-center">
+          <Empty>No integrations are entrusted to us yet.</Empty>
+          <Link to="/app/welcome" className="text-sm font-medium underline">
+            Put your integration under management
+          </Link>
+        </div>
       ) : (
         <div className="space-y-3" data-testid="portfolio">
           {all.map((i) => (

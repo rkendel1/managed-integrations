@@ -11,12 +11,16 @@ import { loadArtifact } from '@mi/adopted-order-sync';
 
 export interface ExistingDeploymentFixtures {
   netsuiteUrl: string;
-  netsuite: { clientId: string; certificateId: string; control: { registerPublicKey(pem: string): void } };
+  netsuite: {
+    clientId: string;
+    certificateId: string;
+    control: { registerPublicKey(pem: string): void | Promise<unknown> };
+  };
 }
 
 export async function existingDeployment(f: ExistingDeploymentFixtures) {
   const kp = generateNetSuiteKeyPair();
-  f.netsuite.control.registerPublicKey(kp.publicKeyPem); // the customer's own integration record in NetSuite
+  await f.netsuite.control.registerPublicKey(kp.publicKeyPem); // the customer's own integration record in NetSuite
   const auth = new NetSuiteM2MAuth(f.netsuiteUrl, {
     clientId: f.netsuite.clientId,
     certificateId: f.netsuite.certificateId,

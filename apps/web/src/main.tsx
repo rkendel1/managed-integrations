@@ -7,6 +7,8 @@ import { api, setCsrf } from '@/lib/api';
 import { CustomerConnections, CustomerIntegration } from '@/pages/customer';
 import { Deliveries } from '@/pages/deliveries';
 import { IntegrationDetail, MaintenanceEventPage, OpsMaintenanceEvent, Portfolio } from '@/pages/product';
+import { Signup, Welcome } from '@/pages/welcome';
+import { OpsIntegration } from '@/pages/adopted-code';
 import {
   OpsCandidate,
   OpsInbox,
@@ -94,6 +96,12 @@ function Login() {
             <Button type="submit" className="w-full">
               Sign in
             </Button>
+            <p className="text-center text-xs text-slate-500">
+              New here?{' '}
+              <Link to="/signup" className="underline">
+                Create an account
+              </Link>
+            </p>
           </form>
         </CardBody>
       </Card>
@@ -191,6 +199,7 @@ function App() {
     <Routes>
       <Route path="/" element={<Root />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
       <Route
         path="/app/*"
         element={
@@ -199,6 +208,7 @@ function App() {
               <Shell me={me} nav={CUSTOMER_NAV}>
                 <Routes>
                   <Route index element={<Portfolio />} />
+                  <Route path="welcome" element={<Welcome />} />
                   <Route path="integrations/:integrationId" element={<IntegrationDetail />} />
                   <Route path="maintenance/:eventId" element={<MaintenanceEventPage />} />
                   <Route path="connections" element={<CustomerConnections />} />
@@ -220,10 +230,7 @@ function App() {
                   <Route index element={<OpsInbox />} />
                   <Route path="tenants" element={<OpsTenants />} />
                   <Route path="integrations/:integrationId/deliveries" element={<Deliveries />} />
-                  <Route
-                    path="integrations/:integrationId"
-                    element={<IntegrationDetail eventBase="/ops/maintenance-events" />}
-                  />
+                  <Route path="integrations/:integrationId" element={<OpsIntegration />} />
                   <Route path="maintenance-events/:eventId" element={<OpsMaintenanceEvent />} />
                   <Route path="incidents/:id" element={<OpsIncident />} />
                   <Route path="candidates/:id" element={<OpsCandidate />} />

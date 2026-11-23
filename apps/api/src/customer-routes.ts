@@ -261,19 +261,20 @@ export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps
         accountDomain: z.string().min(3).max(120),
         clientId: z.string().min(8).max(200),
         certificateId: z.string().min(4).max(200),
-        accountId: z.string().min(3).max(40),
+        /** Label only; derived from the account domain when omitted (never the other way round). */
+        accountId: z.string().min(3).max(40).optional(),
       })
       .safeParse(req.body);
     if (!body.success)
-      return reply
-        .code(400)
-        .send({ error: 'accountDomain, accountId, clientId and certificateId are required' });
+      return reply.code(400).send({ error: 'accountDomain, clientId and certificateId are required' });
     let baseUrl: string;
     try {
       baseUrl = resolveNetSuiteBaseUrl(body.data.accountDomain, deps.config.endpoints);
     } catch (err) {
       return reply.code(400).send({ error: describeError(err).message });
     }
+    const accountId =
+      body.data.accountId ?? body.data.accountDomain.split('.')[0]!.toUpperCase().replace(/-/g, '_');
     const tenantId = req.user!.tenantId!;
     const [conn] = await db
       .insert(connections)
@@ -281,12 +282,12 @@ export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps
         tenantId,
         providerId: 'netsuite',
         status: 'pending',
-        externalAccount: body.data.accountId,
+        externalAccount: accountId,
         baseUrl,
       })
       .onConflictDoUpdate({
         target: [connections.tenantId, connections.providerId],
-        set: { status: 'pending', externalAccount: body.data.accountId, baseUrl, updatedAt: new Date() },
+        set: { status: 'pending', externalAccount: accountId, baseUrl, updatedAt: new Date() },
       })
       .returning();
     const kp = generateNetSuiteKeyPair();
@@ -306,9 +307,7 @@ export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps
         grantedScopes: ['rest_webservices'],
       })
       .where(eq(connections.id, conn!.id));
-    await audit(req.user!.id, 'connection.netsuite.configured', 'connection', conn!.id, {
-      accountId: body.data.accountId,
-    });
+    await audit(req.user!.id, 'connection.netsuite.configured', 'connection', conn!.id, { accountId });
     // The public key is not secret: the customer's NetSuite admin maps a certificate for it.
     return {
       connectionId: conn!.id,

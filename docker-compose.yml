@@ -14,6 +14,10 @@ x-app-env: &app-env
   SHOPIFY_BASE_URL_OVERRIDE: ${SHOPIFY_BASE_URL_OVERRIDE:-http://fixtures:4010}
   NETSUITE_BASE_URL_OVERRIDE: ${NETSUITE_BASE_URL_OVERRIDE:-http://fixtures:4020}
   DEMO_ADOPTED_SHOPIFY_URL: ${DEMO_ADOPTED_SHOPIFY_URL:-http://fixtures:4011}
+  # Fixture-only: each demo store is reached by its own domain (refused in production).
+  SHOPIFY_FIXTURE_SHOPS: ${SHOPIFY_FIXTURE_SHOPS:-bluewave-supply.myshopify.com=http://fixtures:4011,northwind-goods.myshopify.com=http://fixtures:4012}
+  # Where providers (here: the Shopify fixture) send webhooks; inside the compose network.
+  WEBHOOK_BASE_URL: ${WEBHOOK_BASE_URL:-http://api:3000}
   PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
   SESSION_SECRET: ${SESSION_SECRET:-}
   SYNC_INTERVAL_MINUTES: ${SYNC_INTERVAL_MINUTES:-1}
@@ -60,6 +64,7 @@ services:
     ports:
       - '127.0.0.1:4010:4010'
       - '127.0.0.1:4011:4011'
+      - '127.0.0.1:4012:4012'
       - '127.0.0.1:4020:4020'
     healthcheck:
       test:

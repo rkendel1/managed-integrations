@@ -24,6 +24,8 @@ const EnvSchema = z.object({
   LOG_LEVEL: z.string().default('info'),
   /** Self-service signup (slice 5). Default: on outside production, off in production unless 'true'. */
   ALLOW_SIGNUP: z.enum(['true', 'false']).optional(),
+  /** Dev/test only: `domain=url,domain=url` — per-shop Shopify fixture URLs (requires SHOPIFY_BASE_URL_OVERRIDE). */
+  SHOPIFY_FIXTURE_SHOPS: z.string().optional(),
   /** Base URL providers use to reach our webhook endpoints (defaults to PUBLIC_BASE_URL). */
   WEBHOOK_BASE_URL: z.string().url().optional(),
 });
@@ -73,6 +75,16 @@ export function loadServiceConfig(role: ServiceRole, source: NodeJS.ProcessEnv =
       shopifyClientSecret: env.SHOPIFY_CLIENT_SECRET,
       ...(env.SHOPIFY_BASE_URL_OVERRIDE ? { shopifyBaseUrlOverride: env.SHOPIFY_BASE_URL_OVERRIDE } : {}),
       ...(env.NETSUITE_BASE_URL_OVERRIDE ? { netsuiteBaseUrlOverride: env.NETSUITE_BASE_URL_OVERRIDE } : {}),
+      ...(env.SHOPIFY_FIXTURE_SHOPS
+        ? {
+            shopifyFixtureShops: Object.fromEntries(
+              env.SHOPIFY_FIXTURE_SHOPS.split(',')
+                .map((x) => x.trim().split('='))
+                .filter((p): p is [string, string] => p.length === 2 && !!p[0] && !!p[1])
+                .map(([d, u]) => [d.toLowerCase(), u]),
+            ),
+          }
+        : {}),
       production,
     },
   };

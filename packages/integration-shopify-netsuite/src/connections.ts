@@ -14,6 +14,8 @@ export interface ProviderEndpointConfig {
   shopifyClientSecret: string;
   /** Dev/test only: route all Shopify calls to a fixture. Refused in production. */
   shopifyBaseUrlOverride?: string;
+  /** Dev/test only: per-shop fixture URLs (domain → base URL), so several fixture stores can be onboarded. */
+  shopifyFixtureShops?: Record<string, string>;
   netsuiteBaseUrlOverride?: string;
   production: boolean;
 }
@@ -45,7 +47,7 @@ export function resolveShopifyBaseUrl(shopDomain: string, cfg: ProviderEndpointC
   const domain = normalizeShopDomain(shopDomain);
   if (cfg.shopifyBaseUrlOverride) {
     if (cfg.production) throw new Error('SHOPIFY_BASE_URL_OVERRIDE is not permitted in production');
-    return cfg.shopifyBaseUrlOverride;
+    return cfg.shopifyFixtureShops?.[domain] ?? cfg.shopifyBaseUrlOverride;
   }
   return `https://${domain}`;
 }
