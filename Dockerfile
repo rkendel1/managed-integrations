@@ -7,10 +7,16 @@ FROM ${DOCKER_CLI_IMAGE} AS dockercli
 
 FROM ${NODE_IMAGE} AS build
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH CI=true
-RUN npm install -g pnpm@10.28.0
+# Optional extra CA bundle for TLS-intercepting proxies (BuildKit secret `extra_ca`; used only at
+# build time, never stored in the image).
+RUN --mount=type=secret,id=extra_ca,required=false \
+    if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca npm_config_cafile=/run/secrets/extra_ca; fi; \
+    npm install -g pnpm@10.28.0
 WORKDIR /app
 COPY . .
-RUN pnpm install --frozen-lockfile
+RUN --mount=type=secret,id=extra_ca,required=false \
+    if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca npm_config_cafile=/run/secrets/extra_ca; fi; \
+    pnpm install --frozen-lockfile
 RUN pnpm --filter @mi/web build
 # The baseline implementation artifact is built from exactly this source tree.
 ARG SOURCE_COMMIT=
@@ -29,8 +35,16 @@ CMD ["pnpm", "exec", "tsx", "apps/api/src/main.ts"]
 # Maintenance worker: needs git (worktrees), ripgrep (search tool) and the docker CLI (sandbox).
 # It is deliberately given NO credential encryption keys.
 FROM build AS maintenance
-RUN apt-get update && apt-get install -y --no-install-recommends git ripgrep ca-certificates && rm -rf /var/lib/apt/lists/* \
- && git config --system --add safe.directory '*'
+RUN --mount=type=secret,id=extra_ca,required=false \
+    APTOPT=""; \
+    if [ -s /run/secrets/extra_ca ]; then \
+      sed -i 's#http://deb.debian.org#https://deb.debian.org#g' /etc/apt/sources.list.d/debian.sources; \
+      cp /run/secrets/extra_ca /tmp/build-extra-ca.crt && chmod 0644 /tmp/build-extra-ca.crt; \
+      APTOPT="-o Acquire::https::CAInfo=/tmp/build-extra-ca.crt"; \
+      if [ -n "${HTTPS_PROXY:-}" ]; then APTOPT="$APTOPT -o Acquire::https::Proxy=$HTTPS_PROXY"; fi; \
+    fi; \
+    apt-get $APTOPT update && apt-get $APTOPT install -y --no-install-recommends ca-certificates git ripgrep \
+    && rm -rf /var/lib/apt/lists/* /tmp/build-extra-ca.crt && git config --system --add safe.directory '*'
 COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 ENV NODE_ENV=production WORKER_ROLE=maintenance ARTIFACT_DIR=/data/artifacts
 HEALTHCHECK NONE
