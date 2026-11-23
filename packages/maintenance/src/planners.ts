@@ -58,10 +58,13 @@ export class PlaybookPlanner implements MaintenancePlanner {
     if (!m) return none('No known failure signature in observations; escalating to a human (or the Claude planner).');
     const [, field, type] = m as unknown as [string, string, string];
 
-    // Reproduce: find the fixture profile whose behaviour matches the production observation.
+    // Reproduce first: a regression test that sends the implementation's own queries to the provider
+    // fixture under each profile. The profile that fails with the observed error reproduces production.
+    const testPath = `${AGENT_EDITABLE_PREFIXES[1]}${type.toLowerCase()}-${field}-removed.test.ts`;
+    await tb.invoke('write_file', { path: testPath, content: reproductionTest(type, field) });
     let reproProfile: string | null = null;
     for (const profile of ['baseline', 'drift']) {
-      const r = await tb.invoke('run_tests', { target: 'acceptance', profile });
+      const r = await tb.invoke('run_tests', { target: 'regression', profile });
       if (r.startsWith('FAILED') && r.includes(`Cannot query field "${field}" on type "${type}"`)) {
         reproProfile = profile;
         break;
@@ -84,11 +87,7 @@ export class PlaybookPlanner implements MaintenancePlanner {
     const files = [...new Set(hits.split('\n').map((l) => l.split(':')[0]!).filter(Boolean))];
     for (const f of files) await tb.invoke('edit_file', { path: f, old: field, new: change.replacement, all: true });
 
-    const testPath = `${AGENT_EDITABLE_PREFIXES[1]}${type.toLowerCase()}-${change.replacement}.test.ts`;
-    await tb.invoke('write_file', {
-      path: testPath,
-      content: regressionTest(type, field, change.replacement),
-    });
+    await tb.invoke('write_file', { path: testPath, content: reproductionTest(type, field, change.replacement) });
 
     const acc = await tb.invoke('run_tests', { target: 'acceptance', profile: reproProfile });
     const reg = await tb.invoke('run_tests', { target: 'regression', profile: reproProfile });
@@ -108,40 +107,50 @@ export class PlaybookPlanner implements MaintenancePlanner {
   }
 }
 
-function regressionTest(type: string, removed: string, replacement: string): string {
-  return `/**
- * Regression test added by the maintenance agent (playbook) for: ${type}.${removed} removed,
- * replaced by ${replacement}. Lives under test/regression (agent-editable); the authoritative
- * acceptance suite is unchanged.
- */
-import { describe, expect, it } from 'vitest';
-import { ORDERS_QUERY, ORDER_BY_ID_QUERY, parseRawOrder } from '../../src/implementation/shopify-orders.ts';
+/** The generated test source. Kept as a plain template with explicit placeholders to avoid nested-template escaping. */
+const REPRO_TEMPLATE = [
+  '/**',
+  ' * Reproduction / regression test written by the maintenance agent (playbook) for: __TYPE__.__REMOVED__',
+  ' * rejected by the provider. It sends the implementation\'s own GraphQL documents to the provider fixture',
+  ' * for the active profile (SHOPIFY_FIXTURE_PROFILE) and requires a clean, parseable response.',
+  ' * Lives under test/regression (agent-editable); the authoritative acceptance suite is unchanged.',
+  ' */',
+  "import { describe, expect, it } from 'vitest';",
+  "import { createShopifyFixture } from '@mi/test-fixtures';",
+  "import { implementation } from '../../src/implementation/index.ts';",
+  '',
+  "describe('provider compatibility: __TYPE__.__REMOVED__', () => {",
+  "  it('order queries validate and parse against the current provider profile', async () => {",
+  '    const f = createShopifyFixture();',
+  "    f.control.setVariant((process.env.SHOPIFY_FIXTURE_PROFILE ?? 'baseline') as 'baseline' | 'drift');",
+  '    const [order] = f.control.seedOrders(1);',
+  '    const token = f.control.issueToken().access_token;',
+  '    const url = "/admin/api/" + implementation.shopifyApiVersion + "/graphql.json";',
+  '    const post = (query: string, variables: Record<string, unknown>) =>',
+  "      f.app.inject({ method: 'POST', url, headers: { 'x-shopify-access-token': token }, payload: { query, variables } });",
+  '    const page = (await post(implementation.ordersQuery, { first: 5 })).json();',
+  '    expect((page.errors ?? []).map((e: { message: string }) => e.message)).toEqual([]);',
+  '    expect(implementation.parseOrdersPage(page.data).orders.every((o) => o.ok)).toBe(true);',
+  '    const single = (await post(implementation.orderByIdQuery, { id: "gid://shopify/Order/" + order!.legacyId })).json();',
+  '    expect((single.errors ?? []).map((e: { message: string }) => e.message)).toEqual([]);',
+  '    expect(implementation.parseOrder(single.data)?.ok).toBe(true);',
+  '    await f.app.close();',
+  '  });',
+  '__REPLACEMENT_TEST__',
+  '});',
+  '',
+].join('\n');
 
-describe('${type}.${removed} → ${replacement}', () => {
-  it('no longer queries the removed field', () => {
-    expect(ORDERS_QUERY).not.toMatch(/\\b${removed}\\b/);
-    expect(ORDER_BY_ID_QUERY).not.toMatch(/\\b${removed}\\b/);
-    expect(ORDERS_QUERY).toContain('${replacement}');
-  });
+const REPLACEMENT_TEMPLATE = [
+  "  it('uses __REPLACEMENT__ instead of the removed field', () => {",
+  "    expect(implementation.ordersQuery).not.toMatch(/\\b__REMOVED__\\b/);",
+  "    expect(implementation.ordersQuery).toContain('__REPLACEMENT__');",
+  '  });',
+].join('\n');
 
-  it('parses the unit price from ${replacement}', () => {
-    const parsed = parseRawOrder({
-      id: 'gid://shopify/Order/1',
-      legacyResourceId: '1',
-      name: '#1',
-      createdAt: '2026-11-01T00:00:00Z',
-      updatedAt: '2026-11-01T00:00:00Z',
-      cancelledAt: null,
-      currencyCode: 'USD',
-      email: null,
-      totalPriceSet: { shopMoney: { amount: '10.00', currencyCode: 'USD' } },
-      lineItems: { nodes: [{ sku: 'A', title: 'A', quantity: 2, ${replacement}: { shopMoney: { amount: '5.00', currencyCode: 'USD' } } }], pageInfo: { hasNextPage: false } },
-    } as never);
-    expect(parsed.ok).toBe(true);
-    if (parsed.ok) expect(parsed.order.lineItems[0]!.unitPrice).toBe('5.00');
-  });
-});
-`;
+function reproductionTest(type: string, removed: string, replacement?: string): string {
+  const repl = replacement ? REPLACEMENT_TEMPLATE.replaceAll('__REPLACEMENT__', replacement).replaceAll('__REMOVED__', removed) : '';
+  return REPRO_TEMPLATE.replaceAll('__TYPE__', type).replaceAll('__REMOVED__', removed).replace('__REPLACEMENT_TEST__', repl);
 }
 
 /* ===================================== Claude ===================================== */

@@ -55,7 +55,7 @@ async function hashSuiteInTree(repoDir: string, commit: string, tree: string): P
 /** Determines the provider profile that reproduces the failure, from the agent's recorded evidence. */
 function reproductionProfile(agentResults: unknown): FixtureProfile {
   const runs = (agentResults as { runs?: { target: string; profile: FixtureProfile; passed: boolean }[] })?.runs ?? [];
-  const failedFirst = runs.find((r) => r.target === 'acceptance' && !r.passed);
+  const failedFirst = runs.find((r) => !r.passed);
   return failedFirst?.profile ?? 'baseline';
 }
 
