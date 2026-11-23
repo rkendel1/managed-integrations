@@ -135,6 +135,8 @@ export async function registerOperatorRoutes(app: FastifyInstance, deps: ApiDeps
         .filter((i) => i.tenantId === t.id)
         .map((i) => ({
           id: i.id,
+          flowType: i.flowType,
+          displayName: i.displayName,
           health: i.health,
           enabled: i.enabled,
           implementationVersionId: i.implementationVersionId,

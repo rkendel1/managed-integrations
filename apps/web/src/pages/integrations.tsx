@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router';
 import { Card, CardBody, CardHeader, Empty, ErrorNote, StatusBadge, Table, Td } from '@/components/ui';
 import { callCapability } from '@/lib/capabilities';
 import { fmtDate } from '@/lib/utils';
@@ -52,7 +53,7 @@ export function CustomerIntegrations() {
         {data.integrations.length === 0 ? (
           <Empty>No integrations exist for this tenant.</Empty>
         ) : (
-          <Table head={['Name', 'Flow', 'Lifecycle', 'Config version', 'Updated']}>
+          <Table head={['Name', 'Flow', 'Lifecycle', 'Config version', 'Updated', '']}>
             {data.integrations.map((integration) => (
               <tr key={integration.id} data-testid="integration-row">
                 <Td>
@@ -67,6 +68,11 @@ export function CustomerIntegrations() {
                 </Td>
                 <Td>{integration.configVersion}</Td>
                 <Td>{fmtDate(integration.updatedAt)}</Td>
+                <Td>
+                  <Link className="underline" to={`/app/integrations/${integration.id}/deliveries`}>
+                    Deliveries
+                  </Link>
+                </Td>
               </tr>
             ))}
           </Table>

@@ -445,6 +445,13 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
     control.registerPublicKey((req.body as { pem: string }).pem);
     return { ok: true };
   });
+  app.post('/__fixture/items', async (req) => {
+    const b = (req.body ?? {}) as { id: string; code: string };
+    if (!/^\d+$/.test(String(b.id)) || !b.code) return { error: 'id (digits) and code required' };
+    state.items.add(String(b.id));
+    state.itemCodes.set(String(b.id), String(b.code));
+    return { ok: true };
+  });
   app.post('/__fixture/config', async (req) => {
     const b = (req.body ?? {}) as { oneWorld?: boolean };
     if (typeof b.oneWorld === 'boolean') state.oneWorld = b.oneWorld;

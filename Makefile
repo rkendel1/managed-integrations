@@ -4,7 +4,7 @@ export SOURCE_COMMIT := $(shell git rev-parse HEAD)
 export MI_REPO_DIR := $(CURDIR)
 COMPOSE := docker compose --env-file .env
 
-.PHONY: env build up down reset logs ps demo-failure e2e prod-up backup
+.PHONY: env build up down reset logs ps demo-failure e2e prod-up backup demo-adopted
 
 env:            ## create .env with a fresh encryption key (once)
 	@test -f .env || (cp .env.example .env && echo "created .env")
@@ -42,3 +42,6 @@ backup:
 reset:          ## DESTROY demo data (volumes) and start fresh; fixtures keep state in memory only
 	$(COMPOSE) --profile demo down -v
 	$(MAKE) up
+
+demo-adopted:   ## SLICE 2: adopted shopify-erp-order-sync operated through AppPort/MCP (run `make reset` first)
+	$(COMPOSE) --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-adopted.ts

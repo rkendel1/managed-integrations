@@ -14,6 +14,7 @@ import {
   loadServiceConfig,
 } from '@mi/integration-shopify-netsuite';
 import { registerVersion } from '@mi/maintenance';
+import { ADOPTED_CONTRACT, ADOPTED_FLOW_TYPE, registerAdoptedContract } from '@mi/adopted-order-sync';
 import { hashPassword } from '../apps/api/src/auth.ts';
 
 const config = loadServiceConfig('api');
@@ -206,6 +207,43 @@ if (process.env.DEMO_FIXTURES === 'true') {
       .where(eq(integrations.id, integ!.id));
     console.log('demo: connected to deterministic fixtures and seeded 30 fixture orders');
   }
+}
+/* demo: a second tenant whose flow is executed by the ADOPTED shopify-erp-order-sync code */
+if (process.env.DEMO_FIXTURES === 'true') {
+  await registerAdoptedContract(db);
+  const shopUrl = config.endpoints.shopifyBaseUrlOverride!;
+  const nsUrl = config.endpoints.netsuiteBaseUrlOverride!;
+  const slug2 = 'bluewave-supply';
+  let [t2] = await db.select().from(tenants).where(eq(tenants.slug, slug2));
+  if (!t2) [t2] = await db.insert(tenants).values({ name: 'Bluewave Supply', slug: slug2, lifecycle: 'active' }).returning();
+  const pw2 = process.env.SEED_ADOPTED_CUSTOMER_PASSWORD || 'bluewave-demo-password';
+  await db.insert(users).values({ email: 'ops@bluewave.test', passwordHash: await hashPassword(pw2), role: 'customer', tenantId: t2!.id }).onConflictDoNothing();
+  const existing2 = await db.select().from(connections).where(eq(connections.tenantId, t2!.id));
+  if (!existing2.length) {
+    const post = async (url: string, body: unknown) => (await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })).json();
+    await post(`${nsUrl}/__fixture/config`, { oneWorld: false }); // the adopted code sends no subsidiary
+    const kp = generateNetSuiteKeyPair();
+    await post(`${nsUrl}/__fixture/public-key`, { pem: kp.publicKeyPem });
+    await db.insert(connections).values({ tenantId: t2!.id, providerId: 'shopify', status: 'verified', externalAccount: 'bluewave-supply.myshopify.com', baseUrl: shopUrl, grantedScopes: ['read_orders'], lastVerifiedAt: new Date() });
+    const [nc] = await db.insert(connections).values({ tenantId: t2!.id, providerId: 'netsuite', status: 'verified', externalAccount: '1234567_SB1', baseUrl: nsUrl, grantedScopes: ['rest_webservices'], lastVerifiedAt: new Date() }).returning();
+    await db
+      .update(connections)
+      .set({ credentialsCiphertext: config.cipher!.encrypt({ clientId: 'fixture-netsuite-client-id', certificateId: 'fixture-cert-id', privateKeyPem: kp.privateKeyPem, algorithm: 'PS256' }, `connection:${nc!.id}`), credentialsKeyId: config.cipher!.keyId })
+      .where(eq(connections.id, nc!.id));
+  }
+  await db
+    .insert(integrations)
+    .values({
+      tenantId: t2!.id,
+      flowType: ADOPTED_FLOW_TYPE,
+      displayName: 'Shopify orders → NetSuite (adopted: shopify-erp-order-sync)',
+      contractVersion: ADOPTED_CONTRACT.version,
+      config: { erp: 'netsuite', customerByEmail: {}, defaultCustomer: 'WEB' },
+      enabled: true,
+      lifecycle: 'active',
+    })
+    .onConflictDoNothing();
+  console.log('demo: tenant Bluewave Supply attached to the adopted shopify-erp-order-sync executor (ops@bluewave.test)');
 }
 console.log(`seed complete: tenant ${tenant!.slug}, customer ${customerEmail}, operator ${operatorEmail}`);
 await close();

@@ -14,6 +14,7 @@ import {
   CustomerRun,
   CustomerRuns,
 } from '@/pages/customer';
+import { Deliveries } from '@/pages/deliveries';
 import { CustomerIntegrations } from '@/pages/integrations';
 import {
   OpsCandidate,
@@ -197,6 +198,7 @@ function App() {
                 <Routes>
                   <Route index element={<CustomerOverview />} />
                   <Route path="integrations" element={<CustomerIntegrations />} />
+                  <Route path="integrations/:integrationId/deliveries" element={<Deliveries />} />
                   <Route path="connections" element={<CustomerConnections />} />
                   <Route path="integration" element={<CustomerIntegration />} />
                   <Route path="history" element={<CustomerRuns />} />
@@ -219,6 +221,7 @@ function App() {
                 <Routes>
                   <Route index element={<OpsInbox />} />
                   <Route path="tenants" element={<OpsTenants />} />
+                  <Route path="integrations/:integrationId/deliveries" element={<Deliveries />} />
                   <Route path="incidents/:id" element={<OpsIncident />} />
                   <Route path="candidates/:id" element={<OpsCandidate />} />
                   <Route path="maintenance/:id" element={<OpsMaintenance />} />

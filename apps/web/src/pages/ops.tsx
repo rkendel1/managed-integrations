@@ -76,20 +76,21 @@ export function OpsTenants() {
                 <Td>{fmtDate(i.cursorWatermark)}</Td>
                 <Td>{i.openIncidents}</Td>
                 <Td className="space-x-2 whitespace-nowrap">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => act(`/api/operator/integrations/${i.id}/sync`)}
-                  >
-                    Sync
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => act(`/api/operator/integrations/${i.id}/reconcile`)}
-                  >
-                    Reconcile
-                  </Button>
+                  <Link className="text-sm underline" to={`/ops/integrations/${i.id}/deliveries`}>
+                    Deliveries
+                  </Link>
+                  {String(i.flowType).startsWith('adopted.') ? (
+                    <StatusBadge value="adopted" />
+                  ) : (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => act(`/api/operator/integrations/${i.id}/sync`)}>
+                        Sync
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => act(`/api/operator/integrations/${i.id}/reconcile`)}>
+                        Reconcile
+                      </Button>
+                    </>
+                  )}
                 </Td>
               </tr>
             )),
