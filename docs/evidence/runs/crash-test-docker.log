@@ -1,0 +1,20 @@
+seeded 60 orders; NetSuite latency 400ms/request
+killing worker during run 1c845de4-6d13-4e9a-b7fa-852afdfbc0cd (delivered so far: 25)
+ Container managed-integrations-worker-1 Killing 
+ Container managed-integrations-worker-1 Killed 
+status after kill: running (no worker alive to finish it)
+ Container managed-integrations-fixtures-1 Waiting 
+ Container managed-integrations-postgres-1 Waiting 
+ Container managed-integrations-postgres-1 Healthy 
+ Container managed-integrations-fixtures-1 Healthy 
+ Container managed-integrations-migrate-1 Starting 
+ Container managed-integrations-migrate-1 Started 
+ Container managed-integrations-migrate-1 Waiting 
+ Container managed-integrations-migrate-1 Exited 
+ Container managed-integrations-worker-1 Starting 
+ Container managed-integrations-worker-1 Started 
+worker restarted; waiting for interruption detection (lease expiry) and resume...
+killed run final status: interrupted / Worker stopped before completing the run (no heartbeat). Resumed from last durable cursor.
+resumed run: backfill succeeded delivered=63 already=3 cursor_before=2026-11-23T13:04:51.983Z
+NetSuite fixture: 90 sales orders, 90 unique externalIds, duplicates=0
+deliveries by outcome: delivered=90
