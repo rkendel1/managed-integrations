@@ -3,11 +3,12 @@
 # SIGKILLs the runtime worker mid-sync, restarts it, and checks: interrupted run recorded,
 # resume from the durable cursor, every order delivered exactly once in NetSuite.
 set -euo pipefail
+cd "$(dirname "$0")/.."
+export MI_REPO_DIR="$PWD" SOURCE_COMMIT="$(git rev-parse HEAD)"
 C="docker compose --env-file .env --profile demo"
 psql() { $C exec -T postgres psql -U mi -d managed_integrations -tAc "$1"; }
 post() { curl -sf -X POST -H 'content-type: application/json' -d "$2" "http://127.0.0.1:$1"; }
 
-before=$(post 4020/__fixture/state '{}' 2>/dev/null || curl -sf http://127.0.0.1:4020/__fixture/state | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).salesOrders.length))')
 post 4010/__fixture/seed "{\"count\":60,\"start\":\"$(date -u -d '-5 min' +%Y-%m-%dT%H:%M:%SZ)\",\"stepMs\":1000}" >/dev/null
 post 4020/__fixture/latency '{"ms":400}' >/dev/null
 echo "seeded 60 orders; NetSuite latency 400ms/request"
