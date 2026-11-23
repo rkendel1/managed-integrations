@@ -269,6 +269,8 @@ export const webhookReceipts = pgTable(
     disposition: text('disposition').notNull(),
     /** webhook: received from Shopify. reconciliation: execution input reconstructed from the Shopify Admin API. */
     origin: text('origin').notNull().default('webhook'),
+    /** X-Shopify-API-Version of the webhook (the payload contract version Shopify used). */
+    apiVersion: text('api_version'),
     deliveryId: uuid('delivery_id'),
     correlationId: text('correlation_id'),
     receivedAt: createdAt(),
@@ -345,6 +347,21 @@ export const incidents = pgTable(
     implementationVersionId: text('implementation_version_id'),
     resolution: text('resolution'),
     verification: jsonb('verification'),
+    /*
+     * Maintenance facts (slice 4). Written by the maintenance lifecycle, one section per step, each with its
+     * own evidence. Null means the step has not happened. The customer-facing maintenance event is derived
+     * from these and from incident_events; nothing customer-facing is stored as text.
+     */
+    /** What changed: baseline vs observed, the dependency, evidence references. */
+    finding: jsonb('finding'),
+    /** Which code path is affected and how (upstream file, line, hash; dry run of the real code). */
+    investigation: jsonb('investigation'),
+    /** The correction applied at the adoption boundary, its derivation and when it was activated. */
+    correction: jsonb('correction'),
+    /** Validation of the correction, separate from applying it. */
+    validation: jsonb('validation'),
+    /** Transaction accounting for the affected window. */
+    accounting: jsonb('accounting'),
     detectedAt: ts('detected_at').notNull().defaultNow(),
     resolvedAt: ts('resolved_at'),
     createdAt: createdAt(),

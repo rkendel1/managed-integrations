@@ -97,6 +97,8 @@ const LINE_ITEM_DRIFT = `type LineItem { id: ID! sku: String title: String! quan
 
 export type SchemaVariant = 'baseline' | 'drift';
 
+export type WebhookVersion = '2026-10' | '2027-01';
+
 export interface FixtureLineItem {
   sku: string | null;
   title: string;
@@ -210,6 +212,12 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
     bucket: { available: bucketSize, at: Date.now() },
     requestLog: [] as { at: string; kind: string; detail?: string }[],
     nextLegacyId: firstOrderId,
+    /**
+     * Webhook payload contract version (sent as X-Shopify-API-Version). FIXTURE-ONLY, fictional:
+     * '2026-10' sends line_items[].price and price_set; '2027-01' no longer sends line_items[].price
+     * (see docs/provider-docs/shopify/FIXTURE-webhook-changelog.md).
+     */
+    webhookVersion: '2026-10' as WebhookVersion,
   };
 
   const schemas: Record<SchemaVariant, GraphQLSchema> = {
@@ -381,6 +389,10 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
       state.bucket = { available: bucketSize, at: Date.now() };
       state.requestLog.length = 0;
       state.nextLegacyId = firstOrderId;
+      state.webhookVersion = '2026-10';
+    },
+    setWebhookVersion(v: WebhookVersion) {
+      state.webhookVersion = v;
     },
     webhookPayload(o: FixtureOrder) {
       return {
@@ -393,13 +405,17 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
         customer: o.email ? { id: Number(o.legacyId), email: o.email } : null,
         currency: o.currencyCode,
         note: o.note ?? null,
-        line_items: o.lineItems.map((li, i) => ({
-          id: Number(`${o.legacyId}${i}`),
-          sku: li.sku,
-          title: li.title,
-          quantity: li.quantity,
-          price: li.unitPrice,
-        })),
+        line_items: o.lineItems.map((li, i) => {
+          const money = { amount: li.unitPrice, currency_code: o.currencyCode };
+          return {
+            id: Number(`${o.legacyId}${i}`),
+            sku: li.sku,
+            title: li.title,
+            quantity: li.quantity,
+            ...(state.webhookVersion === '2026-10' ? { price: li.unitPrice } : {}),
+            price_set: { shop_money: money, presentment_money: money },
+          };
+        }),
       };
     },
     /** Issue a token directly (fixture convenience for tests that do not exercise OAuth). */
@@ -582,7 +598,13 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
   app.get('/__fixture/orders/:legacyId/webhook-payload', async (req, reply) => {
     const o = state.orders.get((req.params as { legacyId: string }).legacyId);
     if (!o) return reply.code(404).send({ error: 'unknown order' });
+    reply.header('x-shopify-api-version', state.webhookVersion);
     return control.webhookPayload(o);
+  });
+  /** FIXTURE-ONLY: switch the webhook payload contract version (a controlled provider change). */
+  app.post('/__fixture/webhook-version', async (req) => {
+    control.setWebhookVersion((req.body as { version: WebhookVersion }).version);
+    return { version: state.webhookVersion };
   });
   app.post('/__fixture/seed', async (req) => {
     const b = req.body as { count: number; start?: string; stepMs?: number };
@@ -615,6 +637,7 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
     faults: state.faults.list(),
     fired: state.faults.fired,
     revoked: state.revoked,
+    webhookVersion: state.webhookVersion,
   }));
 
   return { app, state, control, shopDomain, clientId, clientSecret };

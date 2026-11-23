@@ -143,6 +143,34 @@ export async function findOpenIncident(
   return row;
 }
 
+/**
+ * Evidence a maintenance event must already hold (persisted, not passed in) before it may be resolved.
+ * Applies to incidents that carry maintenance facts (slice 4); other incidents keep the slice-1 rule.
+ */
+export function resolutionBlockers(row: IncidentRow, verification: Record<string, unknown>): string[] {
+  const maintained = row.kind === 'input_contract_change' || row.correction != null || row.accounting != null;
+  if (!maintained) return [];
+  const out: string[] = [];
+  const validation = row.validation as { passed?: boolean } | null;
+  const correction = row.correction as { activatedAt?: string } | null;
+  const accounting = row.accounting as {
+    populationComplete?: boolean;
+    unresolved?: number;
+    duplicates?: number;
+  } | null;
+  if (!row.finding) out.push('no detection finding');
+  if (validation?.passed !== true) out.push('correction not validated');
+  if (!correction?.activatedAt) out.push('no correction activated');
+  if (!accounting) out.push('no transaction accounting');
+  else {
+    if (accounting.populationComplete !== true) out.push('transaction population not complete');
+    if (accounting.unresolved !== 0) out.push(`${accounting.unresolved ?? '?'} transaction(s) unresolved`);
+    if (accounting.duplicates !== 0) out.push(`${accounting.duplicates ?? '?'} duplicate destination record(s)`);
+  }
+  if (verification['passed'] !== true) out.push('verification did not pass');
+  return out;
+}
+
 /** Durable, validated transition with a timeline event. Optimistic on the current status. */
 export async function transitionIncident(
   db: Db,
@@ -166,6 +194,11 @@ export async function transitionIncident(
       throw new InvalidIncidentTransition(`Incident ${incidentId}: ${from} → ${to} is not permitted`);
     if (to === 'resolved' && !p.verification)
       throw new InvalidIncidentTransition('Resolving an incident requires verification evidence');
+    if (to === 'resolved') {
+      const blockers = resolutionBlockers(cur, p.verification!);
+      if (blockers.length)
+        throw new InvalidIncidentTransition(`Incident ${incidentId} cannot be resolved: ${blockers.join('; ')}`);
+    }
     const now = new Date();
     const [updated] = await tx
       .update(incidents)

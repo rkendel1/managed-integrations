@@ -98,6 +98,7 @@ export async function ingestShopifyWebhook(p: IngestParams): Promise<IngestResul
         shopDomain,
         payloadCiphertext: p.cipher.encrypt(p.rawBody.toString('base64'), `receipt:${receiptId}`),
         payloadSha256: sha256Hex(p.rawBody),
+        apiVersion: header(p.headers, 'x-shopify-api-version') ?? null,
         disposition,
         correlationId: p.correlationId ?? null,
       })

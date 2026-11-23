@@ -120,9 +120,23 @@ export interface StartResult {
  * Starts (or joins) the reconciliation of an adopted integration. Serialized per integration by a
  * row lock on the integration, so concurrent requests yield exactly one running run.
  */
+/** Another run of this integration is in progress; an explicit-window run must wait for it. */
+export class ReconciliationBusy extends Error {
+  constructor(readonly runningRunId: string) {
+    super(`Reconciliation ${runningRunId} is in progress`);
+  }
+}
+
 export async function startReconciliation(
   db: Db,
-  p: { integrationId: string; trigger: 'manual' | 'schedule'; requestedBy?: string | null; now?: Date },
+  p: {
+    integrationId: string;
+    trigger: 'manual' | 'schedule' | 'maintenance';
+    requestedBy?: string | null;
+    now?: Date;
+    /** An explicit window (maintenance: the affected window). Never joins a run with another window. */
+    window?: { from: Date; to: Date };
+  },
 ): Promise<StartResult> {
   return db.transaction(async (tx) => {
     const [integ] = await tx
@@ -136,6 +150,7 @@ export async function startReconciliation(
       .select()
       .from(reconciliationRuns)
       .where(and(eq(reconciliationRuns.integrationId, integ.id), eq(reconciliationRuns.status, 'running')));
+    if (running && p.window) throw new ReconciliationBusy(running.id);
     if (running)
       return {
         runId: running.id,
@@ -145,9 +160,10 @@ export async function startReconciliation(
       };
     const config = AdoptedConfigSchema.parse(integ.config);
     const now = p.now ?? new Date();
-    const windowFrom = config.reconcileFrom ? new Date(config.reconcileFrom) : integ.createdAt;
+    const windowFrom =
+      p.window?.from ?? (config.reconcileFrom ? new Date(config.reconcileFrom) : integ.createdAt);
     // Orders newer than the grace period may still be on their way through the webhook path.
-    const windowTo = new Date(now.getTime() - config.reconcileGraceMinutes * 60_000);
+    const windowTo = p.window?.to ?? new Date(now.getTime() - config.reconcileGraceMinutes * 60_000);
     const [run] = await tx
       .insert(reconciliationRuns)
       .values({

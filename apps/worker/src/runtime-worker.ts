@@ -9,6 +9,7 @@ import {
   AdoptedExecuteJobSchema,
   AdoptedReconcileJobSchema,
   AdoptedRecoverJobSchema,
+  AdoptedMaintenanceJobSchema,
   BacklogJobSchema,
   FLOW_TYPE,
   ProviderError,
@@ -41,6 +42,10 @@ import {
   adoptedClients,
   executeRecovery,
   findOrphanedWork,
+  advanceMaintenance,
+  heldWithoutEvent,
+  openMaintenanceEvents,
+  recordInputContractFinding,
   scanReconciliation,
   startReconciliation,
   ADOPTED_FLOW_TYPE,
@@ -81,6 +86,7 @@ export const RUNTIME_QUEUES = [
   QUEUES.adoptedExecute,
   QUEUES.adoptedReconcile,
   QUEUES.adoptedRecover,
+  QUEUES.adoptedMaintenance,
 ];
 
 export async function ensureQueues(boss: PgBoss): Promise<void> {
@@ -167,6 +173,12 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     }
   }
 
+  async function enqueueMaintenance(incidentId: string, afterSeconds = 0) {
+    const opts = { singletonKey: `adopted-maint:${incidentId}` };
+    if (afterSeconds) await boss.sendAfter(QUEUES.adoptedMaintenance, { incidentId }, opts, afterSeconds);
+    else await boss.send(QUEUES.adoptedMaintenance, { incidentId }, opts);
+  }
+
   async function evaluateAndAct(integrationId: string) {
     const ev = await evaluateIntegration(db, integrationId);
     await executeActions(ev.actions);
@@ -240,6 +252,12 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
       for (const itemId of orphanedRecon.itemIds) {
         await boss.send(QUEUES.adoptedRecover, { itemId }, { singletonKey: `adopted-recover:${itemId}` });
       }
+      // Maintenance (slice 4): record held orders whose finding was lost, and drive open events.
+      for (const deliveryId of await heldWithoutEvent(db)) {
+        const f = await recordInputContractFinding(db, config.cipher!, deliveryId);
+        if (f) await enqueueMaintenance(f.incidentId);
+      }
+      for (const incidentId of await openMaintenanceEvents(db)) await enqueueMaintenance(incidentId);
       // Scheduled completeness check for adopted integrations (bounded: one run per interval).
       const adoptedActive = await db
         .select()
@@ -426,6 +444,41 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
       return r;
     },
 
+    /**
+     * Drives one maintenance event: advances step by step while there is work, then schedules itself
+     * again while it waits on executions or reconciliation. Steps are idempotent (crash-safe).
+     */
+    async adoptedMaintenance(raw: unknown): Promise<unknown> {
+      const job = AdoptedMaintenanceJobSchema.parse(raw);
+      const [inc] = await db.select().from(incidents).where(eq(incidents.id, job.incidentId));
+      if (!inc?.integrationId) return { state: 'noop' };
+      const clients = await adoptedClients(db, config.cipher!, config.endpoints, inc.integrationId);
+      let r: Awaited<ReturnType<typeof advanceMaintenance>> = { state: 'continue', detail: '' };
+      const steps: string[] = [];
+      for (let i = 0; i < 40 && r.state === 'continue'; i++) {
+        r = await advanceMaintenance({
+          db,
+          cipher: config.cipher!,
+          incidentId: job.incidentId,
+          clients,
+          enqueueExecution: async (deliveryId, trigger) => {
+            await boss.send(QUEUES.adoptedExecute, { deliveryId, trigger }, { singletonKey: `adopted:${deliveryId}` });
+          },
+          enqueueReconciliation: async (runId) => {
+            await boss.send(QUEUES.adoptedReconcile, { runId }, { singletonKey: `adopted-recon:${runId}` });
+          },
+          enqueueRecovery: async (itemId) => {
+            await boss.send(QUEUES.adoptedRecover, { itemId }, { singletonKey: `adopted-recover:${itemId}` });
+          },
+          ...(deps.retry ? { retry: deps.retry } : {}),
+        });
+        steps.push(r.detail);
+      }
+      if (r.state === 'wait' || r.state === 'continue') await enqueueMaintenance(job.incidentId, 2);
+      if (r.state === 'resolved') await evaluateAndAct(inc.integrationId);
+      return { state: r.state, steps };
+    },
+
     /** Runs one delivery through the ADOPTED upstream implementation (shopify-erp-order-sync). */
     async adoptedExecute(raw: unknown): Promise<unknown> {
       const job = AdoptedExecuteJobSchema.parse(raw);
@@ -436,6 +489,11 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
         deliveryId: job.deliveryId,
         trigger: job.trigger,
       });
+      if (result.executed && result.outcome === 'held') {
+        // The input no longer satisfies the adopted contract: nothing was written; maintenance takes over.
+        const f = await recordInputContractFinding(db, config.cipher!, job.deliveryId);
+        if (f) await enqueueMaintenance(f.incidentId);
+      }
       if (result.executed && result.outcome === 'failed') {
         const delay = nextAutomaticRetryDelaySeconds(result.attemptNo);
         if (delay != null) {
@@ -491,6 +549,7 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     await wrap(QUEUES.adoptedExecute, handlers.adoptedExecute);
     await wrap(QUEUES.adoptedReconcile, handlers.adoptedReconcile);
     await wrap(QUEUES.adoptedRecover, handlers.adoptedRecover);
+    await wrap(QUEUES.adoptedMaintenance, handlers.adoptedMaintenance);
     await boss.schedule(QUEUES.reliabilityTick, '* * * * *');
   }
 

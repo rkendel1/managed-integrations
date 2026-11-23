@@ -29,6 +29,13 @@
       "when": 1795463372314,
       "tag": "0003_reconciliation_items",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795467577521,
+      "tag": "0004_maintenance_events",
+      "breakpoints": true
     }
   ]
 }

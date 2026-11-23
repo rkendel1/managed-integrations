@@ -12,6 +12,8 @@ export const QUEUES = {
   adoptedExecute: 'adopted.execute',
   adoptedReconcile: 'adopted.reconcile',
   adoptedRecover: 'adopted.recover',
+  /** Drives one maintenance event of an adopted integration (slice 4). */
+  adoptedMaintenance: 'adopted.maintenance',
 } as const;
 
 export const SyncJobSchema = z.object({
@@ -32,7 +34,8 @@ export const ReleaseJobSchema = z.object({ releaseId: z.string().uuid() });
 export const AdoptedExecuteJobSchema = z.object({
   deliveryId: z.string().uuid(),
   trigger: z.object({
-    kind: z.enum(['webhook', 'automatic_retry', 'manual_retry', 'reconciliation_recovery']),
+    kind: z.enum(['webhook', 'automatic_retry', 'manual_retry', 'reconciliation_recovery', 'maintenance_recovery']),
+    maintenanceEventId: z.string().uuid().optional(),
     principalId: z.string().optional(),
     appportRequestId: z.string().optional(),
     reason: z.string().max(500).optional(),
@@ -40,3 +43,4 @@ export const AdoptedExecuteJobSchema = z.object({
 });
 export const AdoptedReconcileJobSchema = z.object({ runId: z.string().uuid() });
 export const AdoptedRecoverJobSchema = z.object({ itemId: z.string().uuid() });
+export const AdoptedMaintenanceJobSchema = z.object({ incidentId: z.string().uuid() });

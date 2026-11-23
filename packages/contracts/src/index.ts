@@ -229,6 +229,8 @@ export const INCIDENT_KINDS = [
   'records_rejected',
   'reconciliation_discrepancy',
   'schema_drift',
+  /** Adopted flow: a provider input no longer satisfies what the adopted code reads (slice 4). */
+  'input_contract_change',
 ] as const;
 export type IncidentKind = (typeof INCIDENT_KINDS)[number];
 

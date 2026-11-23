@@ -26,6 +26,7 @@ import {
 import { describeError, redact } from '@mi/observability';
 import { AdoptedConfigSchema } from './contract.ts';
 import { ADOPTED } from './provenance.ts';
+import { applyInputCompat, checkInputContract, type ContractViolation } from './input-contract.ts';
 
 /** Deliveries in `running`/`pending` longer than this are considered stuck and may be reclaimed. */
 export const STUCK_AFTER_MS = 10 * 60_000;
@@ -39,7 +40,8 @@ export function nextAutomaticRetryDelaySeconds(executions: number): number | nul
 }
 
 export interface ExecutionTrigger {
-  kind: 'webhook' | 'automatic_retry' | 'manual_retry' | 'reconciliation_recovery';
+  kind: 'webhook' | 'automatic_retry' | 'manual_retry' | 'reconciliation_recovery' | 'maintenance_recovery';
+  maintenanceEventId?: string;
   runId?: string;
   principalId?: string;
   appportRequestId?: string;
@@ -58,8 +60,10 @@ export type ExecuteResult =
   | { executed: false; reason: 'not_claimable' }
   | {
       executed: true;
-      outcome: 'delivered' | 'rejected' | 'failed';
+      /** held: the input does not satisfy what the adopted code reads; upstream was not run. */
+      outcome: 'delivered' | 'rejected' | 'failed' | 'held';
       attemptNo: number;
+      violations?: ContractViolation[];
       upstream: UpstreamSyncResult | null;
       errorClass: string | null;
       message: string | null;
@@ -88,9 +92,12 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
   const [integ] = await db.select().from(integrations).where(eq(integrations.id, claimed.integrationId));
 
   let upstream: UpstreamSyncResult | null = null;
-  let outcome: 'delivered' | 'rejected' | 'failed';
+  let outcome: 'delivered' | 'rejected' | 'failed' | 'held';
   let errorClass: string | null = null;
   let message: string | null = null;
+  let violations: ContractViolation[] | undefined;
+  let compatApplied: { target: string; source: string; count: number }[] = [];
+  let apiVersion: string | null = null;
   try {
     const [receipt] = await db
       .select()
@@ -102,6 +109,23 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
       'base64',
     );
     const config = AdoptedConfigSchema.parse(integ!.config);
+    apiVersion = receipt.apiVersion;
+
+    // Adoption boundary: apply validated compatibility rules, then check the input contract BEFORE upstream
+    // runs. Upstream does not validate its input (a missing price becomes a null NetSuite rate), so an
+    // input that violates the contract is held — nothing is written — and maintenance takes over.
+    const adapted = applyInputCompat(JSON.parse(raw.toString('utf8')), config.inputCompat);
+    compatApplied = adapted.applied;
+    const found = checkInputContract(adapted.payload);
+    if (found.length) {
+      violations = found;
+      throw Object.assign(
+        new Error(
+          `Input does not satisfy the adopted contract: ${found.map((v) => `${v.path} ${v.observed}`).join(', ')}`,
+        ),
+        { mi: 'input_contract' },
+      );
+    }
 
     // Managed Integrations owns authorization: resolve the tenant's NetSuite connection and mint a token.
     const creds = new ConnectionCredentials(db, p.cipher, p.endpoints);
@@ -113,7 +137,7 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
     // ---- upstream code from here on ----
     let order;
     try {
-      order = toCanonicalOrder(JSON.parse(raw.toString('utf8')), {
+      order = toCanonicalOrder(adapted.payload, {
         customerByEmail: config.customerByEmail,
         defaultCustomer: config.defaultCustomer,
       });
@@ -142,7 +166,7 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
       ((err as { errorClass?: string }).errorClass === 'authentication' ? 'authentication' : 'unknown');
     errorClass = cls;
     message = describeError(err).message;
-    outcome = cls === 'invalid_data' ? 'rejected' : 'failed';
+    outcome = cls === 'invalid_data' ? 'rejected' : cls === 'input_contract' ? 'held' : 'failed';
   }
 
   const finishedAt = new Date();
@@ -151,6 +175,9 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
     adopted: { repository: ADOPTED.repository, commit: ADOPTED.commit },
     trigger: p.trigger,
     upstreamResult: upstream ? (redact(upstream) as object) : null,
+    apiVersion,
+    ...(compatApplied.length ? { inputCompatApplied: compatApplied } : {}),
+    ...(violations ? { contractViolations: violations } : {}),
   };
   await db.transaction(async (tx) => {
     await tx
@@ -176,7 +203,8 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
       startedAt,
       finishedAt,
     });
-    if (outcome !== 'delivered') {
+    // A held input is recorded by the maintenance event (finding), not as an execution error.
+    if (outcome !== 'delivered' && outcome !== 'held') {
       await tx.insert(observations).values({
         tenantId: integ!.tenantId,
         integrationId: integ!.id,
@@ -196,7 +224,15 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
         .where(eq(integrations.id, integ!.id));
     }
   });
-  return { executed: true, outcome, attemptNo, upstream, errorClass, message };
+  return {
+    executed: true,
+    outcome,
+    attemptNo,
+    upstream,
+    errorClass,
+    message,
+    ...(violations ? { violations } : {}),
+  };
 }
 
 export type RetryRequestResult =
