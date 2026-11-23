@@ -239,3 +239,23 @@ export class ClaudePlanner implements MaintenancePlanner {
       : { outcome: 'no_candidate', hypothesis, summary: 'Planner stopped without submitting a candidate.', cost };
   }
 }
+
+/** Deterministic playbook first; Claude only when no playbook matches and a key is configured. */
+export class CompositePlanner implements MaintenancePlanner {
+  readonly name = 'playbook' as const;
+  constructor(private readonly fallback: MaintenancePlanner | null) {}
+  async run(tb: MaintenanceToolbox): Promise<PlannerOutcome> {
+    const first = await new PlaybookPlanner().run(tb);
+    if (first.outcome === 'candidate_submitted' || !this.fallback || tb.submittedCandidateId) return first;
+    const second = await this.fallback.run(tb);
+    return { ...second, summary: `Playbook: ${first.summary} → ${this.fallback.name}: ${second.summary}` };
+  }
+}
+
+export function plannerFromEnv(env: NodeJS.ProcessEnv = process.env): MaintenancePlanner {
+  const mode = env.MAINTENANCE_PLANNER ?? 'auto';
+  const hasKey = !!(env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN);
+  if (mode === 'playbook') return new PlaybookPlanner();
+  if (mode === 'claude') return new ClaudePlanner();
+  return new CompositePlanner(hasKey ? new ClaudePlanner() : null);
+}
