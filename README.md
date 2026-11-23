@@ -118,6 +118,26 @@ make demo-reconcile
 
 Contract, guarantees and gaps: [`docs/adoption/RECONCILIATION.md`](docs/adoption/RECONCILIATION.md).
 
+### Slice 4: the customer product and a verified maintenance lifecycle
+
+Customers now see the product: the integrations we maintain, an evidence-based status with the rule that
+defines it, and maintenance events told as outcomes ("We resolved a compatibility issue … Zero transactions
+lost.", only when proven). Operators see the same story plus the evidence behind it. The demo changes the
+Shopify fixture's webhook format (fictional, documented); the running worker detects it, holds the affected
+orders, corrects the integration at the adoption boundary (upstream unmodified), validates the correction,
+recovers delayed and missing orders, verifies them line by line in NetSuite and accounts for every order.
+
+```bash
+make reset
+```
+
+```bash
+make demo-maintenance
+```
+
+Then sign in as `ops@bluewave.test` / `bluewave-demo-password`. How it works, and what we can and cannot
+claim: [`docs/product/MAINTENANCE.md`](docs/product/MAINTENANCE.md).
+
 ## Develop locally (without Docker for the app)
 
 Requirements: Node ≥ 22.12, pnpm 10, PostgreSQL 16, Docker (only for the maintenance sandbox).

@@ -193,9 +193,15 @@ describe('customer product through AppPort', () => {
       customerAction: { required: false },
     });
     const fact = (l: string) => ev.facts.find((f) => f.label === l)!.value;
-    expect(fact('Transactions affected')).toMatch(
-      /^3: 2 orders held and delayed; 1 order whose notification never reached us/,
+    expect(fact('Transactions affected')).toBe(
+      '3 orders: 2 held safely and delivered after the fix; 1 never reached us and was found by checking Shopify directly.',
     );
+    // the customer timeline is plain language: no field paths, code or internal vocabulary
+    const timeline = JSON.stringify((ev as unknown as { timeline: unknown }).timeline);
+    expect(timeline).not.toMatch(
+      /line_items|adopted|contract|null rate|configuration version|upstream|webhook/i,
+    );
+    expect(timeline).toMatch(/We noticed that Shopify changed the format/);
     expect(fact('Transactions recovered')).toBe('3 of 3.');
     expect(fact('Final outcome')).toMatch(/^All 4 orders .* exactly once/);
     expect(fact('Customer action')).toBe('None required.');

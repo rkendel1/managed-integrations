@@ -10,6 +10,7 @@
  */
 import { writeFile, mkdir } from 'node:fs/promises';
 import { and, desc, eq } from 'drizzle-orm';
+import { FLOW_TYPE } from '@mi/contracts';
 import {
   createDb,
   incidents,
@@ -89,7 +90,8 @@ const operator = await login(
   process.env.SEED_OPERATOR_EMAIL ?? 'operator@managed-integrations.test',
   process.env.SEED_OPERATOR_PASSWORD || 'operator-demo-password',
 );
-const [integ] = await db.select().from(integrations);
+// The native flow (other tenants may run other flows; row order is not meaningful).
+const [integ] = await db.select().from(integrations).where(eq(integrations.flowType, FLOW_TYPE));
 if (!integ) throw new Error('no integration — run the seed');
 
 /* Preconditions: the fixtures are in-memory; if they restarted since seeding, the demo is invalid. */

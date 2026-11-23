@@ -282,6 +282,22 @@ export async function recordInputContractFinding(
       'Input contract violated; affected orders are held (nothing written) and maintenance has started.',
     evidence: { detector: 'adopted input contract (execute.ts)', firstReceiptId: receipt.id },
   });
+  if (created) {
+    // The generic open writes technical transition notes; they are for operators. The customer gets one plain note.
+    await db
+      .update(incidentEvents)
+      .set({ customerVisible: false })
+      .where(eq(incidentEvents.incidentId, inc.id));
+    await db.insert(incidentEvents).values({
+      incidentId: inc.id,
+      fromStatus: inc.status,
+      toStatus: inc.status,
+      actor: MAINTENANCE_ACTOR,
+      note: `We noticed that Shopify changed the format of the order data it sends (${affectedLabels(finding)}). Affected orders are held safely; nothing incorrect was written.`,
+      customerVisible: true,
+      evidence: { receiptId: receipt.id, apiVersion: receipt.apiVersion },
+    });
+  }
   // The first observation is the finding; later held orders attach to the same event.
   await db
     .update(incidents)
@@ -326,6 +342,13 @@ export async function openMaintenanceEvents(db: Db): Promise<string[]> {
     .filter((r) => !(r.evidence as { maintenance?: Progress }).maintenance?.escalated)
     .map((r) => r.id);
 }
+
+/** Plain-language names of the affected fields (from the contract), for customer-visible notes. */
+const affectedLabels = (f: Finding) =>
+  f.observed.violations
+    .map((v) => UPSTREAM_INPUT_CONTRACT.find((c) => c.path === v.path)?.label ?? 'order data')
+    .join(' and ');
+const orders = (n: number) => `${n} order${n === 1 ? '' : 's'}`;
 
 /* ================================================================== investigation */
 
@@ -912,9 +935,13 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
     if (!inc.investigation) {
       const investigation = await investigate(db, p.cipher, inc);
       await setFacts(db, inc.id, { investigation });
-      await note(db, inc, `Investigated: ${investigation.risk}`, true, {
-        codePaths: investigation.codePaths.length,
-      });
+      await note(
+        db,
+        inc,
+        `We traced the change to the part of your integration that reads ${affectedLabels(inc.finding as Finding)} and confirmed that, left alone, it would have produced incorrect sales orders.`,
+        true,
+        { risk: investigation.risk, codePaths: investigation.codePaths },
+      );
       return { state: 'continue', detail: 'investigated' };
     }
     const correction = inc.correction as
@@ -942,8 +969,9 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       await note(
         db,
         inc,
-        'Correction validated against stored orders and Shopify’s own order records.',
+        'We tested the fix against earlier orders and against Shopify’s own records of the affected orders before switching it on.',
         true,
+        { checks: validation.checks },
       );
       return { state: 'continue', detail: 'validated' };
     }
@@ -978,8 +1006,10 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
     });
     await transitionIncident(db, inc.id, 'recovery', {
       actor: MAINTENANCE_ACTOR,
-      note: `Correction applied at the adoption boundary (configuration version ${configVersion}); upstream code unchanged.`,
+      note: 'We switched the fix on.',
+      // Technical detail for operators lives in the evidence of this timeline entry.
       evidence: {
+        boundary: 'adoption boundary (integration configuration); upstream code unchanged',
         rules: correction.rules!.map((r) => ({ target: r.target, source: r.source })),
         configVersion,
       },
@@ -1017,8 +1047,9 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       await note(
         db,
         inc,
-        `${delivered} of ${rows.length} delayed order(s) delivered through the normal execution path.`,
+        `The ${orders(rows.length)} we held ${rows.length === 1 ? 'was' : 'were'} delivered to NetSuite (${delivered} of ${rows.length}).`,
         true,
+        { released: ids, path: 'normal execution path (maintenance_recovery)' },
       );
       await setProgress(db, inc.id, { phase: 'reconcile' });
       return { state: 'continue', detail: 'released orders finished' };
@@ -1081,7 +1112,11 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       await note(
         db,
         inc,
-        `Checked ${run!.sourceCount ?? 0} Shopify order(s) in the affected window; ${missing.length} had never reached us and are being recovered.`,
+        `We checked all ${orders(run!.sourceCount ?? 0)} Shopify has for the affected period. ${
+          missing.length
+            ? `${missing.length === 1 ? 'One had' : `${missing.length} had`} never reached us; we are recovering ${missing.length === 1 ? 'it' : 'them'}.`
+            : 'None were missing.'
+        }`,
         true,
         { runId: run!.id },
       );
@@ -1101,7 +1136,7 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       if (pending[0]!.n > 0) return { state: 'wait', detail: 'recovering missing orders' };
       await transitionIncident(db, inc.id, 'verification', {
         actor: MAINTENANCE_ACTOR,
-        note: 'Recovery finished; verifying every order in the affected window independently.',
+        note: 'Recovery finished. We are now checking every order from the affected period in NetSuite.',
       });
       await setProgress(db, inc.id, { phase: 'verify_reconcile' });
       return { state: 'continue', detail: 'to verification' };
@@ -1161,7 +1196,7 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       if (blockers.length) return escalate(db, fresh!, `not resolved: ${blockers.join('; ')}`);
       await transitionIncident(db, inc.id, 'resolved', {
         actor: MAINTENANCE_ACTOR,
-        note: `Verified: ${accounting.verified} of ${accounting.population - accounting.excluded.count} order(s) in the affected window are in NetSuite exactly once with matching items, quantities and prices.`,
+        note: `Verified: all ${orders(accounting.verified)} from the affected period are in NetSuite exactly once, with the right items, quantities and prices.`,
         resolution:
           'Compatibility correction applied at the adoption boundary; affected orders delivered and verified.',
         verification: evidence,

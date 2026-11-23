@@ -249,15 +249,15 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
     const affected =
       accounting.delayed + accounting.failedDuringDisruption + accounting.discoveredByReconciliation;
     const parts = [
-      accounting.delayed ? `${plural(accounting.delayed, 'order')} held and delayed` : null,
+      accounting.delayed ? `${accounting.delayed} held safely and delivered after the fix` : null,
       accounting.failedDuringDisruption ? `${accounting.failedDuringDisruption} failed` : null,
       accounting.discoveredByReconciliation
-        ? `${plural(accounting.discoveredByReconciliation, 'order')} whose notification never reached us, found by checking Shopify directly`
+        ? `${accounting.discoveredByReconciliation} never reached us and ${accounting.discoveredByReconciliation === 1 ? 'was' : 'were'} found by checking Shopify directly`
         : null,
     ].filter(Boolean);
     facts.push({
       label: 'Transactions affected',
-      value: affected ? `${affected}: ${parts.join('; ')}.` : 'None.',
+      value: affected ? `${plural(affected, 'order')}: ${parts.join('; ')}.` : 'None.',
     });
     facts.push({ label: 'Transactions recovered', value: `${accounting.recovered} of ${affected}.` });
     const relevant = accounting.population - accounting.excluded.count;
@@ -280,7 +280,7 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
   const relevant = accounting ? accounting.population - accounting.excluded.count : 0;
   const summary = resolved
     ? zeroLoss
-      ? `We detected a change that threatened order processing. We resolved it and verified the ${plural(relevant, 'affected-period order')} against NetSuite.`
+      ? `We detected a change that threatened order processing. We resolved it and verified all ${plural(relevant, 'order')} from the affected period against NetSuite.`
       : `We resolved this issue.${accounting ? ' Not every order could be confirmed; see the outcome.' : ''}`
     : needsYou
       ? 'We need something from you to continue.'

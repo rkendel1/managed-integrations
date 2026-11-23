@@ -51,6 +51,15 @@ Pinned AppPort packages (versions match the local AppPort source tree inspected 
 infrastructure: `resourceTenantAuthorizer` additionally resolves `runId` → integration → tenant. They apply
 to adopted integrations only (`CONFLICT` otherwise). Contract and evidence: `docs/adoption/RECONCILIATION.md`.
 
+### Slice 4 additions (customer product)
+
+`portfolio.list@1`, `portfolio.integration@1` and `maintenance.events.get@1` (observation,
+`integrations.read`), and `maintenance.events.evidence@1` (observation, `integrations.read:any`: operators
+only). MCP tools: `portfolio_list`, `portfolio_integration`, `maintenance_events_get`,
+`maintenance_events_evidence`. None of them writes: maintenance event state is advanced only by the backend
+lifecycle, and `transitionIncident` enforces the evidence required to resolve. The resource-tenant authorizer
+also resolves `eventId` → incident → tenant. Contract and rules: `docs/product/MAINTENANCE.md`.
+
 ### `integrations.list@1`
 
 The first registered business capability (slice 1).
@@ -275,7 +284,8 @@ Recorded output: `docs/evidence/runs/appport-manifest.log`, `docs/evidence/runs/
 
 Business capabilities: `integrations.list`, since slice 2 `deliveries.list` / `deliveries.get` /
 `deliveries.retry`, and since slice 3 `reconciliation.start` / `runs` / `items` / `recover` (all adopted
-executor only). There is no capability for creating, configuring, enabling, disabling or syncing
+executor only), and since slice 4 `portfolio.list` / `portfolio.integration` / `maintenance.events.get` /
+`maintenance.events.evidence` (read-only). There is no capability for creating, configuring, enabling, disabling or syncing
 integrations; no connection or credential capability; no sync, backlog, incident, maintenance or release
 capability, and the native engine's reconciliation is not projected. Those operations remain
 in the pre-existing REST/worker paths and are **not** projected through AppPort yet.

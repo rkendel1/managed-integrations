@@ -82,6 +82,7 @@ test('customer: a decision only the customer can make (unmapped SKU) is asked fo
     },
   });
   await login(page, CUSTOMER);
+  await page.waitForURL(/\/app$/);
   // The scheduled sync (every minute on the demo stack) picks the order up; no customer button involved.
   await expect(async () => {
     await page.reload();

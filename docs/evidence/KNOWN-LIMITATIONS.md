@@ -95,3 +95,19 @@ fields upstream reads, not Shopify's webhook body; verification compares identit
 not lines or amounts; orders with more than 100 lines are excluded; `ambiguous` /
 `destination_exists_untracked` items have no resolution action; edits, cancellations after delivery and
 refunds are not reconciled.
+
+## Slice 4 — customer product and maintenance lifecycle
+
+See `docs/product/MAINTENANCE.md` §10. In short:
+
+- Fixture-only, and the provider change is fictional.
+- The input contract detects missing or ill-typed fields, not changes in meaning.
+- The only automatic correction is "a documented field moved" (verified against stored payloads and
+  Shopify's own records); everything else escalates, and there is no operator action yet to resume an
+  escalated event.
+- NetSuite-side changes for the adopted flow are not detected.
+- There are no outbound customer notifications.
+- "Verified" (7 days) and "Protected" (a consistent check within 24 h) are fixed product rules.
+- The native flow's customer settings page (SKU mappings) is still the slice-1 page.
+- Native incidents appear in the customer's maintenance history with the facts they have; they have no
+  transaction accounting, so they never carry a zero-loss claim.
