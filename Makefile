@@ -4,7 +4,7 @@ export SOURCE_COMMIT := $(shell git rev-parse HEAD)
 export MI_REPO_DIR := $(CURDIR)
 COMPOSE := docker compose --env-file .env
 
-.PHONY: env build up down reset logs ps demo-failure e2e prod-up backup demo-adopted demo-reconcile demo-maintenance demo-onboarding demo-stripe
+.PHONY: env build up down reset logs ps demo-failure e2e prod-up backup demo-adopted demo-reconcile demo-maintenance demo-onboarding demo-stripe demo-applications
 
 env:            ## create .env with a fresh encryption key (once)
 	@test -f .env || (cp .env.example .env && echo "created .env")
@@ -54,6 +54,9 @@ demo-maintenance: ## SLICE 4: a provider change is detected, fixed, verified and
 
 demo-stripe: ## SLICE 6: the second integration (Stripe → QuickBooks, adopted ledgerly) on the shared mechanisms (run `make reset` first)
 	$(COMPOSE) --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-stripe.ts
+
+demo-applications: ## SLICE 7: two provider-dependent applications (Stripe, QuickBooks) adopted and maintained (run `make reset` first)
+	$(COMPOSE) --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-applications.ts
 
 demo-onboarding: ## SLICE 5: a new customer connects, we discover their integration, they confirm, we protect and adapt it (run `make reset` first)
 	$(COMPOSE) --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-onboarding.ts

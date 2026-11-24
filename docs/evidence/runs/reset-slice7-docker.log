@@ -1,0 +1,334 @@
+docker compose --env-file .env --profile demo down -v
+ Container managed-integrations-api-1 Stopping 
+ Container managed-integrations-worker-1 Stopping 
+ Container managed-integrations-maintenance-1 Stopping 
+ Container managed-integrations-maintenance-1 Stopped 
+ Container managed-integrations-maintenance-1 Removing 
+ Container managed-integrations-worker-1 Stopped 
+ Container managed-integrations-worker-1 Removing 
+ Container managed-integrations-api-1 Stopped 
+ Container managed-integrations-api-1 Removing 
+ Container managed-integrations-maintenance-1 Removed 
+ Container managed-integrations-api-1 Removed 
+ Container managed-integrations-worker-1 Removed 
+ Container managed-integrations-migrate-1 Stopping 
+ Container managed-integrations-migrate-1 Stopped 
+ Container managed-integrations-migrate-1 Removing 
+ Container managed-integrations-migrate-1 Removed 
+ Container managed-integrations-postgres-1 Stopping 
+ Container managed-integrations-fixtures-1 Stopping 
+ Container managed-integrations-postgres-1 Stopped 
+ Container managed-integrations-postgres-1 Removing 
+ Container managed-integrations-postgres-1 Removed 
+ Container managed-integrations-fixtures-1 Stopped 
+ Container managed-integrations-fixtures-1 Removing 
+ Container managed-integrations-fixtures-1 Removed 
+ Volume managed-integrations_pgdata Removing 
+ Volume managed-integrations_artifacts Removing 
+ Network managed-integrations_default Removing 
+ Network managed-integrations_default Removed 
+ Volume managed-integrations_pgdata Removed 
+ Volume managed-integrations_artifacts Removed 
+make up
+make[1]: Entering directory '/home/user/managed-integrations'
+docker compose --env-file .env --profile demo up -d --build
+ Image managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f Building 
+ Image managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f Building 
+ Image managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f Building 
+ Image managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f Building 
+ Image managed-integrations-maintenance:dba7378f1c8452c02b210f9903663995d2ea8d7f Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 4.66kB done
+#1 DONE 0.0s
+
+#2 [fixtures internal] load build definition from Dockerfile
+#2 DONE 0.0s
+
+#2 [worker internal] load build definition from Dockerfile
+#2 transferring dockerfile: 4.29kB done
+#2 DONE 0.0s
+
+#3 [maintenance] resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 0.4s
+
+#4 [fixtures] docker-image://docker.io/docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
+#4 resolve docker.io/docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183 0.0s done
+#4 CACHED
+
+#5 [maintenance internal] load metadata for mirror.gcr.io/library/node:22-bookworm-slim
+#5 DONE 0.3s
+
+#6 [maintenance internal] load metadata for mirror.gcr.io/library/docker:29-cli
+#6 DONE 0.3s
+
+#7 [worker internal] load .dockerignore
+#7 transferring context: 166B done
+#7 DONE 0.0s
+
+#8 [maintenance dockercli 1/1] FROM mirror.gcr.io/library/docker:29-cli@sha256:34507eb5069d8be82c95dd3b6987d4250fd5fee49b82e2509b7d7a7030740d6d
+#8 resolve mirror.gcr.io/library/docker:29-cli@sha256:34507eb5069d8be82c95dd3b6987d4250fd5fee49b82e2509b7d7a7030740d6d 0.0s done
+#8 DONE 0.0s
+
+#9 [maintenance build 1/8] FROM mirror.gcr.io/library/node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
+#9 resolve mirror.gcr.io/library/node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee 0.0s done
+#9 DONE 0.0s
+
+#10 [fixtures internal] load build context
+#10 transferring context: 81.52kB 0.0s done
+#10 transferring context: 81.52kB 0.0s done
+#10 DONE 0.0s
+
+#8 [maintenance dockercli 1/1] FROM mirror.gcr.io/library/docker:29-cli@sha256:34507eb5069d8be82c95dd3b6987d4250fd5fee49b82e2509b7d7a7030740d6d
+#8 CACHED
+
+#11 [maintenance build 2/8] RUN --mount=type=secret,id=extra_ca,required=false     APTOPT="";     if [ -s /run/secrets/extra_ca ]; then       sed -i 's#http://deb.debian.org#https://deb.debian.org#g' /etc/apt/sources.list.d/debian.sources;       cp /run/secrets/extra_ca /tmp/build-extra-ca.crt && chmod 0644 /tmp/build-extra-ca.crt;       APTOPT="-o Acquire::https::CAInfo=/tmp/build-extra-ca.crt";       if [ -n "${HTTPS_PROXY:-}" ]; then APTOPT="$APTOPT -o Acquire::https::Proxy=$HTTPS_PROXY"; fi;     fi;     apt-get $APTOPT update && apt-get $APTOPT install -y --no-install-recommends ca-certificates git ripgrep     && rm -rf /var/lib/apt/lists/* /tmp/build-extra-ca.crt && git config --system --add safe.directory '*'     && git config --system url."https://github.com/".insteadOf "git@github.com:"
+#11 CACHED
+
+#12 [maintenance build 3/8] RUN --mount=type=secret,id=extra_ca,required=false     if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca npm_config_cafile=/run/secrets/extra_ca; fi;     npm install -g pnpm@10.28.0
+#12 CACHED
+
+#13 [maintenance build 4/8] WORKDIR /app
+#13 CACHED
+
+#14 [api build 5/8] COPY . .
+#14 DONE 0.1s
+
+#15 [worker build 6/8] RUN --mount=type=secret,id=extra_ca,required=false     if [ -s /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca npm_config_cafile=/run/secrets/extra_ca GIT_SSL_CAINFO=/run/secrets/extra_ca; fi;     pnpm install --frozen-lockfile && pnpm fetch --frozen-lockfile
+#15 0.511 Scope: all 19 workspace projects
+#15 0.601 Lockfile is up to date, resolution step is skipped
+#15 0.643 Progress: resolved 1, reused 0, downloaded 0, added 0
+#15 0.704 Packages: +530
+#15 0.704 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+#15 1.651 Progress: resolved 530, reused 0, downloaded 32, added 32
+#15 2.657 Progress: resolved 530, reused 0, downloaded 89, added 89
+#15 3.668 Progress: resolved 530, reused 0, downloaded 140, added 139
+#15 4.668 Progress: resolved 530, reused 0, downloaded 143, added 141
+#15 5.669 Progress: resolved 530, reused 0, downloaded 145, added 141
+#15 6.670 Progress: resolved 530, reused 0, downloaded 153, added 145
+#15 7.670 Progress: resolved 530, reused 0, downloaded 205, added 205
+#15 8.671 Progress: resolved 530, reused 0, downloaded 253, added 253
+#15 9.701 Progress: resolved 530, reused 0, downloaded 306, added 304
+#15 10.73 Progress: resolved 530, reused 0, downloaded 360, added 360
+#15 11.74 Progress: resolved 530, reused 0, downloaded 430, added 428
+#15 12.74 Progress: resolved 530, reused 0, downloaded 489, added 486
+#15 13.75 Progress: resolved 530, reused 0, downloaded 528, added 528
+#15 13.83 Progress: resolved 530, reused 0, downloaded 530, added 530, done
+#15 13.91  WARN  Failed to create bin at /app/node_modules/.pnpm/node_modules/.bin/ledgerly. ENOENT: no such file or directory, open '/app/node_modules/.pnpm/node_modules/ledgerly/dist/cli.js'
+#15 13.91  WARN  Failed to create bin at /app/node_modules/.pnpm/node_modules/.bin/ledgerly-server. ENOENT: no such file or directory, open '/app/node_modules/.pnpm/node_modules/ledgerly/dist/server/cli.js'
+#15 14.06 .../esbuild@0.25.12/node_modules/esbuild postinstall$ node install.js
+#15 14.06 .../esbuild@0.18.20/node_modules/esbuild postinstall$ node install.js
+#15 14.06 .../esbuild@0.28.2/node_modules/esbuild postinstall$ node install.js
+#15 14.15 .../esbuild@0.25.12/node_modules/esbuild postinstall: Done
+#15 14.17 .../esbuild@0.18.20/node_modules/esbuild postinstall: Done
+#15 14.19 .../esbuild@0.28.2/node_modules/esbuild postinstall: Done
+#15 14.39  WARN  Failed to create bin at /app/packages/adopted-ledgerly/node_modules/.bin/ledgerly. ENOENT: no such file or directory, open '/app/node_modules/.pnpm/ledgerly@git+https+++git@github.com+jakethehoffer+ledgerly.git+3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090_stripe@16.12.0/node_modules/ledgerly/dist/cli.js'
+#15 14.39  WARN  Failed to create bin at /app/packages/adopted-ledgerly/node_modules/.bin/ledgerly-server. ENOENT: no such file or directory, open '/app/node_modules/.pnpm/ledgerly@git+https+++git@github.com+jakethehoffer+ledgerly.git+3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090_stripe@16.12.0/node_modules/ledgerly/dist/server/cli.js'
+#15 15.27 
+#15 15.27 devDependencies:
+#15 15.27 + @eslint/js 10.0.1
+#15 15.27 + @mi/adopted-ledgerly 0.1.0 <- packages/adopted-ledgerly
+#15 15.27 + @mi/adopted-order-sync 0.1.0 <- packages/adopted-order-sync
+#15 15.27 + @mi/adopted-qbo-tools 0.1.0 <- packages/adopted-qbo-tools
+#15 15.27 + @mi/adopted-stripe-subscriptions 0.1.0 <- packages/adopted-stripe-subscriptions
+#15 15.27 + @mi/contracts 0.1.0 <- packages/contracts
+#15 15.27 + @mi/database 0.1.0 <- packages/database
+#15 15.27 + @mi/integration-shopify-netsuite 0.1.0 <- packages/integration-shopify-netsuite
+#15 15.27 + @mi/integrations 0.1.0 <- packages/integrations
+#15 15.27 + @mi/maintenance 0.1.0 <- packages/maintenance
+#15 15.27 + @mi/managed 0.1.0 <- packages/managed
+#15 15.27 + @mi/observability 0.1.0 <- packages/observability
+#15 15.27 + @mi/provider-connections 0.1.0 <- packages/provider-connections
+#15 15.27 + @mi/reliability 0.1.0 <- packages/reliability
+#15 15.27 + @mi/test-fixtures 0.1.0 <- packages/test-fixtures
+#15 15.27 + @playwright/test 1.63.0
+#15 15.27 + @types/node 22.20.5
+#15 15.27 + @types/pg 8.23.1
+#15 15.27 + drizzle-orm 0.45.4
+#15 15.27 + eslint 10.15.0
+#15 15.27 + prettier 3.10.1
+#15 15.27 + tsx 4.23.15
+#15 15.27 + typescript 5.9.3
+#15 15.27 + typescript-eslint 8.73.0
+#15 15.27 + vitest 5.1.1
+#15 15.27 
+#15 15.45  WARN  Failed to create bin at /app/packages/adopted-ledgerly/node_modules/.bin/ledgerly. ENOENT: no such file or directory, open '/app/packages/adopted-ledgerly/node_modules/ledgerly/dist/cli.js'
+#15 15.45  WARN  Failed to create bin at /app/packages/adopted-ledgerly/node_modules/.bin/ledgerly-server. ENOENT: no such file or directory, open '/app/packages/adopted-ledgerly/node_modules/ledgerly/dist/server/cli.js'
+#15 15.51 Done in 15.3s using pnpm v10.28.0
+#15 15.90 Importing packages to virtual store
+#15 15.92 Already up to date
+#15 16.61 
+#15 DONE 17.3s
+
+#16 [migrate build 7/8] RUN pnpm --filter @mi/web build
+#16 0.716 
+#16 0.716 > @mi/web@0.1.0 build /app/apps/web
+#16 0.716 > vite build
+#16 0.716 
+#16 1.056 [36mvite v8.3.8 [32mbuilding client environment for production...[36m[39m
+#16 1.072 transforming...
+#16 1.211 ✓ 190 modules transformed.
+#16 1.251 rendering chunks...
+#16 1.356 computing gzip size...
+#16 1.364 dist/index.html                   0.44 kB │ gzip:   0.29 kB
+#16 1.364 dist/assets/index-BKvqi2Gt.css   35.78 kB │ gzip:   6.85 kB
+#16 1.364 dist/assets/index-BXWw60tv.js   424.75 kB │ gzip: 128.39 kB
+#16 1.364 
+#16 1.367 [33m[33m[INEFFECTIVE_DYNAMIC_IMPORT] [0msrc/lib/api.ts is dynamically imported by src/pages/welcome.tsx but also statically imported by src/main.tsx, src/pages/customer.tsx, src/pages/ops.tsx, src/pages/welcome.tsx, dynamic import will not move module into another chunk.
+#16 1.367 [39m
+#16 1.367 [32m✓ built in 309ms[39m
+#16 DONE 1.4s
+
+#17 [maintenance build 8/8] RUN if [ -n "dba7378f1c8452c02b210f9903663995d2ea8d7f" ]; then SOURCE_COMMIT=dba7378f1c8452c02b210f9903663995d2ea8d7f pnpm exec tsx scripts/build-baseline-artifact.ts baseline-artifact;     else echo "WARNING: SOURCE_COMMIT not set; no baseline artifact (maintenance cannot run)"; mkdir -p baseline-artifact; fi
+#17 1.622 built /app/baseline-artifact/impl-dba7378f1c84-4499e3143818.mjs sha256=4499e31438186439f356e10d137712de63d31e13417ce0bf9d1d7c12c080769e
+#17 DONE 1.7s
+
+#18 [maintenance maintenance 1/1] COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
+#18 DONE 0.1s
+
+#19 [migrate runtime 1/1] RUN mkdir -p /data/artifacts /app/packages/adopted-stripe-subscriptions/.artifacts /app/packages/adopted-qbo-tools/.artifacts     && chown -R node:node /data /app/baseline-artifact /app/packages/adopted-stripe-subscriptions/.artifacts /app/packages/adopted-qbo-tools/.artifacts
+#19 DONE 0.1s
+
+#20 [worker] exporting to image
+#20 exporting layers
+#20 ...
+
+#21 [api] exporting to image
+#21 ...
+
+#22 [maintenance] exporting to image
+#22 ...
+
+#23 [migrate] exporting to image
+#23 ...
+
+#24 [fixtures] exporting to image
+#24 ...
+
+#22 [maintenance] exporting to image
+#22 exporting layers 15.4s done
+#22 exporting manifest sha256:048c607fc4991da2fe729be197536d7b0c15b1db00f6abac604796ddf3a5b3bc 0.0s done
+#22 exporting config sha256:2f1d9f58bccd791925d17d34f2ed4d36e18cfd6d3e026af6c7420a10a8cd3942 0.0s done
+#22 exporting attestation manifest sha256:47d5aa8632814a8f00d192c1aa39dc4edf76a5852f1c35f527ceaa32fe111808 0.0s done
+#22 exporting manifest list sha256:d7dc4bff2e0509239e3ab717f811ae6771d269a7ec50f07be0780eb71175ff32 0.0s done
+#22 naming to docker.io/library/managed-integrations-maintenance:dba7378f1c8452c02b210f9903663995d2ea8d7f
+#22 naming to docker.io/library/managed-integrations-maintenance:dba7378f1c8452c02b210f9903663995d2ea8d7f done
+#22 unpacking to docker.io/library/managed-integrations-maintenance:dba7378f1c8452c02b210f9903663995d2ea8d7f
+#22 ...
+
+#24 [fixtures] exporting to image
+#24 exporting layers 15.3s done
+#24 exporting manifest sha256:cc9ff2458b72f6a6be8dc256a33788d9ca83d26569ca63882df675e40bd049c1 0.0s done
+#24 exporting config sha256:584afa5b4e23cc5e9b4afcbd73cc9e2bbbde8fc4d1abb59a416e41c1d9a7c20a 0.0s done
+#24 exporting attestation manifest sha256:87c539bff730907cd84b713a1a31f8ff90248948ee507377aadd8e4cae7c87f5 0.0s done
+#24 exporting manifest list sha256:260f7c2177f94b18f9463ea24b7397927cdda4a553187174852893241c323d4b 0.0s done
+#24 naming to docker.io/library/managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f done
+#24 unpacking to docker.io/library/managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f
+#24 ...
+
+#20 [worker] exporting to image
+#20 exporting layers 15.3s done
+#20 exporting manifest sha256:1a0bc9703c49f4e7b85d592b3bbd5a3d79809a7712f606f15b3bfe9321a96f24 0.0s done
+#20 exporting config sha256:12005434298b6dd9ccef4aa4d28af90394b7e0defe60efbcb409d63815429e44 0.0s done
+#20 exporting attestation manifest sha256:ed2d9fc1f948538378b4cbfe959fbe56d904920bb2daffba9e3ecbe6533852e6 0.0s done
+#20 exporting manifest list sha256:577a0ea4cbe4b46300c62c3f906f2d3253e066909d4882e42544cf0d738dbf10 0.0s done
+#20 naming to docker.io/library/managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f done
+#20 ...
+
+#23 [migrate] exporting to image
+#23 exporting layers 15.3s done
+#23 exporting manifest sha256:81cd433bf7fb79cd4798992cbb3609c57dc2c87f7e2515b3c7c0c3c1d3702e04 0.0s done
+#23 exporting config sha256:fa5f7ab7a138da96027c49167b5afca05972ba57500d066a00119c066f37748a 0.0s done
+#23 exporting attestation manifest sha256:3d812aeb21ffd6c3ff42cf7732637341c2fb7cbe3f8406535908cc8d59940d9a 0.0s done
+#23 exporting manifest list sha256:5b8636a6e7f17190c7b2955876cdab65df62021ef8d7c38ec583ef3338c00824 0.0s done
+#23 naming to docker.io/library/managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f done
+#23 ...
+
+#21 [api] exporting to image
+#21 exporting layers 15.3s done
+#21 exporting manifest sha256:d2fa77f86c3aa94fd6ffaaf27a699d51afbb8f01de6eaecb4c48418af30d9681 0.0s done
+#21 exporting config sha256:ac826ad7d589d43d259cd957d110ffceff97cefb7c5d3190fda71d7d95a61e34 0.0s done
+#21 exporting attestation manifest sha256:7352fff23b4f9eb65b5fd1219ca42c2dfd6b3331675ee9782e83e5f8a64cca1c 0.0s done
+#21 exporting manifest list sha256:787973c4733072c5d0f1675832eb25f7230db9624a02b7ac9662f2cb8222b480 0.0s done
+#21 naming to docker.io/library/managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f done
+#21 ...
+
+#24 [fixtures] exporting to image
+#24 unpacking to docker.io/library/managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f 15.0s done
+#24 DONE 30.5s
+
+#21 [api] exporting to image
+#21 unpacking to docker.io/library/managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f 15.0s done
+#21 DONE 30.4s
+
+#20 [worker] exporting to image
+#20 unpacking to docker.io/library/managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f 15.0s done
+#20 DONE 30.5s
+
+#23 [migrate] exporting to image
+#23 unpacking to docker.io/library/managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f 15.1s done
+#23 DONE 30.5s
+
+#22 [maintenance] exporting to image
+#22 ...
+
+#25 [api] resolving provenance for metadata file
+#25 DONE 0.1s
+
+#22 [maintenance] exporting to image
+#22 unpacking to docker.io/library/managed-integrations-maintenance:dba7378f1c8452c02b210f9903663995d2ea8d7f 15.3s done
+#22 DONE 30.8s
+
+#26 [fixtures] resolving provenance for metadata file
+#26 DONE 0.0s
+
+#27 [migrate] resolving provenance for metadata file
+#27 DONE 0.0s
+
+#28 [worker] resolving provenance for metadata file
+#28 DONE 0.1s
+
+#29 [maintenance] resolving provenance for metadata file
+#29 DONE 0.0s
+ Image managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f Built 
+ Image managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f Built 
+ Image managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f Built 
+ Image managed-integrations:dba7378f1c8452c02b210f9903663995d2ea8d7f Built 
+ Image managed-integrations-maintenance:dba7378f1c8452c02b210f9903663995d2ea8d7f Built 
+ Network managed-integrations_default Creating 
+ Volume managed-integrations_artifacts Creating 
+ Volume managed-integrations_pgdata Creating 
+ Volume managed-integrations_pgdata Created 
+ Volume managed-integrations_artifacts Created 
+ Network managed-integrations_default Created 
+ Container managed-integrations-fixtures-1 Creating 
+ Container managed-integrations-postgres-1 Creating 
+ Container managed-integrations-fixtures-1 Created 
+ Container managed-integrations-postgres-1 Created 
+ Container managed-integrations-migrate-1 Creating 
+ Container managed-integrations-migrate-1 Created 
+ Container managed-integrations-worker-1 Creating 
+ Container managed-integrations-maintenance-1 Creating 
+ Container managed-integrations-api-1 Creating 
+ Container managed-integrations-maintenance-1 Created 
+ Container managed-integrations-api-1 Created 
+ Container managed-integrations-worker-1 Created 
+ Container managed-integrations-fixtures-1 Starting 
+ Container managed-integrations-postgres-1 Starting 
+ Container managed-integrations-fixtures-1 Started 
+ Container managed-integrations-fixtures-1 Waiting 
+ Container managed-integrations-postgres-1 Started 
+ Container managed-integrations-postgres-1 Waiting 
+ Container managed-integrations-fixtures-1 Healthy 
+ Container managed-integrations-postgres-1 Healthy 
+ Container managed-integrations-migrate-1 Starting 
+ Container managed-integrations-migrate-1 Started 
+ Container managed-integrations-migrate-1 Waiting 
+ Container managed-integrations-migrate-1 Exited 
+ Container managed-integrations-worker-1 Starting 
+ Container managed-integrations-api-1 Starting 
+ Container managed-integrations-maintenance-1 Starting 
+ Container managed-integrations-worker-1 Started 
+ Container managed-integrations-api-1 Started 
+ Container managed-integrations-maintenance-1 Started 
+UI: http://localhost:3000  (customer@acme.test / customer-demo-password, operator@managed-integrations.test / operator-demo-password)
+make[1]: Leaving directory '/home/user/managed-integrations'

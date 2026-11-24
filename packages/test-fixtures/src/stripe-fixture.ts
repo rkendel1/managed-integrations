@@ -935,6 +935,23 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
     const r = control.createPayout({ amount: b.amount, ...(b.daysAgo ? { at: at(b.daysAgo)! } : {}) });
     return { payoutId: r.payout.id, eventId: r.event.id };
   });
+  /* slice 7: a Stripe-dependent application's world */
+  app.post('/__fixture/subscription', async (req) => {
+    const b = (req.body ?? {}) as { amount?: number };
+    const r = control.createSubscription({ amount: b.amount ?? 2_900 });
+    return { subscriptionId: r.subscription.id, eventId: r.event.id, invoiceEventId: r.invoiceEvent.id };
+  });
+  app.post('/__fixture/subscription/:id/renew', async (req) => ({ eventId: control.renewSubscription((req.params as { id: string }).id).event.id }));
+  app.post('/__fixture/subscription/:id/fail', async (req) => {
+    const r = control.failRenewal((req.params as { id: string }).id);
+    return { eventId: r.event.id, invoiceEventId: r.invoiceEvent.id };
+  });
+  /** The customer (or Stripe) moves a webhook endpoint to another API version. */
+  app.post('/__fixture/endpoint-version', async (req) => {
+    const b = (req.body ?? {}) as { endpointId: string; version: string };
+    control.setEndpointVersion(b.endpointId, b.version);
+    return { ok: true };
+  });
   app.post('/__fixture/drop-webhooks', async (req) => {
     control.dropNextWebhooks(Number((req.body as { n?: number })?.n ?? 1));
     return { ok: true };

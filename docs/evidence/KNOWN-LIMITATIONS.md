@@ -152,3 +152,34 @@ See `docs/product/MAINTENANCE.md` §10. In short:
   resets on restart, which causes one extra probe).
 - **The browser cannot complete the fixture OAuth for QuickBooks** (as for Shopify); the API tests and
   `make demo-stripe` exercise those routes.
+
+## Slice 7 — three-sided change resilience, provider-centric adoption
+
+- **Fixture-only.** Every provider change (Stripe 2025-03-31.basil webhooks, QuickBooks inactive accounts and
+  revoked authorization, NetSuite OneWorld) is reproduced in deterministic fixtures modelled on public
+  documentation. None was run against a live account.
+- **Two applications, one operation each where it matters.** The QuickBooks application is adopted for its
+  `create_invoice` tool only (its ~30 other tools are not hosted). The Stripe application is hosted in full, but
+  its writes are only invoked through `applications.invoke` (no hosted public URL for the customer's frontend).
+- **Deployment bindings.** The Stripe application's Prisma client and environment loader are replaced by host
+  bindings (sha-recorded; the upstream files stay pinned). The binding implements only the Prisma calls the
+  application makes today; a future upstream change that needs more fails validation rather than silently
+  degrading.
+- **The Stripe application's own ordering bug is not corrected.** It stores the last event it receives per
+  object; Stripe does not deliver in order. Provider verification detects a stale record; no correction exists.
+- **Recovery through the application's processor.** The Stripe application dedupes processed events, so
+  recovery calls its own `processStripeEvent` with the stored payload (not its webhook route).
+- **QuickBooks invoice creation is not idempotent** in node-quickbooks (no `requestid`). A request whose outcome
+  is unknown after sending is never re-sent automatically; only requests QuickBooks refused (401 /
+  `invalid_grant`, nothing processed) are held and released.
+- **No upstream watcher.** The QuickBooks application's upstream release is represented by a reviewed dependency
+  change in the catalog (with its evidence); nothing polls GitHub or npm.
+- **No discovery for the QuickBooks application** (an MCP server leaves no signature in QuickBooks); it is offered
+  as a new managed instance.
+- **Combined changes are coordinated within one integration only** (`blockingEvents`); two integrations that
+  share a provider are maintained independently.
+- **Target verification population** for NetSuite OneWorld is the orders the integration received in the
+  period; missed webhooks in that period are found by the source event's reconciliation, not by the target
+  event.
+- **Not adopted:** `rkendel1/saaskit` (the account's own Stripe application) was found after selection; it is the
+  natural next application on the same mechanisms.

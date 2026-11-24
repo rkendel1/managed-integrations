@@ -42,7 +42,10 @@ RUN if [ -n "$SOURCE_COMMIT" ]; then SOURCE_COMMIT=$SOURCE_COMMIT pnpm exec tsx 
 FROM build AS runtime
 # Dependencies are kept as installed (tsx executes TypeScript directly; see docs/operations/OPERATIONS.md).
 ENV NODE_ENV=production WEB_DIST_DIR=/app/apps/web/dist ARTIFACT_DIR=/data/artifacts BASELINE_ARTIFACT_DIR=/app/baseline-artifact
-RUN mkdir -p /data/artifacts && chown -R node:node /data /app/baseline-artifact
+# Adopted applications materialize their artifacts inside their own package (so the application's imports resolve
+# to the dependency versions that package installs); those directories must be writable by the service user.
+RUN mkdir -p /data/artifacts /app/packages/adopted-stripe-subscriptions/.artifacts /app/packages/adopted-qbo-tools/.artifacts \
+    && chown -R node:node /data /app/baseline-artifact /app/packages/adopted-stripe-subscriptions/.artifacts /app/packages/adopted-qbo-tools/.artifacts
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=5s --retries=5 CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" || exit 1

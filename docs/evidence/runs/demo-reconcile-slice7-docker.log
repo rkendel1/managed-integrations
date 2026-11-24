@@ -1,0 +1,15 @@
+docker compose --env-file .env --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-reconcile.ts
+[  2.2s]  1. Order #R9ACA-1 created in Shopify; its webhook was received (200) and delivered to NetSuite by the adopted code
+[  2.2s]  2. Order #R9ACA-2 created in Shopify; NO webhook is sent (simulated lost delivery)
+[  2.2s]  3. NetSuite has no sales order for #R9ACA-2 (externalId shopify-6000000008)
+[  4.2s]  4. reconciliation_start (MCP) → run 07e5a1ec-42ef-41d1-bf04-da34aa45cc65: completed/discrepancies, 8 Shopify orders read in window 2026-11-23T02:51:14.512Z → 2026-11-24T02:53:54.635Z
+[  4.2s]  5. #R9ACA-1 → delivered; #R9ACA-2 → missing_delivery (“No webhook receipt, no delivery, and no NetSuite sales order”)
+[  4.3s]  6. reconciliation_recover (MCP) for #R9ACA-2: accepted
+[  6.3s]  7. Executed by the adopted upstream code: attempt 1 delivered via adopted:d01b51d95993 (input origin: reconciliation/recovery_input)
+[  6.3s]  8. NetSuite contains exactly one sales order for #R9ACA-2: id 9046
+[  6.3s]  9. Verified by reading NetSuite back after execution: recovery recovered, destination 9046
+[  8.4s] 10. Second run 8209a83e-3e6c-45ca-909d-9100a43c3033: #R9ACA-2 → delivered
+[  8.4s] 11. Duplicate recovery refused: “Recovery already recovered” / “Classified delivered; only missing deliveries are recovered automatically”; NetSuite still has exactly one
+[  8.5s] 12. Acme (another tenant) is refused reconciliation_items / reconciliation_recover / reconciliation_start on Bluewave
+         evidence: appport.invocation=186 · reconciliation.requested=4 · reconciliation.recovery_requested=1
+DONE in 9s — evidence: /data/artifacts/evidence/demo-reconcile-1795488840973.json

@@ -470,6 +470,7 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
   app.get('/__fixture/state', async () => ({
     realmId,
     journalEntries: [...state.journalEntries.values()],
+    invoices: [...state.invoices.values()],
     requestLog: state.requestLog.slice(-50),
   }));
 
