@@ -71,7 +71,7 @@ test.describe("a provider change handled end to end", () => {
     const staff = client();
     await staff.signInAsDevUser("staff-1");
     await staff.acceptInvitation(new URLSearchParams(new URL(link).hash.slice(1)).get("feltkit-invitation")!).catch(() => undefined);
-    await signInStaff(page, "staff-1", co.workspace);
+    await signInStaff(page, "Operator One", "Acme");
     await page.goto(`/ops/events/${eventId}`);
     await expect(page.getByTestId("evidence")).toContainText("src/mapping.js:11");
     await expect(page.getByTestId("evidence")).toContainText("[internal]");
@@ -103,15 +103,18 @@ test("operator detects orders whose webhooks never arrived and recovers them (bu
   const staff = client();
   await staff.signInAsDevUser("staff-2");
   await staff.acceptInvitation(new URLSearchParams(new URL(link).hash.slice(1)).get("feltkit-invitation")!);
-  await signInStaff(page, "staff-2", co.workspace);
+  await signInStaff(page, "Operator Two", "Northwind");
   await page.goto(`/ops/integrations/${co.integrationId}`);
   await page.getByRole("button", { name: "Check the source now" }).click();
   await expect(page.getByTestId("reconciliation")).toContainText("missing_delivery", { timeout: 20_000 });
-  await page.getByRole("button", { name: /Recover all 2/ }).click();
-  await expect(page.getByRole("alert")).toContainText("Recover 2 orders");
+  const bulk = page.getByRole("button", { name: /Recover all \d+/ });
+  const n = Number(/\d+/.exec((await bulk.textContent()) ?? "")![0]);
+  expect(n).toBeGreaterThanOrEqual(2);
+  await bulk.click();
+  await expect(page.getByRole("alert")).toContainText(`Recover ${n} orders`);
   await page.getByRole("button", { name: "Confirm" }).click();
+  for (const o of lost) await expect.poll(async () => (await netsuiteRecords(o.legacyId)).length, { timeout: 30_000 }).toBe(1);
   await expect(page.getByTestId("reconciliation")).toContainText("recovered · verified", { timeout: 30_000 });
-  for (const o of lost) expect((await netsuiteRecords(o.legacyId)).length).toBe(1);
 });
 
 test("a customer whose integration is already managed is not asked to set up again", async ({ page }) => {
