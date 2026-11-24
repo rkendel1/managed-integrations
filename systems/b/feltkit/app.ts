@@ -1,73 +1,214 @@
 /**
- * The application: its name, who may do what, and its data.
+ * System B — managed integrations on FeltKit.
  *
- * Everything here is stored in one FeltDB instance per environment. In development
- * that is .feltkit/development/state — run `npx feltkit inspect` to see it.
+ * Tenancy is FeltKit's: each customer company is a workspace. Its people hold `owner`; the provider's
+ * staff join it by invitation as `operator`; the integration runtime (the `runtime` component, a
+ * declared principal) is added as `runtime`. Every collection below except `adoptions` belongs to a
+ * workspace, so FeltKit scopes every read and write to the caller's current one.
  */
 import { feltkit, s } from "@feltdb/feltkit";
 
 export const app = feltkit({
-  name: "b",
-  description: "A small task manager that demonstrates the whole FeltKit platform.",
-  // Roles grant AppPort permissions. "tasks.*" grants every tasks.<x> permission.
+  name: "managed-integrations-b",
+  description: "Managed integrations: adopted integration code operated, maintained and verified for each customer.",
   roles: {
-    // Members use the app and Studio's agent (feltkit.agent.*: create, approve, and follow agent tasks).
-    // notifications.*: a principal reads, marks, and dismisses only its own notifications.
-    // webhooks.emit + webhooks.deliver: their changes notify registered endpoints (task.created,
-    // task.completed); each delivery runs as the person whose change emitted it.
-    member: ["projects.*", "tasks.*", "files.*", "notifications.*", "webhooks.emit", "webhooks.deliver", "feltkit.agent.*"],
-    // Viewers read. They can see agent tasks but not start or approve them.
-    viewer: ["projects.read", "tasks.read", "files.read", "notifications.read", "feltkit.agent.read"],
-    // Agents can read, complete tasks, and leave notes. They cannot create or delete.
-    // feltkit.agent.*: discover the app (feltkit_context), work tasks, propose actions; a person approves.
-    agent: ["projects.read", "tasks.read", "tasks.complete", "tasks.note", "files.read", "files.write", "notifications.send", "webhooks.emit", "webhooks.deliver", "feltkit.agent.*"],
-    // Admins configure the app in Studio → Services: the model (intelligence.*), stored
-    // credentials (credential.*), configuration, API keys, webhooks, jobs, and schedules.
-    // Credentials are stored by reference; the value never enters FeltDB.
-    // feltkit.operations.*: in production, admins are Studio's operators (npx feltkit operator grant).
-    admin: ["intelligence.*", "credential.*", "configuration.*", "apikeys.*", "webhooks.*", "jobs.*", "schedules.*", "feltkit.operations.*"],
+    person: [],
+    owner: ["mi.read", "mi.connect", "mi.configure", "mi.decide", "mi.operate", "tenant.*"],
+    operator: ["mi.read", "mi.read.evidence", "mi.operate", "mi.maintain", "tenant.members.read"],
+    runtime: ["mi.runtime", "mi.read", "jobs.create", "jobs.execute"],
+    admin: ["credential.*", "configuration.*", "jobs.*", "schedules.*", "webhooks.*", "feltkit.operations.*"],
   },
-  // People sign up and sign in with an e-mail address and a password (stored in this app's FeltDB;
-  // only a hash of the password). A new account is a member.
-  auth: { accounts: { roles: ["member"] } },
-  // Development-only identities. Sign in as them from the app or the dashboard.
+  auth: {
+    accounts: { roles: ["person"] },
+    tenant: { name: "company", roles: ["owner", "operator", "runtime"], create: "anyone" },
+  },
   dev: {
-    users: [
-      { id: "ada", name: "Ada Lovelace", roles: ["member", "admin"] },
-      { id: "grace", name: "Grace Hopper", roles: ["viewer"] },
-    ],
+    users: [{ id: "platform-admin", name: "Platform admin", roles: ["admin"] }],
   },
-  // AppPort Services, stored in this app's FeltDB instance, each configured in Studio →
-  // Services. Intelligence is the model the agent decides with (Studio → Models).
   services: {
-    files: true,
-    // The types this app sends; Studio offers them when you send one by hand.
-    notifications: { types: ["task.completed"] },
     configuration: true,
-    // A request authenticated by an API key holds these roles.
-    apiKeys: { roles: ["member"] },
-    // The events this app emits (feltkit/tasks.ts); Studio offers them when you register an endpoint.
-    webhooks: { events: ["task.created", "task.completed"] },
-    // Job type → the mutation that runs it, as the principal that queued it, with retries.
-    jobs: { handlers: { "projects.clear-completed": "projects:clearCompleted" } },
-    schedules: true,
-    intelligence: true,
+  },
+  components: {
+    runtime: {
+      entry: "runtime/component.ts",
+      routes: ["/rt/"],
+      required: true,
+      principal: { id: "component:runtime", roles: ["runtime"] },
+      credentials: ["mi-keyring", "shopify-client-secret"],
+      network: "egress",
+      description: "Receives provider webhooks, holds customer provider credentials, runs adopted integration code.",
+    },
   },
 });
 
-export const projects = app.collection("projects", {
-  name: s.string({ minLength: 1, maxLength: 80 }),
-  createdAt: s.number(),
-  createdBy: s.string(),
-});
+const id = s.string();
+const at = s.number();
 
-export const tasks = app.collection("tasks", {
-  projectId: s.string(),
-  title: s.string({ minLength: 1, maxLength: 200 }),
-  details: s.optional(s.string({ maxLength: 4000 })),
-  done: s.boolean(),
-  createdAt: s.number(),
-  createdBy: s.string(),
-  completedAt: s.optional(s.number()),
-  completedBy: s.optional(s.string()),
-});
+/** Customer provider connections. Secrets are sealed by the runtime component; FeltDB holds ciphertext only. */
+export const connections = app.collection(
+  "connections",
+  {
+    tenantId: s.optional(s.string()),
+    provider: s.enum(["shopify", "netsuite", "stripe", "quickbooks"]),
+    status: s.enum(["pending", "connected", "verified", "error", "revoked", "disconnected"]),
+    account: s.optional(s.string()),
+    sealed: s.optional(s.string()),
+    publicKeyPem: s.optional(s.string()),
+    detail: s.optional(s.string()),
+    updatedAt: at,
+  },
+  { tenant: true, unique: [["tenantId", "provider"]] },
+);
+
+/** One managed integration per workspace and kind: the adopted code it runs and the customer's settings. */
+export const integrations = app.collection(
+  "integrations",
+  {
+    tenantId: s.optional(s.string()),
+    kind: s.enum(["order_sync", "ledgerly", "stripe_app", "qbo_tools"]),
+    enabled: s.boolean(),
+    settings: s.record(s.unknown()),
+    status: s.enum(["protected", "maintaining", "verified", "customer_action", "checking"]),
+    upstream: s.object({ repository: s.string(), commit: s.string() }),
+    createdAt: at,
+  },
+  { tenant: true, unique: [["tenantId", "kind"]] },
+);
+
+/** Every inbound provider event, sealed, with what was done with it. */
+export const receipts = app.collection(
+  "receipts",
+  {
+    tenantId: s.optional(s.string()),
+    integrationId: id,
+    providerEventId: s.string(),
+    topic: s.string(),
+    apiVersion: s.optional(s.string()),
+    sourceId: s.string(),
+    origin: s.enum(["webhook", "reconciliation"]),
+    sealed: s.string(),
+    disposition: s.enum(["accepted", "duplicate_webhook", "already_delivered", "ignored_topic", "joined_recovery"]),
+    receivedAt: at,
+  },
+  { tenant: true, unique: [["tenantId", "integrationId", "providerEventId"]] },
+);
+
+/** One delivery per source transaction (idempotencyKey = integration:source), with its attempt history. */
+export const deliveries = app.collection(
+  "deliveries",
+  {
+    tenantId: s.optional(s.string()),
+    integrationId: id,
+    sourceId: s.string(),
+    reference: s.string(),
+    idempotencyKey: s.string(),
+    receiptId: id,
+    status: s.enum(["queued", "running", "delivered", "rejected", "failed", "held", "awaiting_authorization"]),
+    automaticAttempts: s.integer(),
+    destinationRef: s.optional(s.string()),
+    lastError: s.optional(s.string()),
+    heldBy: s.optional(s.string()),
+    nextAttemptAt: s.optional(at),
+    attempts: s.array(
+      s.object({ at, outcome: s.string(), detail: s.optional(s.string()), by: s.string(), correction: s.optional(s.string()) }),
+    ),
+    updatedAt: at,
+  },
+  { tenant: true, unique: [["tenantId", "idempotencyKey"]], indexes: [{ fields: ["integrationId", "status"] }] },
+);
+
+export const reconRuns = app.collection(
+  "recon_runs",
+  {
+    integrationId: id,
+    status: s.enum(["running", "completed", "failed"]),
+    window: s.object({ from: s.string(), to: s.string() }),
+    counts: s.record(s.integer()),
+    requestedBy: s.string(),
+    startedAt: at,
+    finishedAt: s.optional(at),
+    error: s.optional(s.string()),
+  },
+  { tenant: true },
+);
+
+export const reconItems = app.collection(
+  "recon_items",
+  {
+    tenantId: s.optional(s.string()),
+    runId: id,
+    integrationId: id,
+    sourceId: s.string(),
+    reference: s.string(),
+    classification: s.enum(["delivered", "missing_delivery", "pending_delivery", "failed_delivery", "destination_exists_untracked", "excluded"]),
+    recovery: s.enum(["none", "requested", "recovered", "failed"]),
+    deliveryId: s.optional(id),
+    verifiedAt: s.optional(at),
+  },
+  { tenant: true, unique: [["tenantId", "runId", "sourceId"]] },
+);
+
+/**
+ * A maintenance event: something changed at a boundary (source, target, provider, integration code) and
+ * the integration is being kept whole. Timeline entries marked customerVisible form the customer's view.
+ */
+export const events = app.collection(
+  "events",
+  {
+    integrationId: id,
+    kind: s.string(),
+    boundary: s.enum(["source", "target", "provider", "integration", "combined"]),
+    status: s.enum(["detected", "investigating", "requires_action", "recovery", "verification", "resolved"]),
+    dedupeKey: s.string(),
+    finding: s.optional(s.record(s.unknown())),
+    accounting: s.optional(s.object({ affected: s.integer(), delivered: s.integer(), unresolved: s.integer(), duplicates: s.integer() })),
+    timeline: s.array(s.object({ at, status: s.string(), text: s.string(), customerVisible: s.boolean() })),
+    openedAt: at,
+    resolvedAt: s.optional(at),
+  },
+  { tenant: true, indexes: [{ fields: ["integrationId", "status"] }] },
+);
+
+/** Corrections: how a change is answered. Every transition is recorded in history. */
+export const corrections = app.collection(
+  "corrections",
+  {
+    integrationId: id,
+    eventId: s.optional(id),
+    kind: s.enum(["adapter", "patch", "configuration", "decision", "unsupported"]),
+    status: s.enum(["proposed", "validating", "validated", "active", "rejected", "rolled_back", "unsupported"]),
+    scopeKey: s.string(),
+    spec: s.record(s.unknown()),
+    validation: s.optional(s.object({ passed: s.boolean(), checks: s.array(s.object({ name: s.string(), result: s.enum(["passed", "failed", "not_applicable"]), detail: s.string() })) })),
+    question: s.optional(s.object({ text: s.string(), options: s.array(s.string()), authority: s.enum(["customer", "operator"]) })),
+    answer: s.optional(s.object({ choice: s.string(), by: s.string(), at })),
+    history: s.array(s.object({ at, from: s.string(), to: s.string(), by: s.string(), note: s.optional(s.string()) })),
+    createdAt: at,
+  },
+  { tenant: true, indexes: [{ fields: ["integrationId", "status"] }] },
+);
+
+/** Onboarding position per workspace and kind. */
+export const onboardings = app.collection(
+  "onboardings",
+  {
+    tenantId: s.optional(s.string()),
+    kind: s.string(),
+    status: s.enum(["connect", "discovering", "confirm", "activating", "managed", "blocked"]),
+    discovery: s.optional(s.record(s.unknown())),
+    confirmedVersion: s.optional(s.integer()),
+    steps: s.record(s.enum(["pending", "done", "failed"])),
+    updatedAt: at,
+  },
+  { tenant: true, unique: [["tenantId", "kind"]] },
+);
+
+/**
+ * One-time tickets a person's browser presents to the runtime component's routes (the FeltKit pattern for
+ * reaching a component without a FeltKit session token). Not workspace-scoped: the component redeems a
+ * ticket before it knows the workspace; the record carries it.
+ */
+export const tickets = app.collection(
+  "tickets",
+  { workspace: s.string(), purpose: s.string(), subject: s.string(), principal: s.string(), expiresAt: at, usedAt: s.optional(at) },
+);

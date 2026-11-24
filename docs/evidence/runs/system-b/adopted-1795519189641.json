@@ -1,0 +1,80 @@
+{
+  "scenario": "adopted",
+  "system": "B",
+  "startedAt": "2026-11-24T11:19:49.641Z",
+  "ms": 1662,
+  "steps": [
+    {
+      "n": "1",
+      "text": "Company tnt_be01ca353547334f53e6b166 connected: shopify=verified, netsuite=verified",
+      "ms": 407
+    },
+    {
+      "n": "2",
+      "text": "Adopted implementation attached: github.com/Milo-ai-HQ/shopify-erp-order-sync @ d01b51d95993; webhook subscribed",
+      "ms": 727
+    },
+    {
+      "n": "3",
+      "text": "Signed orders/create → upstream code created NetSuite sales order 9001",
+      "ms": 1067,
+      "data": [
+        {
+          "at": 1795519190590,
+          "outcome": "delivered",
+          "by": "runtime (github.com/Milo-ai-HQ/shopify-erp-order-sync @ d01b51d95993)",
+          "detail": "upstream: created"
+        }
+      ]
+    },
+    {
+      "n": "4",
+      "text": "Independent check: the simulator holds the record (read without credentials → 401; state below)",
+      "ms": 1069
+    },
+    {
+      "n": "5",
+      "text": "Failure represented accurately: rejected — \"Items not found in NetSuite: SKU-PURPLE\"",
+      "ms": 1254
+    },
+    {
+      "n": "6",
+      "text": "Another company is refused: NOT_FOUND: No such delivery.",
+      "ms": 1325
+    },
+    {
+      "n": "7",
+      "text": "Simulator stand-in for the customer's fix: item SKU-PURPLE now exists in NetSuite",
+      "ms": 1326
+    },
+    {
+      "n": "8",
+      "text": "Retry → {\"status\":\"queued\",\"previousStatus\":\"rejected\"}; duplicate → refused (CONFLICT)",
+      "ms": 1336
+    },
+    {
+      "n": "9",
+      "text": "Recovered: NetSuite sales order 9002",
+      "ms": 1660,
+      "data": [
+        {
+          "outcome": "rejected",
+          "by": "runtime (github.com/Milo-ai-HQ/shopify-erp-order-sync @ d01b51d95993)"
+        },
+        {
+          "outcome": "retry_requested",
+          "by": "acct_2c2620df8edfb4fa2754b1f4f17ee631"
+        },
+        {
+          "outcome": "delivered",
+          "by": "runtime (github.com/Milo-ai-HQ/shopify-erp-order-sync @ d01b51d95993)"
+        }
+      ]
+    },
+    {
+      "n": "10",
+      "text": "Exactly one NetSuite record per order",
+      "ms": 1662
+    }
+  ]
+}

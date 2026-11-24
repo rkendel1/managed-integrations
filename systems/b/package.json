@@ -14,10 +14,9 @@
   },
   "dependencies": {
     "@feltdb/feltkit": "^0.4.0",
-    "@feltdb/webllm": ">=0.23.0 <1.0.0",
-    "@mlc-ai/web-llm": "^0.2.84",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "shopify-sync": "github:Milo-ai-HQ/shopify-erp-order-sync#d01b51d95993598580cdcffda6537a6f20a10a3a"
   },
   "devDependencies": {
     "@types/node": "22.19.1",
