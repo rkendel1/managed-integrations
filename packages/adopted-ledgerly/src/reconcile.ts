@@ -39,6 +39,8 @@ export async function startLedgerlyReconciliation(
     requestedBy?: string;
     window?: { from: Date; to: Date };
     incidentId?: string | null;
+    /** Join a running run instead of refusing (customer/operator requests). */
+    dedupe?: boolean;
   },
 ) {
   const [integ] = await db.select().from(integrations).where(eq(integrations.id, p.integrationId));
@@ -50,7 +52,13 @@ export async function startLedgerlyReconciliation(
       and(eq(reconciliationRuns.integrationId, p.integrationId), eq(reconciliationRuns.status, 'running')),
     );
   if (running) {
-    if (p.trigger === 'schedule') return { runId: running.id, deduplicated: true };
+    if (p.trigger === 'schedule' || p.dedupe)
+      return {
+        runId: running.id,
+        deduplicated: true,
+        windowFrom: running.windowFrom.toISOString(),
+        windowTo: running.windowTo.toISOString(),
+      };
     throw new LedgerlyReconciliationBusy('Another reconciliation is running');
   }
   const to = p.window?.to ?? new Date(Date.now() - config.reconcileGraceMinutes * 60_000);
@@ -67,7 +75,12 @@ export async function startLedgerlyReconciliation(
       requestedBy: p.requestedBy ?? null,
     })
     .returning();
-  return { runId: run!.id, deduplicated: false };
+  return {
+    runId: run!.id,
+    deduplicated: false,
+    windowFrom: run!.windowFrom.toISOString(),
+    windowTo: run!.windowTo.toISOString(),
+  };
 }
 
 type Classification =
@@ -421,3 +434,54 @@ export async function recoverLedgerlyItem(p: {
 }
 
 export { docNumberOf };
+
+/** Durable recovery intent for missing Stripe transactions (the recovery job reconstructs and executes them). */
+export async function requestLedgerlyRecovery(
+  db: Db,
+  p: { runId: string; sourceIds: string[]; principalId: string; requestId: string; reason: string },
+) {
+  const out: (
+    | { sourceId: string; accepted: true; itemId: string; deliveryId: string | null; mode: 'new' | 'retry' }
+    | { sourceId: string; accepted: false; reason: string }
+  )[] = [];
+  for (const sourceId of p.sourceIds) {
+    out.push(
+      await db.transaction(async (tx) => {
+        const [item] = await tx
+          .select()
+          .from(reconciliationItems)
+          .where(and(eq(reconciliationItems.runId, p.runId), eq(reconciliationItems.sourceOrderId, sourceId)))
+          .for('update');
+        if (!item)
+          return { sourceId, accepted: false as const, reason: 'Not part of this reconciliation run' };
+        if (item.classification !== 'missing_delivery')
+          return {
+            sourceId,
+            accepted: false as const,
+            reason: `Classified ${item.classification}; only missing transactions are recovered`,
+          };
+        if (!['none', 'failed'].includes(item.recoveryState))
+          return { sourceId, accepted: false as const, reason: `Recovery already ${item.recoveryState}` };
+        await tx
+          .update(reconciliationItems)
+          .set({
+            recoveryState: 'requested',
+            recoveryRequestedBy: p.principalId,
+            recoveryRequestId: p.requestId,
+            recoveryReason: p.reason,
+            recoveryRequestedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(reconciliationItems.id, item.id));
+        return {
+          sourceId,
+          accepted: true as const,
+          itemId: item.id,
+          deliveryId: item.deliveryId,
+          mode: item.recoveryState === 'failed' ? ('retry' as const) : ('new' as const),
+        };
+      }),
+    );
+  }
+  return out;
+}

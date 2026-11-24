@@ -24,10 +24,15 @@
           "object": "balance_transaction",
           "amount": 156000,
           "currency": "cad",
-          "exchange_rate": 1.30,
+          "exchange_rate": 1.3,
           "fee": 4680,
           "fee_details": [
-            { "amount": 4680, "currency": "cad", "description": "Stripe processing fees", "type": "stripe_fee" }
+            {
+              "amount": 4680,
+              "currency": "cad",
+              "description": "Stripe processing fees",
+              "type": "stripe_fee"
+            }
           ],
           "net": 151320,
           "reporting_category": "charge",

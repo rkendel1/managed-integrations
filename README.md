@@ -156,6 +156,20 @@ make demo-onboarding
 
 Records: [`docs/product/ONBOARDING.md`](docs/product/ONBOARDING.md), [`docs/product/ADAPTATION.md`](docs/product/ADAPTATION.md).
 
+### Slice 6: a second integration on the same mechanisms (Stripe → QuickBooks)
+
+```bash
+make reset && make demo-stripe
+```
+
+The adopted open-source [ledgerly](https://github.com/jakethehoffer/ledgerly) (Apache-2.0, commit-pinned) books
+Stripe payments, refunds and payouts as balanced QuickBooks journal entries. The demo onboards a customer whose
+own ledgerly deployment already writes to QuickBooks (discovered from their books, account mapping included),
+books a new payment, has an operator switch on a reviewed patch for a QuickBooks API version Intuit retired, and
+recovers from lost QuickBooks authorization with zero loss proven. Fixtures: Stripe on :4030, QuickBooks on
+:4040. Design: [docs/architecture/PORTABILITY.md](docs/architecture/PORTABILITY.md); selection and provenance:
+[docs/adoption/SECOND-INTEGRATION.md](docs/adoption/SECOND-INTEGRATION.md).
+
 ## Develop locally (without Docker for the app)
 
 Requirements: Node ≥ 22.12, pnpm 10, PostgreSQL 16, Docker (only for the maintenance sandbox).

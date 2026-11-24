@@ -131,3 +131,24 @@ See `docs/product/MAINTENANCE.md` §10. In short:
   with a full validation; patches always need an operator. Arbitrary code changes cannot be proposed.
 - The browser cannot complete the fixture's Shopify OAuth in Docker (in-network host); covered by API tests
   and `make demo-onboarding`.
+
+## Slice 6 — portability and the second integration (Stripe → QuickBooks)
+
+- **Fixture-only.** No live Stripe account or QuickBooks company was used. The fixtures model the documented
+  behaviour (signatures, Events API, versioned rendering, Intuit OAuth rotation, requestid, minor versions).
+- **ledgerly's inherited test suite was not run** (installing and executing a third-party repository's dev
+  toolchain was refused by the environment's permission policy). Its 29 golden QuickBooks outputs are reproduced
+  through our loader instead.
+- **Not managed for Stripe → QuickBooks:** deferred revenue schedules (annual plans: refused), disputes, credit
+  notes, invoice voids, cross-currency payouts (refused by upstream); recovery is bounded by Stripe's 30-day
+  event retention; other integrations are recognised in QuickBooks only when they use the Stripe object id as DocNumber.
+- **Discovery reads at most 100 recent events** and expands each through the Stripe API (cost grows with volume).
+- **Reauthorization recovery exists for Stripe → QuickBooks only.** For Shopify → NetSuite, lost authorization is
+  detected by monitoring and the customer is asked to reconnect, but releasing and verifying held orders afterwards
+  is not implemented.
+- **Shared table column names predate portability** (`reconciliation_items.source_order_id`, `order_name`,
+  `webhook_receipts.shop_domain`): they hold a Stripe event id / label / `stripe` for the second integration.
+- **Monitoring cadence state is in memory** in the worker (the facts are durable; only "when did we last probe"
+  resets on restart, which causes one extra probe).
+- **The browser cannot complete the fixture OAuth for QuickBooks** (as for Shopify); the API tests and
+  `make demo-stripe` exercise those routes.

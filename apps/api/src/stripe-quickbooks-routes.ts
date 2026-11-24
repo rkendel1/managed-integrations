@@ -162,15 +162,13 @@ export async function registerStripeQuickbooksRoutes(app: FastifyInstance, deps:
     } catch (err) {
       return fail(`QuickBooks authorization failed: ${describeError(err).message}`);
     }
-    await db
-      .insert(auditLog)
-      .values({
-        actorRole: 'customer',
-        action: 'connection.quickbooks.authorized',
-        targetType: 'connection',
-        targetId: conn.id,
-        details: { realmId: q['realmId'] },
-      });
+    await db.insert(auditLog).values({
+      actorRole: 'customer',
+      action: 'connection.quickbooks.authorized',
+      targetType: 'connection',
+      targetId: conn.id,
+      details: { realmId: q['realmId'] },
+    });
     await resumeReauthorization(db, deps, tenantId!);
     return reply.redirect(`${await returnPage(db, tenantId!)}?connected=quickbooks`);
   });

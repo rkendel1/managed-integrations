@@ -14,19 +14,14 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { defineCapability, type CapabilityDefinition } from '@appport/core';
 import { errors } from '@appport/protocol';
 import { s } from '@appport/schema';
-import {
-  ADOPTED_FLOW_TYPE,
-  CLASSIFICATIONS,
-  RECOVERY_STATES,
-  requestRecovery,
-  startReconciliation,
-  type Classification,
-} from '@mi/adopted-order-sync';
+import { CLASSIFICATIONS, RECOVERY_STATES, type Classification } from '@mi/adopted-order-sync';
+import type { IntegrationRegistry } from '@mi/managed';
 import { auditLog, integrations, reconciliationItems, reconciliationRuns, type Db } from '@mi/database';
 import { AppPortPermissions } from '../identity.ts';
 
 const UUID = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
-const GID = '^gid://shopify/Order/[0-9]+$';
+/** A source transaction id of any managed integration (Shopify order gid, Stripe event id, …). */
+const GID = '^[A-Za-z0-9_:/.-]{1,200}$';
 export type EnqueueReconciliationScan = (runId: string) => Promise<void>;
 export type EnqueueRecovery = (itemId: string) => Promise<void>;
 
@@ -38,6 +33,7 @@ const uuidOrNull = (v: string) => (/^[0-9a-f-]{36}$/i.test(v) ? v : null);
 
 export function createReconciliationStartCapability(
   db: Db,
+  registry: IntegrationRegistry | undefined,
   enqueue: EnqueueReconciliationScan | undefined,
 ): CapabilityDefinition<
   { integrationId: string },
@@ -61,16 +57,13 @@ export function createReconciliationStartCapability(
       if (!enqueue) throw errors.internal('Reconciliation is not available in this process');
       const [integ] = await db.select().from(integrations).where(eq(integrations.id, input.integrationId));
       if (!integ) throw errors.notFound('Integration not found');
-      if (integ.flowType !== ADOPTED_FLOW_TYPE)
+      const ops = registry?.get(integ.flowType)?.reconciliation;
+      if (!ops)
         throw errors.conflict(
           'This capability reconciles adopted integrations; the native engine reconciles on its own schedule',
         );
       const actor = actorOf(context.principal);
-      const r = await startReconciliation(db, {
-        integrationId: integ.id,
-        trigger: 'manual',
-        requestedBy: actor.id,
-      });
+      const r = await ops.start({ integrationId: integ.id, requestedBy: actor.id });
       await db.insert(auditLog).values({
         actorUserId: uuidOrNull(actor.id),
         actorRole: actor.role,
@@ -278,6 +271,7 @@ export interface RecoverOutput {
 
 export function createReconciliationRecoverCapability(
   db: Db,
+  registry: IntegrationRegistry | undefined,
   enqueue: EnqueueRecovery | undefined,
 ): CapabilityDefinition<
   { runId: string; sourceOrderIds: string[]; reason: string; confirm?: boolean },
@@ -312,13 +306,17 @@ export function createReconciliationRecoverCapability(
       const [run] = await db.select().from(reconciliationRuns).where(eq(reconciliationRuns.id, input.runId));
       if (!run) throw errors.notFound('Reconciliation run not found');
       const actor = actorOf(context.principal);
-      const decisions = await requestRecovery(db, {
-        runId: run.id,
-        sourceOrderIds: ids,
-        principalId: actor.id,
-        requestId: context.requestId,
-        reason: input.reason,
-      });
+      const ops = (await registry?.forRun(run.id))?.reconciliation;
+      if (!ops) throw errors.conflict('This integration does not support requested recovery');
+      const decisions = (
+        await ops.requestRecovery({
+          runId: run.id,
+          sourceIds: ids,
+          principalId: actor.id,
+          requestId: context.requestId,
+          reason: input.reason,
+        })
+      ).map((d) => ({ ...d, sourceOrderId: d.sourceId }));
       const accepted: RecoverOutput['accepted'] = [];
       const refused: RecoverOutput['refused'] = [];
       for (const d of decisions) {

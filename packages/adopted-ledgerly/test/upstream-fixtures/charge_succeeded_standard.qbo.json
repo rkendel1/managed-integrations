@@ -1,12 +1,13 @@
 {
   "TxnDate": "2025-01-15",
   "DocNumber": "_charge_succeeded_001",
-  "PrivateNote": "Stripe charge ch_test_001 (customer cus_test_001)",  "CurrencyRef": { "value": "USD" },
+  "PrivateNote": "Stripe charge ch_test_001 (customer cus_test_001)",
+  "CurrencyRef": { "value": "USD" },
 
   "Line": [
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 96.80,
+      "Amount": 96.8,
       "Description": "Net to Stripe balance",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -15,7 +16,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 3.20,
+      "Amount": 3.2,
       "Description": "Stripe processing fee",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -24,7 +25,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 100.00,
+      "Amount": 100.0,
       "Description": "Subscription revenue",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",

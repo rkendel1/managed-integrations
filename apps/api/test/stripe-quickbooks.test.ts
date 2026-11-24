@@ -28,12 +28,18 @@ import {
   observations,
   onboardings,
   reconciliationItems,
+  reconciliationRuns,
   users,
   type DbHandle,
 } from '@mi/database';
 import { loadServiceConfig, type ServiceConfig } from '@mi/integration-shopify-netsuite';
 import { createLogger } from '@mi/observability';
-import { createNetSuiteFixture, createShopifyFixture, type NetSuiteFixture, type ShopifyFixture } from '@mi/test-fixtures';
+import {
+  createNetSuiteFixture,
+  createShopifyFixture,
+  type NetSuiteFixture,
+  type ShopifyFixture,
+} from '@mi/test-fixtures';
 import { SHOPIFY_NETSUITE } from '@mi/adopted-order-sync';
 import { buildApp } from '../src/app.ts';
 import { ensureQueues } from '../src/queues.ts';
@@ -149,19 +155,29 @@ async function customer(email = 'finance@lumen.test') {
     },
     async connectShopify(domain: string) {
       actions.push('connect Shopify (shop name)');
-      const start = (await (await rest('/api/customer/connections/shopify/authorize', { shop: domain })).json()) as { url: string };
+      const start = (await (
+        await rest('/api/customer/connections/shopify/authorize', { shop: domain })
+      ).json()) as { url: string };
       actions.push('approve in Shopify');
       const red = await fetch(start.url, { redirect: 'manual' });
       const cb = new URL(red.headers.get('location')!);
-      return (await fetch(`${base}${cb.pathname}${cb.search}`, { redirect: 'manual' })).headers.get('location');
+      return (await fetch(`${base}${cb.pathname}${cb.search}`, { redirect: 'manual' })).headers.get(
+        'location',
+      );
     },
     async connectNetSuite() {
       actions.push('connect NetSuite');
       const res = (await (
-        await rest('/api/customer/connections/netsuite', { accountDomain: '1234567-sb1.suitetalk.api.netsuite.com', clientId: ns!.clientId, certificateId: ns!.certificateId })
+        await rest('/api/customer/connections/netsuite', {
+          accountDomain: '1234567-sb1.suitetalk.api.netsuite.com',
+          clientId: ns!.clientId,
+          certificateId: ns!.certificateId,
+        })
       ).json()) as { publicKeyPem: string };
       ns!.control.registerPublicKey(res.publicKeyPem);
-      return (await (await rest('/api/customer/connections/netsuite/verify', {})).json()) as { status: string };
+      return (await (await rest('/api/customer/connections/netsuite/verify', {})).json()) as {
+        status: string;
+      };
     },
     async connectQuickBooks(opts: { deny?: boolean } = {}) {
       actions.push('connect QuickBooks');
@@ -413,13 +429,26 @@ describe(
         'operator:test',
         'reviewed: align with the served minor version',
       );
-      await jobs.drain(
-        async () =>
-          (await dbh.db.select().from(incidents).where(eq(incidents.id, ev!.id)))[0]!.status === 'resolved',
-        60_000,
-      );
-      // what runs now asks for 75; QuickBooks serves 75 as before
+      // verified only after real work ran through the patched code: the next transaction
       const { event } = fx.stripe.control.createCharge({ amount: 2_000 });
+      await jobs
+        .drain(
+          async () =>
+            (await dbh.db.select().from(incidents).where(eq(incidents.id, ev!.id)))[0]!.status === 'resolved',
+          60_000,
+        )
+        .catch(async (e: Error) => {
+          // say WHY it did not resolve (the event's own persisted facts)
+          const [x] = await dbh.db.select().from(incidents).where(eq(incidents.id, ev!.id));
+          const runs = await dbh.db
+            .select()
+            .from(reconciliationRuns)
+            .where(eq(reconciliationRuns.integrationId, integ.id));
+          throw new Error(
+            `${e.message}\nevent: ${x!.status} ${JSON.stringify(x!.evidence)} accounting: ${JSON.stringify(x!.accounting)}\nruns: ${JSON.stringify(runs.map((r) => [r.trigger, r.status, r.outcome, r.sourceCount, r.errorMessage, r.windowFrom, r.windowTo]))}\nevents: ${JSON.stringify(fx.stripe.state.events.slice(-4).map((e) => [e.id, e.created]))}`,
+          );
+        });
+      // what runs now asks for 75; QuickBooks serves 75 as before
       await jobs.drain(async () => entriesFor(event.id).length === 1);
       const posts = fx.qbo.state.requestLog.filter(
         (r) => r.method === 'POST' && r.path.endsWith('/journalentry'),
@@ -572,30 +601,42 @@ describe(
         responsibilitiesVersion: shopFlow.responsibilities.version,
         flowType: SHOPIFY_NETSUITE.flowType,
       });
-      await jobs.drain(async () => (await c.call<Status>('onboarding.status')).integrations.every((x) => x.status === 'managed'), 60_000);
-      // one connection per provider, one onboarding record per integration kind
-      expect((await dbh.db.select().from(connections).where(eq(connections.tenantId, c.tenantId))).map((x) => x.providerId).sort()).toEqual([
-        'netsuite',
-        'quickbooks',
-        'shopify',
-        'stripe',
-      ]);
-      expect((await dbh.db.select().from(onboardings).where(eq(onboardings.tenantId, c.tenantId))).map((x) => x.flowType).sort()).toEqual(
-        [SHOPIFY_NETSUITE.flowType, LEDGERLY_FLOW_TYPE].sort(),
+      await jobs.drain(
+        async () =>
+          (await c.call<Status>('onboarding.status')).integrations.every((x) => x.status === 'managed'),
+        60_000,
       );
+      // one connection per provider, one onboarding record per integration kind
+      expect(
+        (await dbh.db.select().from(connections).where(eq(connections.tenantId, c.tenantId)))
+          .map((x) => x.providerId)
+          .sort(),
+      ).toEqual(['netsuite', 'quickbooks', 'shopify', 'stripe']);
+      expect(
+        (await dbh.db.select().from(onboardings).where(eq(onboardings.tenantId, c.tenantId)))
+          .map((x) => x.flowType)
+          .sort(),
+      ).toEqual([SHOPIFY_NETSUITE.flowType, LEDGERLY_FLOW_TYPE].sort());
       // the customer product: two integrations, each described in its own business terms
       const portfolio = await c.call<{ integrations: { name: string; process: string }[] }>('portfolio.list');
       expect(portfolio.integrations.map((x) => [x.name, x.process]).sort()).toEqual([
         ['Shopify → NetSuite orders', 'Shopify orders become NetSuite sales orders'],
-        ['Stripe → QuickBooks accounting', 'Stripe payments, refunds and payouts become balanced QuickBooks journal entries'],
+        [
+          'Stripe → QuickBooks accounting',
+          'Stripe payments, refunds and payouts become balanced QuickBooks journal entries',
+        ],
       ]);
       // monitoring: the shared tick probes each integration through its own runtime and records durable facts
       await worker.handlers.tick();
       const facts = await dbh.db.select().from(observations).where(eq(observations.kind, 'monitoring'));
       expect(new Set(facts.map((f) => f.integrationId)).size).toBe(2);
-      const stripeFacts = facts.find((f) => f.integrationId === stripeInteg.id)!.data as { signals: { signal: string; state: string }[] };
+      const stripeFacts = facts.find((f) => f.integrationId === stripeInteg.id)!.data as {
+        signals: { signal: string; state: string }[];
+      };
       expect(
-        stripeFacts.signals.filter((x) => ['source_available', 'destination_available', 'credentials'].includes(x.signal)).map((x) => x.state),
+        stripeFacts.signals
+          .filter((x) => ['source_available', 'destination_available', 'credentials'].includes(x.signal))
+          .map((x) => x.state),
       ).toEqual(['ok', 'ok', 'ok']);
     });
 

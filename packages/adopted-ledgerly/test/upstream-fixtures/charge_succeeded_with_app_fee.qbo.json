@@ -6,7 +6,7 @@
   "Line": [
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 9.70,
+      "Amount": 9.7,
       "Description": "Net to Stripe balance",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -15,7 +15,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 0.30,
+      "Amount": 0.3,
       "Description": "Stripe processing fee",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -24,7 +24,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 10.00,
+      "Amount": 10.0,
       "Description": "Application fee revenue",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",

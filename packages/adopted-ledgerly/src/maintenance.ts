@@ -320,12 +320,9 @@ async function recoverAndVerify(
     const [run] = await db.select().from(reconciliationRuns).where(eq(reconciliationRuns.id, runId));
     return run && run.status !== 'running' ? run : null;
   };
+  // Stripe timestamps are whole seconds: the window ends now, so a transaction from this second is included.
   if (phase === 'reconcile')
-    return startRun(
-      { from: windowFrom, to: new Date(Date.now() - 1000) },
-      'reconcileRunId',
-      'await_reconcile',
-    );
+    return startRun({ from: windowFrom, to: new Date() }, 'reconcileRunId', 'await_reconcile');
   if (phase === 'await_reconcile') {
     const run = await runDone(prog.reconcileRunId!);
     if (!run) return { state: 'wait', detail: 'reconciliation running' };
@@ -640,6 +637,25 @@ async function advanceDependency(
       correction: { ...(inc.correction as object), activatedAt: row.activatedAt!.toISOString() },
     });
     return { state: 'continue', detail: 'activation recorded' };
+  }
+  // Verified only once real work has run through the corrected code: until a transaction is delivered by
+  // the patched artifact there is nothing to verify, and an empty population can never support a claim.
+  if (!prog.phase) {
+    const rt = await runtimeFor(db, inc.integrationId!);
+    const ran = await db
+      .select({ id: deliveryAttempts.id })
+      .from(deliveryAttempts)
+      .innerJoin(deliveries, eq(deliveries.id, deliveryAttempts.deliveryId))
+      .where(
+        and(
+          eq(deliveries.integrationId, inc.integrationId!),
+          eq(deliveryAttempts.implementationVersionId, rt.artifact.id),
+          eq(deliveryAttempts.outcome, 'delivered'),
+        ),
+      )
+      .limit(1);
+    if (!ran.length)
+      return { state: 'noop', detail: `waiting for a transaction to run on ${rt.artifact.id}` };
   }
   const since = new Date(Math.min(Date.parse(finding.detectedAt), Date.now()) - 24 * 3600_000);
   return recoverAndVerify(

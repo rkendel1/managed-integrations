@@ -12,6 +12,11 @@ x-app-env: &app-env
   SHOPIFY_CLIENT_ID: ${SHOPIFY_CLIENT_ID:-fixture-shopify-client-id}
   SHOPIFY_CLIENT_SECRET: ${SHOPIFY_CLIENT_SECRET:-fixture-shopify-client-secret}
   SHOPIFY_BASE_URL_OVERRIDE: ${SHOPIFY_BASE_URL_OVERRIDE:-http://fixtures:4010}
+  # Slice 6 (Stripe → QuickBooks): fixtures in the demo stack; refused in production.
+  STRIPE_BASE_URL_OVERRIDE: ${STRIPE_BASE_URL_OVERRIDE:-http://fixtures:4030}
+  QBO_BASE_URL_OVERRIDE: ${QBO_BASE_URL_OVERRIDE:-http://fixtures:4040}
+  QBO_CLIENT_ID: ${QBO_CLIENT_ID:-qbo-fixture-client}
+  QBO_CLIENT_SECRET: ${QBO_CLIENT_SECRET:-qbo-fixture-secret}
   NETSUITE_BASE_URL_OVERRIDE: ${NETSUITE_BASE_URL_OVERRIDE:-http://fixtures:4020}
   DEMO_ADOPTED_SHOPIFY_URL: ${DEMO_ADOPTED_SHOPIFY_URL:-http://fixtures:4011}
   # Fixture-only: each demo store is reached by its own domain (refused in production).
@@ -66,6 +71,8 @@ services:
       - '127.0.0.1:4011:4011'
       - '127.0.0.1:4012:4012'
       - '127.0.0.1:4020:4020'
+      - '127.0.0.1:4030:4030'
+      - '127.0.0.1:4040:4040'
     healthcheck:
       test:
         [

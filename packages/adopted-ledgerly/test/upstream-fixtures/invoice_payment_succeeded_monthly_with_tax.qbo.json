@@ -24,7 +24,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 5.00,
+      "Amount": 5.0,
       "Description": "Sales tax collected",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",
@@ -33,7 +33,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 50.00,
+      "Amount": 50.0,
       "Description": "Subscription revenue (1-month period)",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",

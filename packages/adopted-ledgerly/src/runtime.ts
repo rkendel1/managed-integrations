@@ -3,8 +3,8 @@
  * onboarding engine, monitoring and operator tooling reach it only through these hooks; nothing in the API,
  * worker or customer product is specific to it.
  */
-import { and, eq, gt, inArray, lt } from 'drizzle-orm';
-import { adaptations, deliveries, integrations, reconciliationRuns, type Db } from '@mi/database';
+import { and, eq, gt, inArray, lt, ne } from 'drizzle-orm';
+import { adaptations, deliveries, incidents, integrations, reconciliationRuns, type Db } from '@mi/database';
 import type { CredentialCipher, ProviderEndpointConfig } from '@mi/integration-shopify-netsuite';
 import {
   AdaptationError,
@@ -37,7 +37,12 @@ import {
 } from './maintenance.ts';
 import { ledgerlyOnboarding } from './onboarding.ts';
 import { AuthorizationLost, loadConnection, QuickBooksAccess, stripeFor } from './providers.ts';
-import { recoverLedgerlyItem, scanLedgerlyReconciliation, startLedgerlyReconciliation } from './reconcile.ts';
+import {
+  recoverLedgerlyItem,
+  scanLedgerlyReconciliation,
+  startLedgerlyReconciliation,
+  requestLedgerlyRecovery,
+} from './reconcile.ts';
 
 export interface LedgerlyRuntimeDeps {
   db: Db;
@@ -78,6 +83,20 @@ export function createStripeQuickbooksRuntime(deps: LedgerlyRuntimeDeps): Integr
         const inc = await recordInputContractBreak(db, deliveryId, r.missingField);
         await services.enqueueMaintenance(inc.id);
       }
+      if (r.outcome === 'delivered') {
+        // A correction waiting for work to run on it can now be verified.
+        const waiting = await db
+          .select({ id: incidents.id })
+          .from(incidents)
+          .where(
+            and(
+              eq(incidents.integrationId, d!.integrationId),
+              eq(incidents.kind, 'dependency_contract_change'),
+              ne(incidents.status, 'resolved'),
+            ),
+          );
+        for (const w of waiting) await services.enqueueMaintenance(w.id);
+      }
       if (r.outcome === 'failed') {
         const delay = nextAutomaticRetryDelaySeconds(r.attemptNo);
         if (delay != null && (await requestDeliveryRetry(db, deliveryId)).accepted)
@@ -86,6 +105,11 @@ export function createStripeQuickbooksRuntime(deps: LedgerlyRuntimeDeps): Integr
       return r;
     },
 
+    reconciliation: {
+      start: ({ integrationId, requestedBy }) =>
+        startLedgerlyReconciliation(db, { integrationId, trigger: 'manual', requestedBy, dedupe: true }),
+      requestRecovery: (p) => requestLedgerlyRecovery(db, p),
+    },
     scan: (runId) => scanLedgerlyReconciliation({ db, cipher, endpoints, runId, workerId: deps.workerId }),
     recover: (itemId) =>
       recoverLedgerlyItem({ db, cipher, endpoints, itemId, requestedBy: 'system:recovery' }),

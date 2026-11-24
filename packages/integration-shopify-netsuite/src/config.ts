@@ -67,7 +67,10 @@ export function loadServiceConfig(role: ServiceRole, source: NodeJS.ProcessEnv =
   }
   if (
     production &&
-    (env.SHOPIFY_BASE_URL_OVERRIDE || env.NETSUITE_BASE_URL_OVERRIDE || env.STRIPE_BASE_URL_OVERRIDE || env.QBO_BASE_URL_OVERRIDE)
+    (env.SHOPIFY_BASE_URL_OVERRIDE ||
+      env.NETSUITE_BASE_URL_OVERRIDE ||
+      env.STRIPE_BASE_URL_OVERRIDE ||
+      env.QBO_BASE_URL_OVERRIDE)
   ) {
     throw new Error('Provider base URL overrides are not permitted in production');
   }

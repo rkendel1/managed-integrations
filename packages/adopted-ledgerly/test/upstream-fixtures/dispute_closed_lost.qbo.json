@@ -6,7 +6,7 @@
   "Line": [
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 100.00,
+      "Amount": 100.0,
       "Description": "Dispute lost — writeoff of receivable",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -15,7 +15,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 100.00,
+      "Amount": 100.0,
       "Description": "Release receivable to expense",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",

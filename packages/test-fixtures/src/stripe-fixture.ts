@@ -706,6 +706,8 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
   });
   app.get('/__fixture/state', async () => ({
     accountId,
+    /** Fixture-only test key (demos read it here instead of hard-coding a key-shaped string). */
+    apiKey: state.apiKey,
     events: state.events.length,
     endpoints: state.endpoints.map(({ secret: _s, ...e }) => e),
     deliveries: state.deliveries.slice(-50),

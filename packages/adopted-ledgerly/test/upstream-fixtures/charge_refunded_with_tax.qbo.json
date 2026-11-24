@@ -6,7 +6,7 @@
   "Line": [
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 5.00,
+      "Amount": 5.0,
       "Description": "Sales tax portion refunded",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -15,7 +15,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 50.00,
+      "Amount": 50.0,
       "Description": "Refund issued",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -24,7 +24,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 55.00,
+      "Amount": 55.0,
       "Description": "Refund deducted from Stripe balance",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",

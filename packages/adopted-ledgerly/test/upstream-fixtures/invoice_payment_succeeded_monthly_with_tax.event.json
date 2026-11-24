@@ -27,7 +27,12 @@
           "exchange_rate": null,
           "fee": 193,
           "fee_details": [
-            { "amount": 193, "currency": "usd", "description": "Stripe processing fees", "type": "stripe_fee" }
+            {
+              "amount": 193,
+              "currency": "usd",
+              "description": "Stripe processing fees",
+              "type": "stripe_fee"
+            }
           ],
           "net": 5307,
           "reporting_category": "charge",

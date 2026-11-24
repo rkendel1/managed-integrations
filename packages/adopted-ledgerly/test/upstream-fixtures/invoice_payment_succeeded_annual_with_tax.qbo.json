@@ -6,7 +6,7 @@
   "Line": [
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 1067.00,
+      "Amount": 1067.0,
       "Description": "Net to Stripe balance",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -15,7 +15,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 33.00,
+      "Amount": 33.0,
       "Description": "Stripe processing fee",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -24,7 +24,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 100.00,
+      "Amount": 100.0,
       "Description": "Sales tax collected",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",
@@ -33,7 +33,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 1000.00,
+      "Amount": 1000.0,
       "Description": "Annual subscription deferred",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",

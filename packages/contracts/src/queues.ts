@@ -55,4 +55,7 @@ export const AdoptedReconcileJobSchema = z.object({ runId: z.string().uuid() });
 export const AdoptedRecoverJobSchema = z.object({ itemId: z.string().uuid() });
 export const AdoptedMaintenanceJobSchema = z.object({ incidentId: z.string().uuid() });
 export const AdoptedAdaptationValidateJobSchema = z.object({ adaptationId: z.string().uuid() });
-export const OnboardingActivateJobSchema = z.object({ tenantId: z.string().uuid(), flowType: z.string().min(1).max(200) });
+export const OnboardingActivateJobSchema = z.object({
+  tenantId: z.string().uuid(),
+  flowType: z.string().min(1).max(200),
+});

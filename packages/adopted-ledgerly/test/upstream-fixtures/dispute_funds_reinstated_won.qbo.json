@@ -6,7 +6,7 @@
   "Line": [
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 100.00,
+      "Amount": 100.0,
       "Description": "Funds reinstated to Stripe balance",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -15,7 +15,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 100.00,
+      "Amount": 100.0,
       "Description": "Release receivable on dispute win",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",

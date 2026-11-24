@@ -1,12 +1,13 @@
 {
   "TxnDate": "2025-01-18",
   "DocNumber": "evt_test_multi_002",
-  "PrivateNote": "Stripe refund re_test_multi_002 for charge ch_test_multi_001",  "CurrencyRef": { "value": "USD" },
+  "PrivateNote": "Stripe refund re_test_multi_002 for charge ch_test_multi_001",
+  "CurrencyRef": { "value": "USD" },
 
   "Line": [
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 20.00,
+      "Amount": 20.0,
       "Description": "Refund issued",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -15,7 +16,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 20.00,
+      "Amount": 20.0,
       "Description": "Refund deducted from Stripe balance",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",

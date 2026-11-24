@@ -194,7 +194,8 @@ step('A3', `NetSuite connected (machine-to-machine certificate) → ${String(ver
 /** Slice 6: one onboarding per integration kind; this demo is about Shopify → NetSuite. */
 const SHOPIFY_FLOW = 'adopted.shopify_erp_order_sync.netsuite';
 const flowOf = (o: Overall): Status =>
-  o.integrations.find((i) => i.flowType === SHOPIFY_FLOW) ?? ({ status: o.status, next: o.next, discovery: null, integrationId: null } as unknown as Status);
+  o.integrations.find((i) => i.flowType === SHOPIFY_FLOW) ??
+  ({ status: o.status, next: o.next, discovery: null, integrationId: null } as unknown as Status);
 const found = flowOf(await customer<Overall>('onboarding_discover'));
 if (found.status !== 'confirm') fail(`discovery: ${found.status} ${JSON.stringify(found.discovery)}`);
 const cand = found.discovery!.candidates[0]!;

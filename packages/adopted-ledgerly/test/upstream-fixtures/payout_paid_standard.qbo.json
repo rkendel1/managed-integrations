@@ -1,12 +1,13 @@
 {
   "TxnDate": "2025-01-24",
   "DocNumber": "evt_test_payout_001",
-  "PrivateNote": "Stripe payout po_test_001 to ba_test_001",  "CurrencyRef": { "value": "USD" },
+  "PrivateNote": "Stripe payout po_test_001 to ba_test_001",
+  "CurrencyRef": { "value": "USD" },
 
   "Line": [
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 5000.00,
+      "Amount": 5000.0,
       "Description": "Funds arrived in bank",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -15,7 +16,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 5000.00,
+      "Amount": 5000.0,
       "Description": "Funds left Stripe balance",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",

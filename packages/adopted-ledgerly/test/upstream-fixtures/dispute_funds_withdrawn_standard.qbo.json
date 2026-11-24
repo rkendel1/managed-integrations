@@ -6,7 +6,7 @@
   "Line": [
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 100.00,
+      "Amount": 100.0,
       "Description": "Funds held pending dispute outcome",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -15,7 +15,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 15.00,
+      "Amount": 15.0,
       "Description": "Non-refundable dispute fee",
       "JournalEntryLineDetail": {
         "PostingType": "Debit",
@@ -24,7 +24,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 115.00,
+      "Amount": 115.0,
       "Description": "Funds withdrawn from Stripe balance",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",

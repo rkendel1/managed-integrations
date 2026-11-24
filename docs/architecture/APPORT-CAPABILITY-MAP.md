@@ -298,3 +298,17 @@ executor only), and since slice 4 `portfolio.list` / `portfolio.integration` / `
 integrations; no connection or credential capability; no sync, backlog, incident, maintenance or release
 capability, and the native engine's reconciliation is not projected. Those operations remain
 in the pre-existing REST/worker paths and are **not** projected through AppPort yet.
+
+## Slice 6 — several integrations, one capability surface
+
+No integration-specific capability was added. The same capabilities serve both adopted integrations; the
+backend resolves the owning integration's runtime by flow type (`IntegrationRegistry`):
+
+- `onboarding.status@1` now lists every connectable system and one entry per integration kind;
+  `onboarding.confirm@1` takes an optional `flowType` (required only when several integrations await a decision).
+- `adaptations.*@1`, `reconciliation.start@1` and `reconciliation.recover@1` dispatch to the integration that owns
+  the integration / adaptation / run (source ids are no longer restricted to Shopify order gids).
+- New: `monitoring.integration@1` (operators, `integrations.read:any`): the integration's maintenance contract
+  (descriptor) and its latest durable monitoring facts.
+- Customers still cannot propose, validate, activate or roll back corrections, or read monitoring (tested via the
+  UI client for the Stripe → QuickBooks integration).

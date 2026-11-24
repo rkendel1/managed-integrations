@@ -76,7 +76,28 @@ export interface AdaptationOperations {
   reject(adaptationId: string, actor: string, reason: string): Promise<AdaptationRow>;
 }
 
+export type RecoveryDecision =
+  | { sourceId: string; accepted: true; itemId: string; deliveryId: string | null; mode: 'new' | 'retry' }
+  | { sourceId: string; accepted: false; reason: string };
+
+/** Customer/operator-requested reconciliation and recovery (the AppPort reconciliation capabilities). */
+export interface ReconciliationOperations {
+  start(p: {
+    integrationId: string;
+    requestedBy: string;
+  }): Promise<{ runId: string; deduplicated: boolean; windowFrom: string; windowTo: string }>;
+  /** Records the durable recovery intent per source transaction; the caller queues the accepted items. */
+  requestRecovery(p: {
+    runId: string;
+    sourceIds: string[];
+    principalId: string;
+    requestId: string;
+    reason: string;
+  }): Promise<RecoveryDecision[]>;
+}
+
 export interface IntegrationRuntime {
+  reconciliation?: ReconciliationOperations;
   descriptor: IntegrationDescriptor;
   onboarding?: OnboardingImplementation;
   /** Runs one delivery through the integration's executor (queue: adopted.execute). */

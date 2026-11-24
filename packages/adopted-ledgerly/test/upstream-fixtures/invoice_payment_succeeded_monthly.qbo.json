@@ -1,7 +1,8 @@
 {
   "TxnDate": "2025-01-15",
   "DocNumber": "t_invoice_monthly_001",
-  "PrivateNote": "Stripe invoice in_test_monthly_001 (customer cus_test_monthly_001)",  "CurrencyRef": { "value": "USD" },
+  "PrivateNote": "Stripe invoice in_test_monthly_001 (customer cus_test_monthly_001)",
+  "CurrencyRef": { "value": "USD" },
 
   "Line": [
     {
@@ -24,7 +25,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 50.00,
+      "Amount": 50.0,
       "Description": "Subscription revenue (1-month period)",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",

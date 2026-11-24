@@ -24,7 +24,7 @@
     },
     {
       "DetailType": "JournalEntryLineDetail",
-      "Amount": 25.00,
+      "Amount": 25.0,
       "Description": "Subscription revenue (1-month period)",
       "JournalEntryLineDetail": {
         "PostingType": "Credit",

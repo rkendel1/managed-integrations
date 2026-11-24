@@ -55,6 +55,7 @@ import {
   findOrphanedWork,
   scanReconciliation,
   startReconciliation,
+  requestRecovery,
 } from './reconcile.ts';
 
 export interface ShopifyRuntimeDeps {
@@ -109,6 +110,32 @@ export function createShopifyNetsuiteRuntime(deps: ShopifyRuntimeDeps): Integrat
           await services.enqueueExecution(deliveryId, { kind: 'automatic_retry' }, delay);
       }
       return result;
+    },
+
+    reconciliation: {
+      async start({ integrationId, requestedBy }) {
+        return startReconciliation(db, { integrationId, trigger: 'manual', requestedBy });
+      },
+      async requestRecovery(p) {
+        const out = await requestRecovery(db, {
+          runId: p.runId,
+          sourceOrderIds: p.sourceIds,
+          principalId: p.principalId,
+          requestId: p.requestId,
+          reason: p.reason,
+        });
+        return out.map((d) =>
+          d.accepted
+            ? {
+                sourceId: d.sourceOrderId,
+                accepted: true as const,
+                itemId: d.itemId,
+                deliveryId: d.deliveryId,
+                mode: d.mode,
+              }
+            : { sourceId: d.sourceOrderId, accepted: false as const, reason: d.reason },
+        );
+      },
     },
 
     async scan(runId) {
