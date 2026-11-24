@@ -21,6 +21,7 @@ import { ADAPTERS, UPSTREAM, contractViolations, execute, type Payload } from ".
 import { handlers as maintenanceHandlers } from "./maintain.ts";
 import { handlers as reconcileHandlers } from "./reconcile.ts";
 import * as ledgerly from "./ledgerly-runtime.ts";
+import { handlers as onboardingHandlers } from "./onboarding.ts";
 
 const SHOPIFY_CLIENT_ID = process.env.SHOPIFY_CLIENT_ID ?? "fixture-shopify-client-id";
 const PUBLIC_URL = (process.env.MI_PUBLIC_URL ?? "http://127.0.0.1:3100").replace(/\/$/, "");
@@ -248,6 +249,7 @@ export default defineComponent(async (ctx) => {
     ...maintenanceHandlers(() => rt),
     ...reconcileHandlers(() => rt),
     ...ledgerly.workers(() => rt, () => qboSecret, PUBLIC_URL),
+    ...onboardingHandlers(() => rt, () => qboSecret),
   };
 
   let stopped = false;

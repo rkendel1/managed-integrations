@@ -7,15 +7,15 @@
 import { api } from "../feltkit/_generated/api.ts";
 import { FX, adoptedCompany, company, expect, finish, json, netsuiteRecords, staff, step, wait } from "./lib.ts";
 
-const bw = await adoptedCompany(api, "Northwind", FX.shopify3);
+const bw = await adoptedCompany(api, "Acme", FX.shopify);
 const { c, integrationId, run, workspace } = bw;
-const shop = FX.shopify3;
+const shop = FX.shopify;
 const status0 = (await c.query(api.integrations.list)).integrations[0]!.status;
 expect(status0 === "protected", `expected protected, got ${status0}`);
 step(1, `Integration ${integrationId} is ${status0}`);
 
 const newOrder = async (name: string, price: string) =>
-  (await json(`${shop}/__fixture/orders`, { method: "POST", body: { name, email: "buyer@northwind.test", lineItems: [{ sku: "SKU-BLUE", title: "Part", quantity: 1, unitPrice: price }] } })).body as { legacyId: string; name: string };
+  (await json(`${shop}/__fixture/orders`, { method: "POST", body: { name, email: "buyer@acme.test", lineItems: [{ sku: "SKU-BLUE", title: "Part", quantity: 1, unitPrice: price }] } })).body as { legacyId: string; name: string };
 
 const before = await newOrder(`#M-${run}-0`, "7.25");
 await wait("baseline order delivered", async () => (await netsuiteRecords(before.legacyId)).length === 1);
@@ -72,7 +72,7 @@ const operatorView = await operator.query(api.maintenance.get, { eventId: ev.id 
 expect(JSON.stringify(operatorView) === internal, "operator and customer see different outcome projections");
 step(12, "Operator sees the same customer projection plus the evidence behind it");
 
-const acme = await company("Acme", `owner-${run}@acme.test`);
+const acme = await company("Globex", `owner-${run}@globex.test`);
 const denied = await acme.c.query(api.maintenance.get, { eventId: ev.id }).then(() => "allowed", (e) => e.code);
 expect(denied !== "allowed", "another company can read the event");
 step(13, `Another company is refused: ${denied}`);

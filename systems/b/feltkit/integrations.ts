@@ -1,4 +1,4 @@
-import { fail, s } from "@feltdb/feltkit";
+import { fail, s, type MutationCtx } from "@feltdb/feltkit";
 import { app, integrations } from "./app.js";
 
 export const ADOPTED = {
@@ -26,11 +26,7 @@ export const list = app.query({
  * Put the Shopify → NetSuite order sync under management with the customer's settings (the adopted code's
  * own configuration model: defaultCustomer, customerByEmail).
  */
-export const adoptOrderSync = app.mutation({
-  access: "mi.configure",
-  args: { defaultCustomer: s.optional(s.string()), customerByEmail: s.optional(s.record(s.string())) },
-  returns: s.string(),
-  handler: async (ctx, a) => {
+export async function createOrderSync(ctx: MutationCtx, a: { defaultCustomer?: string; customerByEmail?: Record<string, string> }) {
     const [existing] = await ctx.db.find(integrations, { kind: "order_sync" });
     if (existing) fail("CONFLICT", "The order sync is already under management.");
     const id = await ctx.db.insert(integrations, {
@@ -44,7 +40,13 @@ export const adoptOrderSync = app.mutation({
     // Subscribe to the shop's orders/create webhook, delivered to the runtime's route for this workspace.
     ctx.afterCommit.work("runtime", "subscribe", { integrationId: id }, { maxAttempts: 10 });
     return id;
-  },
+}
+
+export const adoptOrderSync = app.mutation({
+  access: "mi.configure",
+  args: { defaultCustomer: s.optional(s.string()), customerByEmail: s.optional(s.record(s.string())) },
+  returns: s.string(),
+  handler: async (ctx, a) => createOrderSync(ctx, a),
 });
 
 export const updateSettings = app.mutation({

@@ -133,3 +133,39 @@ export async function staff(owner: FeltKitClient, workspace: string, devId = "st
   await s.switchTenant(workspace);
   return s;
 }
+
+/**
+ * The customer's OWN earlier deployment of the adopted order sync (before they came to us): the pinned
+ * upstream code run directly with their own NetSuite certificate, as their server would run it.
+ */
+export async function theirOrderSync() {
+  const { newKeyPair, accessToken } = await import("../runtime/netsuite.ts");
+  const { execute } = await import("../runtime/order-sync.ts");
+  const keys = newKeyPair();
+  await json(`${FX.netsuite}/__fixture/public-key`, { method: "POST", body: { pem: keys.publicKeyPem } });
+  const cred = { accountDomain: FX.netsuite, clientId: "fixture-netsuite-client-id", certificateId: "fixture-cert-id", privateKeyPem: keys.privateKeyPem };
+  return {
+    async process(payload: any) {
+      const token = await accessToken(`their-deployment-${keys.publicKeyPem.length}`, cred);
+      return execute(payload, { defaultCustomer: "WEB" }, { baseUrl: cred.accountDomain, accessToken: token });
+    },
+  };
+}
+
+/** The customer's OWN earlier ledgerly deployment: the pinned code with their own QuickBooks authorization. */
+export async function theirLedgerly(stripeKey: string) {
+  const { exchangeCode, accountMapByName } = await import("../runtime/quickbooks.ts");
+  const { executeEvent, artifactFor, stripeClient } = await import("../runtime/ledgerly.ts");
+  const redirect = "http://their-ledgerly.example/callback";
+  const auth = await fetch(`${FX.qbo}/connect/oauth2?client_id=qbo-fixture-client&redirect_uri=${encodeURIComponent(redirect)}&state=theirs&response_type=code`, { redirect: "manual" });
+  const back = new URL(auth.headers.get("location")!);
+  const grant = await exchangeCode("qbo-fixture-secret", back.searchParams.get("code")!, redirect, back.searchParams.get("realmId")!);
+  const { map } = await accountMapByName(grant, (await artifactFor([])).module.ACCOUNTS);
+  const stripe = stripeClient(stripeKey);
+  return {
+    async process(eventId: string) {
+      const event = await stripe.events.retrieve(eventId);
+      return executeEvent(event as any, stripeKey, grant, map, []);
+    },
+  };
+}

@@ -129,3 +129,14 @@ export async function executeEvent(
   const minorRequested = requests.length ? new URL(requests.at(-1)!.url).searchParams.get("minorversion") : null;
   return { status: sent ? "booked" : "already_booked", entries: sent, artifact: a.id, requests, minorRequested };
 }
+
+/** How many journal entries the adopted code makes for an event (expansion reads Stripe; nothing is sent). */
+export async function entriesFor(event: { id: string; type: string }, stripeKey: string, patchIds: string[] = []): Promise<number> {
+  const L = (await artifactFor(patchIds)).module;
+  try {
+    return L.mapEvent(await L.expandEvent(stripeClient(stripeKey), event)).entries.length;
+  } catch (err) {
+    if (err instanceof L.UnhandledEventError) return 0;
+    throw err;
+  }
+}

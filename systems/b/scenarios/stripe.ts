@@ -6,13 +6,30 @@
  * Stripe event is lost in transit; the customer reconnects; everything is booked exactly once.
  */
 import { api } from "../feltkit/_generated/api.ts";
-import { B, FX, company, expect, finish, json, staff, step, wait } from "./lib.ts";
+import { B, FX, company, expect, finish, json, staff, step, theirLedgerly, wait } from "./lib.ts";
 
 const run = Date.now().toString(36);
 const stripeKey = (await json(`${FX.stripe}/__fixture/state`)).body.apiKey as string;
 type JE = { DocNumber?: string; PrivateNote: string; Line: { Amount: number; JournalEntryLineDetail: { PostingType: string } }[] };
 const qbo = async () => (await json(`${FX.qbo}/__fixture/state`)).body as { journalEntries: JE[]; requestLog: { method: string; path: string; minorRequested: number | null; minorServed: number | null }[] };
 const entriesFor = async (eventId: string) => (await qbo()).journalEntries.filter((j) => j.DocNumber === eventId.slice(-21));
+
+const theirs = await theirLedgerly(stripeKey);
+const hist: string[] = [];
+for (const [path, body] of [
+  ["charge", { amount: 12_000, daysAgo: 4 }],
+  ["charge", { amount: 4_900, daysAgo: 3 }],
+  ["invoice", { amount: 2_900, daysAgo: 3 }],
+  ["charge", { amount: 26_500, daysAgo: 2 }],
+  ["payout", { amount: 30_000, daysAgo: 1 }],
+] as const) {
+  const r = (await json(`${FX.stripe}/__fixture/${path}`, { method: "POST", body })).body as { eventId: string; chargeEventId?: string };
+  if (r.chargeEventId) await theirs.process(r.chargeEventId);
+  const out = await theirs.process(r.eventId);
+  expect(out.status === "booked", `their deployment: ${r.eventId} ${out.status} ${out.message ?? ""}`);
+  hist.push(r.eventId);
+}
+step("B0", `Before: Lumen's own ledgerly deployment booked ${hist.length} Stripe transactions in QuickBooks (the pinned code, their own authorization)`);
 
 const lumen = await company("Lumen", `finance-${run}@lumen.test`);
 const { c, workspace } = lumen;
@@ -35,7 +52,17 @@ async function connectQuickBooks() {
 }
 step("B3b", `QuickBooks connected through OAuth → back to ${await connectQuickBooks()}`);
 
-const integrationId = await c.mutation(api.ledgerly.adopt, {});
+await c.mutation(api.onboarding.discover, { kind: "ledgerly" });
+const found = await wait("discovery", async () => (await c.query(api.onboarding.status)).integrations.find((i) => i.kind === "ledgerly" && i.status !== "discovering"));
+expect(found.status === "confirm", `discovery: ${found.status} ${JSON.stringify(found.discovery)}`);
+const cand = (found.discovery!.candidates as { id: string; summary: string; confidence: string }[])[0]!;
+step("B4", `Discovered: ${cand.summary} (confidence: ${cand.confidence}) — ${JSON.stringify(found.discovery!.evidence)}`);
+await c.mutation(api.onboarding.confirm, { kind: "ledgerly", candidateId: cand.id, responsibilitiesVersion: found.responsibilities.version });
+const managed = await wait("management to become active", async () => (await c.query(api.onboarding.status)).integrations.find((i) => i.kind === "ledgerly" && i.status === "managed"));
+const bl = managed.discovery!.baseline as Record<string, number>;
+expect(bl.missing === 0 && bl.previouslyDelivered >= 5, `baseline ${JSON.stringify(bl)}`);
+step("B5", `Baseline: ${bl.checked} recent Stripe transactions checked, ${bl.accountedFor} in QuickBooks (${bl.previouslyDelivered} written by their earlier deployment), ${bl.missing} missing`);
+const integrationId = managed.integrationId!;
 await wait("set up (account map, Stripe endpoint)", async () => (await c.query(api.integrations.list)).integrations.find((i) => i.id === integrationId && i.status !== "checking"));
 step("B6", `Under management: ${integrationId} running ${(await c.query(api.integrations.list)).integrations.find((i) => i.id === integrationId)!.upstream.repository}`);
 

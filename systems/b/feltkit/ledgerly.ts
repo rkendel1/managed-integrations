@@ -1,15 +1,12 @@
 /** Stripe → QuickBooks with the adopted ledgerly code: adoption and the runtime's records for it. */
-import { fail, s } from "@feltdb/feltkit";
+import { fail, s, type MutationCtx } from "@feltdb/feltkit";
 import { app, connections, corrections, integrations } from "./app.js";
 import { openOrJoinEvent } from "./maintenance.js";
 
 export const LEDGERLY = { repository: "github.com/jakethehoffer/ledgerly", commit: "3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090", license: "MIT" } as const;
 
 /** Put the company's Stripe → QuickBooks bookkeeping under management (Stripe and QuickBooks connected). */
-export const adopt = app.mutation({
-  access: "mi.configure",
-  returns: s.string(),
-  handler: async (ctx) => {
+export async function createLedgerly(ctx: MutationCtx) {
     if ((await ctx.db.find(integrations, { kind: "ledgerly" })).length) fail("CONFLICT", "Stripe → QuickBooks is already under management.");
     for (const provider of ["stripe", "quickbooks"] as const) {
       const [c] = await ctx.db.find(connections, { provider });
@@ -26,7 +23,12 @@ export const adopt = app.mutation({
     // Map ledgerly's accounts to the company's chart of accounts and subscribe to Stripe events.
     ctx.afterCommit.work("runtime", "ledgerly-setup", { integrationId: id }, { maxAttempts: 20 });
     return id;
-  },
+}
+
+export const adopt = app.mutation({
+  access: "mi.configure",
+  returns: s.string(),
+  handler: async (ctx) => createLedgerly(ctx),
 });
 
 /* --------------------------------------------- runtime --------------------------------------------- */
