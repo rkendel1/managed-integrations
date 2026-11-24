@@ -1,0 +1,15 @@
+{
+  "name": "mi-b-repair-agent",
+  "private": true,
+  "type": "module",
+  "description": "System B's repair proposer: an EVE agent that proposes a candidate engine change for a schema-drift incident. It proposes only; System B validates, a person approves.",
+  "scripts": {
+    "build": "eve build",
+    "start": "eve start"
+  },
+  "dependencies": {
+    "ai": "^7.0.172",
+    "eve": "npm:@appport/eve@1.1.0",
+    "zod": "^4.6.7"
+  }
+}
