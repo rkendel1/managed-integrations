@@ -8,6 +8,20 @@ import { fail, s } from "@feltdb/feltkit";
 import { app, connections, deliveries, integrations, onboardings } from "./app.js";
 import { createOrderSync } from "./integrations.js";
 import { createLedgerly } from "./ledgerly.js";
+import type { MutationCtx } from "@feltdb/feltkit";
+
+const APPS = {
+  stripe_app: { repository: "https://github.com/abdelrahmansapryalwtany/stripe-webhooks-subscriptions-node-ts", commit: "4812d259e7e8e1e57785f2e09be448e5e3ad92b1" },
+  qbo_tools: { repository: "https://github.com/laf-rge/quickbooks-mcp", commit: "ce1317e51d43fb669d73f6f874935fb7827e5ebd" },
+} as const;
+
+/** Host an adopted application: its runtime sets it up (endpoint, records rebuilt from the provider). */
+async function createApp(ctx: MutationCtx, kind: "stripe_app" | "qbo_tools") {
+  if ((await ctx.db.find(integrations, { kind })).length) fail("CONFLICT", "Already under management.");
+  const id = await ctx.db.insert(integrations, { kind, enabled: true, settings: {}, status: "checking", upstream: { ...APPS[kind] }, createdAt: Date.now() });
+  ctx.afterCommit.work("runtime", "app-setup", { kind, integrationId: id }, { maxAttempts: 20 });
+  return id;
+}
 
 const KINDS = {
   order_sync: {
@@ -29,6 +43,26 @@ const KINDS = {
       access: ["Stripe: restricted key (read events, charges, invoices, payouts; manage webhook endpoints)", "QuickBooks: accounting (create journal entries, read accounts)"],
     },
     steps: ["integration", "webhook", "baseline"],
+  },
+  stripe_app: {
+    providers: ["stripe"] as const,
+    summary: "Stripe subscriptions application (stripe-webhooks-subscriptions-node-ts)",
+    responsibilities: {
+      version: 1,
+      maintain: ["Host the application's webhook processing and keep its records", "Check every record it keeps against Stripe", "Keep its code current with Stripe's API and verify the result", "Tell you only when a decision is yours"],
+      access: ["Stripe: restricted key (read subscriptions, invoices, events; manage webhook endpoints)"],
+    },
+    steps: ["integration", "webhook", "baseline"],
+  },
+  qbo_tools: {
+    providers: ["quickbooks"] as const,
+    summary: "QuickBooks tools for your assistant (quickbooks-mcp: create invoices)",
+    responsibilities: {
+      version: 1,
+      maintain: ["Run each requested operation exactly once and verify it in QuickBooks", "Hold requests while QuickBooks access is lost; run them once after you reconnect", "Keep the tools current with their upstream releases, verified before use"],
+      access: ["QuickBooks: accounting (create and read invoices, read customers and items)"],
+    },
+    steps: ["integration", "baseline"],
   },
 } as const;
 type Kind = keyof typeof KINDS;
@@ -74,7 +108,7 @@ export const status = app.query({
 
 export const discover = app.mutation({
   access: "mi.configure",
-  args: { kind: s.enum(["order_sync", "ledgerly"]) },
+  args: { kind: s.enum(["order_sync", "ledgerly", "stripe_app", "qbo_tools"]) },
   returns: Status,
   capability: { name: "onboarding.discover", description: "Look for the integration this company already runs (needs its providers connected)." },
   handler: async (ctx, { kind }) => {
@@ -92,7 +126,7 @@ export const discover = app.mutation({
 
 export const confirm = app.mutation({
   access: "mi.configure",
-  args: { kind: s.enum(["order_sync", "ledgerly"]), candidateId: s.string(), responsibilitiesVersion: s.integer() },
+  args: { kind: s.enum(["order_sync", "ledgerly", "stripe_app", "qbo_tools"]), candidateId: s.string(), responsibilitiesVersion: s.integer() },
   returns: Status,
   capability: { name: "onboarding.confirm", description: "Confirm we maintain the discovered integration under the listed responsibilities." },
   handler: async (ctx, a) => {
@@ -101,9 +135,12 @@ export const confirm = app.mutation({
     if (a.responsibilitiesVersion !== KINDS[a.kind].responsibilities.version) fail("CONFLICT", "What we will maintain has changed; review it again.");
     const candidates = (o.discovery?.candidates as { id: string }[] | undefined) ?? [];
     if (!candidates.some((c) => c.id === a.candidateId)) fail("NOT_FOUND", "No such candidate.");
-    const integrationId = a.kind === "order_sync" ? await createOrderSync(ctx, {}) : await createLedgerly(ctx);
+    const integrationId =
+      a.kind === "order_sync" ? await createOrderSync(ctx, {})
+      : a.kind === "ledgerly" ? await createLedgerly(ctx)
+      : await createApp(ctx, a.kind);
     await ctx.db.patch(onboardings, o.id, { status: "activating", confirmedVersion: a.responsibilitiesVersion, steps: { integration: "done", webhook: "pending", baseline: "pending" }, updatedAt: Date.now() });
-    ctx.afterCommit.work("runtime", "baseline", { kind: a.kind, integrationId }, { maxAttempts: 30 });
+    if (a.kind === "order_sync" || a.kind === "ledgerly") ctx.afterCommit.work("runtime", "baseline", { kind: a.kind, integrationId }, { maxAttempts: 30 });
     return view(ctx, a.kind);
   },
 });
@@ -112,7 +149,7 @@ export const confirm = app.mutation({
 
 export const recordDiscovery = app.mutation({
   access: "mi.runtime",
-  args: { kind: s.enum(["order_sync", "ledgerly"]), outcome: s.enum(["found", "not_found", "insufficient_evidence"]), evidence: s.record(s.unknown()) },
+  args: { kind: s.enum(["order_sync", "ledgerly", "stripe_app", "qbo_tools"]), outcome: s.enum(["found", "not_found", "insufficient_evidence"]), evidence: s.record(s.unknown()) },
   handler: async (ctx, a) => {
     const [o] = await ctx.db.find(onboardings, { kind: a.kind });
     if (!o) fail("NOT_FOUND", "No onboarding.");
@@ -127,7 +164,7 @@ export const recordDiscovery = app.mutation({
 
 export const recordBaseline = app.mutation({
   access: "mi.runtime",
-  args: { kind: s.enum(["order_sync", "ledgerly"]), webhook: s.boolean(), baseline: s.record(s.unknown()) },
+  args: { kind: s.enum(["order_sync", "ledgerly", "stripe_app", "qbo_tools"]), webhook: s.boolean(), baseline: s.record(s.unknown()) },
   handler: async (ctx, a) => {
     const [o] = await ctx.db.find(onboardings, { kind: a.kind });
     if (!o) fail("NOT_FOUND", "No onboarding.");

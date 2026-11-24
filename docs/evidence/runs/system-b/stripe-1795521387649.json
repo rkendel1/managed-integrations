@@ -1,83 +1,83 @@
 {
   "scenario": "stripe",
   "system": "B",
-  "startedAt": "2026-11-24T11:44:46.865Z",
-  "ms": 6816,
+  "startedAt": "2026-11-24T11:56:27.649Z",
+  "ms": 6864,
   "steps": [
     {
       "n": "B0",
       "text": "Before: Lumen's own ledgerly deployment booked 5 Stripe transactions in QuickBooks (the pinned code, their own authorization)",
-      "ms": 163
+      "ms": 190
     },
     {
       "n": "B3",
       "text": "Stripe connected with a restricted key → verified (acct_1FixtureStripe)",
-      "ms": 262
+      "ms": 295
     },
     {
       "n": "B3b",
       "text": "QuickBooks connected through OAuth → back to http://127.0.0.1:3100/app/connections",
-      "ms": 279
+      "ms": 318
     },
     {
       "n": "B4",
       "text": "Discovered: Stripe transactions → QuickBooks journal entries (ledgerly) (confidence: high) — {\"checked\":5,\"matched\":5,\"convention\":\"QuickBooks journal entries with DocNumber = the Stripe event id's last 21 characters (ledgerly's rule)\",\"windowDays\":7}",
-      "ms": 451
+      "ms": 486
     },
     {
       "n": "B5",
       "text": "Baseline: 5 recent Stripe transactions checked, 5 in QuickBooks (5 written by their earlier deployment), 0 missing",
-      "ms": 1241
+      "ms": 1297
     },
     {
       "n": "B6",
-      "text": "Under management: mwumnp3r74ff395b650a running github.com/jakethehoffer/ledgerly",
-      "ms": 1249
+      "text": "Under management: mwun2puz2178c4cb584f running github.com/jakethehoffer/ledgerly",
+      "ms": 1307
     },
     {
       "n": "B7",
       "text": "Payment evt_Lm000000000000000027 booked once by the adopted code: debits 88.00 = credits 88.00",
-      "ms": 1556
+      "ms": 1616
     },
     {
       "n": "B8",
       "text": "Independent check (Stripe Events API vs deliveries and QuickBooks): {\"delivered\":1,\"discovered\":1}",
-      "ms": 1724
+      "ms": 1782
     },
     {
       "n": "P1",
       "text": "Detected by reading the running code: github.com/jakethehoffer/ledgerly @ 3101182 requests minorversion 70; QuickBooks serves 75 since 2025-08-01 (at src/server/dispatchers/qbo.ts:25; https://blogs.intuit.com/2025/01/21/changes-to-our-accounting-api-that-may-impact-your-application/)",
-      "ms": 2852
+      "ms": 2911
     },
     {
       "n": "P1b",
       "text": "Validation: applies to the pinned source: passed; replay: only the minor version changes: passed; declares the served minor version: passed; rollback target available: passed",
-      "ms": 2852
+      "ms": 2911
     },
     {
       "n": "P2",
       "text": "Operator activated the patch: proposed → validated → active; running patch:qbo-minorversion-75",
-      "ms": 4104
+      "ms": 4162
     },
     {
       "n": "P3",
-      "text": "QuickBooks request now declares minorversion 75 (served 75); after activation: {\"delivery\":\"mwumnqyp0c3c6ea88637\",\"minorversionRequested\":75,\"artifact\":\"c75528bbb51d5cde\",\"at\":1795520690875}",
-      "ms": 4106
+      "text": "QuickBooks request now declares minorversion 75 (served 75); after activation: {\"delivery\":\"mwun2rqj0449da70dc53\",\"minorversionRequested\":75,\"artifact\":\"6c19cdf1dd5f9e50\",\"at\":1795521391751}",
+      "ms": 4164
     },
     {
       "n": "B9",
       "text": "Simulator: Intuit revokes access. Customer sees \"QuickBooks stopped accepting our access. Reconnect it and we will deliver everything that waited; nothing is lost.\" (status customer_action); evt_Lm000000000000000035 is held; evt_Lm000000000000000039 is lost in transit",
-      "ms": 4449
+      "ms": 4500
     },
     {
       "n": "B9b",
       "text": "Customer reconnects QuickBooks → http://127.0.0.1:3100/app/connections",
-      "ms": 4469
+      "ms": 4518
     },
     {
       "n": "B10",
       "text": "\"Completed: all 2 Stripe transaction(s) that waited or were missed are in QuickBooks exactly once. Nothing was lost.\"",
-      "ms": 6813,
+      "ms": 6860,
       "data": {
         "affected": 2,
         "delivered": 2,
@@ -88,7 +88,7 @@
     {
       "n": "B10b",
       "text": "Both transactions are in QuickBooks exactly once (the held one and the one whose webhook was lost)",
-      "ms": 6816
+      "ms": 6864
     }
   ]
 }

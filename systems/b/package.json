@@ -13,12 +13,20 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.1176.0",
+    "@aws-sdk/client-ssm": "^3.1176.0",
     "@feltdb/feltkit": "^0.4.0",
+    "dotenv": "^17.4.2",
+    "intuit-oauth": "^4.2.5",
+    "jose": "^6.2.18",
     "ledgerly": "github:jakethehoffer/ledgerly#3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090",
+    "nqb-2.0.48": "npm:node-quickbooks@^2.0.48",
+    "nqb-2.0.50": "npm:node-quickbooks@^2.0.50",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "shopify-sync": "github:Milo-ai-HQ/shopify-erp-order-sync#d01b51d95993598580cdcffda6537a6f20a10a3a",
-    "stripe": "^16.12.0"
+    "stripe": "^16.12.0",
+    "tmp": "^0.2.7"
   },
   "devDependencies": {
     "@types/node": "22.19.1",

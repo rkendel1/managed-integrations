@@ -222,3 +222,38 @@ export const tickets = app.collection(
   "tickets",
   { workspace: s.string(), purpose: s.string(), subject: s.string(), principal: s.string(), expiresAt: at, usedAt: s.optional(at) },
 );
+
+/** A hosted application's own records (what its database held), written only through its own code. */
+export const appRecords = app.collection(
+  "app_records",
+  {
+    tenantId: s.optional(s.string()),
+    integrationId: s.string(),
+    model: s.string(),
+    key: s.string(),
+    data: s.record(s.unknown()),
+    sourceEventId: s.optional(s.string()),
+    verified: s.optional(s.object({ at: s.number(), matches: s.boolean(), differs: s.array(s.string()) })),
+    updatedAt: s.number(),
+  },
+  { tenant: true, unique: [["tenantId", "integrationId", "model", "key"]], indexes: [{ fields: ["integrationId", "model"] }] },
+);
+
+/** Requests to a hosted application's operations (deduplicated by the caller's request id). */
+export const appRequests = app.collection(
+  "app_requests",
+  {
+    tenantId: s.optional(s.string()),
+    integrationId: s.string(),
+    requestId: s.string(),
+    operation: s.string(),
+    input: s.record(s.unknown()),
+    status: s.enum(["queued", "running", "succeeded", "failed", "awaiting_authorization", "unknown"]),
+    result: s.optional(s.record(s.unknown())),
+    attempts: s.array(s.object({ at: s.number(), outcome: s.string(), detail: s.optional(s.string()), correction: s.optional(s.string()) })),
+    requestedBy: s.string(),
+    heldBy: s.optional(s.string()),
+    updatedAt: s.number(),
+  },
+  { tenant: true, unique: [["tenantId", "integrationId", "requestId"]] },
+);

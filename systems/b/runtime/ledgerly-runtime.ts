@@ -42,7 +42,7 @@ export function routes(rt: Runtime, h: { readBody(req: IncomingMessage): Promise
     if (req.method === "POST" && parts[1] === "hooks" && parts[2] === "stripe" && parts.length === 5) {
       const [, , , ws, integrationId] = parts as [string, string, string, string, string];
       const raw = await h.readBody(req);
-      const i = await rt.call(ws, "ledgerly:settings", { integrationId });
+      const i = await rt.call(ws, "runtime:integrationSettings", { integrationId });
       const sealed = i.settings.endpointSecret as string | undefined;
       if (!sealed || !verifyStripeSignature(raw, req.headers["stripe-signature"] as string | undefined, rt.open<string>(ws, `endpoint:${integrationId}`, sealed))) {
         h.send(res, 400, { error: "invalid signature" });

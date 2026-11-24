@@ -22,6 +22,7 @@ import { handlers as maintenanceHandlers } from "./maintain.ts";
 import { handlers as reconcileHandlers } from "./reconcile.ts";
 import * as ledgerly from "./ledgerly-runtime.ts";
 import { handlers as onboardingHandlers } from "./onboarding.ts";
+import * as apps from "./apps-runtime.ts";
 
 const SHOPIFY_CLIENT_ID = process.env.SHOPIFY_CLIENT_ID ?? "fixture-shopify-client-id";
 const PUBLIC_URL = (process.env.MI_PUBLIC_URL ?? "http://127.0.0.1:3100").replace(/\/$/, "");
@@ -178,6 +179,10 @@ export default defineComponent(async (ctx) => {
       const deliveryId = String(item.input.deliveryId);
       const c = await rt.call(ws, "runtime:deliveryContext", { deliveryId });
       if (c.delivery.status === "delivered") return { outcome: "done", receipt: { skipped: "already delivered" } };
+      if (c.integration.kind === "stripe_app") {
+        const by = "runtime (stripe-webhooks-subscriptions-node-ts @ 4812d259e7e8)";
+        return apps.deliverStripeApp(rt, ws, c, (outcome, extra = {}) => rt.call(ws, "runtime:recordAttempt", { deliveryId, outcome, by, ...extra }));
+      }
       if (c.integration.kind === "ledgerly") {
         const by = `runtime (${ledgerly.UPSTREAM_LABEL})`;
         return ledgerly.deliver(rt, ws, c, qboSecret, (outcome, extra = {}) => rt.call(ws, "runtime:recordAttempt", { deliveryId, outcome, by, ...extra }));
@@ -250,6 +255,7 @@ export default defineComponent(async (ctx) => {
     ...reconcileHandlers(() => rt),
     ...ledgerly.workers(() => rt, () => qboSecret, PUBLIC_URL),
     ...onboardingHandlers(() => rt, () => qboSecret),
+    ...apps.workers(() => rt, () => qboSecret, PUBLIC_URL),
   };
 
   let stopped = false;

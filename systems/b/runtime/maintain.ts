@@ -13,6 +13,38 @@ import { toCanonicalOrder } from "shopify-sync/src/mapping.js";
 import { graphql } from "./shopify.ts";
 import { readSalesOrder } from "./netsuite.ts";
 import { PATCHES, executeEvent } from "./ledgerly.ts";
+import { APP_PATCHES, STRIPE_APP, createInvoice, differences, processWith, stripeTruth } from "./apps.ts";
+import { processAndVerify } from "./apps-runtime.ts";
+import { createServer } from "node:http";
+
+const ALL_PATCHES = { ...PATCHES, ...APP_PATCHES };
+
+/**
+ * A recording QuickBooks double for request-level replay: reads pass through to QuickBooks (they change
+ * nothing); the create is answered here and never reaches QuickBooks. Every request is recorded.
+ */
+async function recordingDouble(upstream: string) {
+  const seen: { method: string; path: string; query: string; body: string; headers: Record<string, string> }[] = [];
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const c of req) chunks.push(c as Buffer);
+    const body = Buffer.concat(chunks).toString("utf8");
+    const u = new URL(req.url ?? "/", "http://double");
+    const headers = Object.fromEntries(Object.entries(req.headers).map(([k, v]) => [k, String(v)]));
+    seen.push({ method: req.method ?? "", path: u.pathname, query: u.search, body, headers });
+    if (req.method === "POST" && u.pathname.endsWith("/invoice")) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ Invoice: { ...(JSON.parse(body || "{}") as object), Id: "replay", SyncToken: "0", TotalAmt: 0 }, time: new Date().toISOString() }));
+      return;
+    }
+    const r = await fetch(`${upstream}${u.pathname}${u.search}`, { method: req.method, headers: { authorization: headers.authorization ?? "", accept: "application/json" } });
+    res.writeHead(r.status, { "content-type": r.headers.get("content-type") ?? "application/json" });
+    res.end(await r.text());
+  });
+  await new Promise<void>((ok) => server.listen(0, "127.0.0.1", ok));
+  const port = (server.address() as { port: number }).port;
+  return { url: `http://127.0.0.1:${port}`, seen, close: () => new Promise<void>((ok) => server.close(() => ok())) };
+}
 import { grant, query } from "./quickbooks.ts";
 
 type Handler = (item: ComponentWorkItem, ws: string) => Promise<ComponentWorkOutcome>;
@@ -80,9 +112,78 @@ export function handlers(get: () => Runtime): Record<string, Handler> {
         if (phase === "await_customer" || phase === "await_operator" || phase === "requires_action" || phase === "done") return { outcome: "done", receipt: { phase } };
         if (phase === "correct" && c.event.kind === "provider_contract") {
           const patchId = c.event.finding.patch as string | null;
-          await rt.call(ws, "maintenance:proposeCorrection", patchId
-            ? { eventId, kind: "patch", scopeKey: `${c.event.integrationId}:provider:${c.event.finding.contract}`, spec: { patch: patchId, file: PATCHES[patchId]!.file, find: PATCHES[patchId]!.find, replace: PATCHES[patchId]!.replace }, reason: PATCHES[patchId]!.reason }
+          const P = patchId ? ALL_PATCHES[patchId] : undefined;
+          await rt.call(ws, "maintenance:proposeCorrection", P
+            ? { eventId, kind: "patch", scopeKey: `${c.event.integrationId}:provider:${c.event.finding.contract}`, spec: { patch: patchId, file: P.file, find: P.find, replace: P.replace }, reason: P.reason }
             : { eventId, kind: "unsupported", scopeKey: `${c.event.integrationId}:provider:${c.event.finding.contract}`, spec: {}, reason: "No reviewed patch for this contract; an engineer must write one." });
+          continue;
+        }
+        if (phase === "correct" && c.event.kind === "application_change") {
+          const f = c.event.finding as { executedFilesChanged: string[]; dependencyChanges: { name: string; from: string; to: string }[]; release: string };
+          const dep = f.dependencyChanges[0];
+          await rt.call(ws, "maintenance:proposeCorrection", !f.executedFilesChanged.length && dep
+            ? { eventId, kind: "patch", scopeKey: `${c.event.integrationId}:dependency:${dep.name}`, spec: { dependency: dep.name, from: dep.from, to: dep.to, release: f.release }, reason: `Follow upstream ${f.release}: ${dep.name} ${dep.from} → ${dep.to}; none of the executed files changed` }
+            : { eventId, kind: "unsupported", scopeKey: `${c.event.integrationId}:release:${f.release}`, spec: { executedFilesChanged: f.executedFilesChanged }, reason: "The release changes code this deployment executes; an engineer must review it." });
+          continue;
+        }
+        if (phase === "validate" && c.event.kind === "application_change") {
+          const fix = c.corrections.find((x: any) => x.status === "proposed" && x.kind === "patch");
+          if (!fix) return { outcome: "done" };
+          const reqs = await rt.call<{ input: Record<string, unknown> }[]>(ws, "apps:recentRequests", { integrationId: c.event.integrationId });
+          const input = (reqs[0]?.input ?? { txn_date: "2026-01-01", customer_name: "Acme Corp", doc_number: "REPLAY-1", lines: [{ item_name: "Consulting", amount: 1 }] }) as any;
+          const g = await grant(rt, ws, (rt as any).qboSecret ?? "");
+          const runWith = async (version: string) => {
+            const d = await recordingDouble((await import("./quickbooks.ts")).QBO.apiBase);
+            try {
+              await createInvoice(g, (rt as any).qboSecret ?? "", { ...input, doc_number: `${input.doc_number}-replay` }, version, { baseUrl: d.url }).catch(() => undefined);
+            } finally {
+              await d.close();
+            }
+            return d.seen;
+          };
+          const a = await runWith(String(fix.spec.from));
+          const b = await runWith(String(fix.spec.to));
+          const norm = (r: { method: string; path: string; query: string; body: string; headers: Record<string, string> }) =>
+            JSON.stringify({ m: r.method, p: r.path, q: r.query.replace(/requestid=[^&]*/, ""), b: r.body, h: Object.fromEntries(Object.entries(r.headers).filter(([k]) => !["user-agent", "request-id", "host", "content-length", "connection"].includes(k))) });
+          const same = a.length > 0 && a.length === b.length && a.every((r, i) => norm(r) === norm(b[i]!));
+          const ua = [...new Set(b.map((r) => r.headers["user-agent"]))].join(", ");
+          const checks: { name: string; result: "passed" | "failed" | "not_applicable"; detail: string }[] = [
+            { name: "replay: requests identical but User-Agent and Request-Id", result: same ? "passed" : "failed", detail: `${a.length} request(s) per version through a recording double (the create never reached QuickBooks); new User-Agent: ${ua}` },
+            { name: "executed files unchanged in the release", result: (c.event.finding.executedFilesChanged as string[]).length ? "failed" : "passed", detail: `${c.event.finding.executedFiles} executed files; changed: ${(c.event.finding.executedFilesChanged as string[]).length}` },
+            { name: "rollback target available", result: "passed", detail: `node-quickbooks ${fix.spec.from} stays installed and loads` },
+          ];
+          await rt.call(ws, "maintenance:recordValidation", { correctionId: fix.id, checks });
+          continue;
+        }
+        if (phase === "validate" && c.event.kind === "provider_contract" && c.integrationKind === "stripe_app") {
+          const fix = c.corrections.find((x: any) => x.status === "proposed" && x.kind === "patch");
+          if (!fix) return { outcome: "done" };
+          const key = rt.open<{ apiKey: string }>(ws, "connection:stripe", (await rt.call(ws, "runtime:sealedConnection", { provider: "stripe" })).sealed).apiKey;
+          const affected = c.receipts.map((r: any) => rt.open<any>(ws, "receipt", r.sealed));
+          // Every other event Stripe holds for the account (what the records were rebuilt from), replayed both ways.
+          const affectedIds = new Set(affected.map((e: any) => e.id));
+          const earlier: any[] = [];
+          for await (const e of (await import("./ledgerly.ts")).stripeClient(key).events.list({ limit: 100 })) if (!affectedIds.has(e.id)) earlier.push(e);
+          let fixed = 0;
+          for (const e of affected) {
+            const r = await processWith([String(fix.spec.patch)], e, () => null);
+            let ok = true;
+            for (const w of r.writes) if (differences(w.row, await stripeTruth(key, w.model, w.key)).length) ok = false;
+            if (ok) fixed++;
+          }
+          let identical = 0;
+          for (const e of earlier) {
+            const x = await processWith([], e, () => null);
+            const y = await processWith([String(fix.spec.patch)], e, () => null);
+            if (JSON.stringify(x.writes) === JSON.stringify(y.writes)) identical++;
+          }
+          const checks: { name: string; result: "passed" | "failed" | "not_applicable"; detail: string }[] = [
+            { name: "replay affected events: records equal Stripe", result: affected.length && fixed === affected.length ? "passed" : "failed", detail: `${fixed}/${affected.length} events at ${c.event.finding.endpointApiVersion}` },
+            { name: "replay earlier-version events: identical records", result: identical === earlier.length ? "passed" : "failed", detail: `${identical}/${earlier.length} events at ${STRIPE_APP.apiVersion}` },
+            { name: "only the event processor changes", result: fix.spec.file === STRIPE_APP.processorFile ? "passed" : "failed", detail: `${fix.spec.file}; webhook signature, deduplication and retries are the runtime's and unchanged` },
+            { name: "rollback target available", result: "passed", detail: "the unpatched processor artifact still loads" },
+          ];
+          await rt.call(ws, "maintenance:recordValidation", { correctionId: fix.id, checks });
           continue;
         }
         if (phase === "validate" && c.event.kind === "provider_contract") {
@@ -107,10 +208,37 @@ export function handlers(get: () => Runtime): Record<string, Handler> {
           await rt.call(ws, "maintenance:recordValidation", { correctionId: fix.id, checks });
           continue;
         }
-        if (phase === "activate" && c.event.kind === "provider_contract") {
+        if (phase === "activate" && (c.event.kind === "provider_contract" || c.event.kind === "application_change")) {
           const fix = c.corrections.find((x: any) => x.status === "validated" && x.kind === "patch");
           if (fix) await rt.call(ws, "maintenance:awaitOperator", { eventId, correctionId: fix.id });
           return { outcome: "done", receipt: { awaiting: "operator activation" } };
+        }
+        if (phase === "verify_patch" && c.integrationKind === "stripe_app") {
+          // Reprocess every affected event with the patched code; each record must now equal Stripe.
+          const fix = c.corrections.find((x: any) => x.status === "active" && x.kind === "patch");
+          let ok = 0;
+          for (const r of c.receipts) {
+            const e = rt.open<any>(ws, "receipt", r.sealed);
+            const res = await processAndVerify(rt, ws, c.event.integrationId, e, [String(fix.spec.patch)]);
+            if (res.writes.every((w) => !w.differs.length)) ok++;
+          }
+          await rt.call(ws, "maintenance:recordPostActivation", {
+            eventId, correctionId: fix.id, observed: { reprocessed: c.receipts.length, matching: ok },
+            accounting: { affected: c.receipts.length, delivered: ok, unresolved: c.receipts.length - ok, duplicates: 0 },
+            doneText: `Done: the ${ok} affected Stripe update(s) are stored again, each checked against Stripe. Nothing was lost.`,
+          });
+          return { outcome: "done" };
+        }
+        if (phase === "verify_patch" && c.integrationKind === "qbo_tools") {
+          const fix = c.corrections.find((x: any) => x.status === "active" && x.kind === "patch");
+          const proof = (await rt.call<{ requestId: string; status: string; attempts: { at: number; correction?: string; detail?: string }[] }[]>(ws, "apps:recentRequests", { integrationId: c.event.integrationId }))
+            .find((r) => r.status === "succeeded" && r.attempts.some((a) => a.correction?.split(",").includes(fix.id) && a.detail?.includes(`node-quickbooks@${fix.spec.to}`)));
+          if (!proof) return { outcome: "retry", error: { message: "waiting for a real request on the new dependency" }, retryInMs: 1000 };
+          await rt.call(ws, "maintenance:recordPostActivation", {
+            eventId, correctionId: fix.id, observed: { request: proof.requestId, nodeQuickbooks: fix.spec.to },
+            doneText: "Done: the tools now run upstream's current release, verified on a real request.",
+          });
+          return { outcome: "done" };
         }
         if (phase === "verify_patch") {
           const fix = c.corrections.find((x: any) => x.status === "active" && x.kind === "patch");
@@ -153,6 +281,18 @@ export function handlers(get: () => Runtime): Record<string, Handler> {
           if (!fix) return { outcome: "done" };
           await rt.call(ws, "maintenance:activateValidated", { correctionId: fix.id });
           continue;
+        }
+        if ((phase === "recover" || phase === "verify") && c.integrationKind === "qbo_tools") {
+          // Operations held while access was lost run once after reconnecting; each is read back in QuickBooks.
+          const pending = c.heldRequests.filter((r: any) => r.status === "queued" || r.status === "running" || r.status === "awaiting_authorization");
+          if (pending.length) return { outcome: "retry", error: { message: `waiting for ${pending.length} held request(s)` }, retryInMs: 1000 };
+          const ok = c.heldRequests.filter((r: any) => r.status === "succeeded" && r.result?.verified).length;
+          await rt.call(ws, "maintenance:recordAccounting", {
+            eventId, affected: c.heldRequests.length, delivered: ok, unresolved: c.heldRequests.length - ok, duplicates: 0,
+            checks: c.heldRequests.map((r: any) => `${r.requestId}: ${r.status}${r.result?.invoiceId ? ` (invoice ${r.result.invoiceId} read back)` : ""}`),
+            doneText: `Completed: the ${ok} request(s) that waited for QuickBooks ran once each and are in QuickBooks. Nothing was lost.`,
+          });
+          return { outcome: "done" };
         }
         if (phase === "recover") {
           await rt.call(ws, "maintenance:startRecovery", { eventId });

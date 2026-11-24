@@ -3,7 +3,7 @@
  * runs in the workspace the component names, so FeltKit scopes every read and write to that customer.
  */
 import { fail, s } from "@feltdb/feltkit";
-import { app, connections, corrections, deliveries, integrations, receipts, reconItems, tickets } from "./app.js";
+import { app, appRequests, connections, corrections, deliveries, integrations, receipts, reconItems, tickets } from "./app.js";
 import { openOrJoinEvent, resumeAccessEvents } from "./maintenance.js";
 
 const MAX_AUTOMATIC = 5;
@@ -49,6 +49,10 @@ export const storeConnection = app.mutation({
         await ctx.db.patch(deliveries, d.id, { status: "queued", updatedAt: Date.now() });
         ctx.afterCommit.work("runtime", "deliver", { deliveryId: d.id }, { maxAttempts: MAX_AUTOMATIC });
       }
+      for (const r of await ctx.db.find(appRequests, { status: "awaiting_authorization" })) {
+        await ctx.db.patch(appRequests, r.id, { status: "queued", updatedAt: Date.now() });
+        ctx.afterCommit.work("runtime", "app-invoke", { integrationId: r.integrationId, requestId: r.requestId }, { maxAttempts: 5 });
+      }
       await resumeAccessEvents(ctx, a.provider);
     }
   },
@@ -83,7 +87,7 @@ export const ingest = app.mutation({
   returns: s.object({ disposition: s.string(), deliveryId: s.optional(s.string()) }),
   handler: async (ctx, a) => {
     const integ = await ctx.db.get(integrations, a.integrationId);
-    if (!integ || !integ.enabled || (integ.kind !== "order_sync" && integ.kind !== "ledgerly")) fail("NOT_FOUND", "No such integration.");
+    if (!integ || !integ.enabled || (integ.kind !== "order_sync" && integ.kind !== "ledgerly" && integ.kind !== "stripe_app")) fail("NOT_FOUND", "No such integration.");
     const now = Date.now();
     const seen = await ctx.db.find(receipts, { integrationId: a.integrationId, providerEventId: a.providerEventId });
     if (seen.length) return { disposition: "duplicate_webhook" };
@@ -208,5 +212,25 @@ export const recordAttempt = app.mutation({
       for (const item of await ctx.db.find(reconItems, { deliveryId: d.id }))
         if (item.recovery === "requested") ctx.afterCommit.work("runtime", "verify-recovery", { itemId: item.id }, { maxAttempts: 5 });
     return { status: a.outcome, automaticAttempts, retry };
+  },
+});
+
+/** A delivery was affected by an event found after it (e.g. stored data differs from the provider). */
+export const markAffected = app.mutation({
+  access: "mi.runtime",
+  args: { deliveryId: s.string(), eventId: s.string() },
+  handler: async (ctx, { deliveryId, eventId }) => {
+    await ctx.db.patch(deliveries, deliveryId, { heldBy: eventId });
+  },
+});
+
+/** Any integration's settings (the runtime's view: sealed values stay sealed). */
+export const integrationSettings = app.query({
+  access: "mi.runtime",
+  args: { integrationId: s.string() },
+  handler: async (ctx, { integrationId }) => {
+    const i = await ctx.db.get(integrations, integrationId);
+    if (!i) fail("NOT_FOUND", "No such integration.");
+    return { id: i.id, kind: i.kind, enabled: i.enabled, settings: i.settings };
   },
 });

@@ -2,6 +2,7 @@
 /* eslint-disable */
 import { createApi } from "@feltdb/feltkit/client";
 import type * as app_module from "../app.js";
+import type * as apps_module from "../apps.js";
 import type * as connections_module from "../connections.js";
 import type * as corrections_module from "../corrections.js";
 import type * as deliveries_module from "../deliveries.js";
@@ -13,4 +14,4 @@ import type * as reconcile_module from "../reconcile.js";
 import type * as runtime_module from "../runtime.js";
 
 /** Typed references to every query and mutation. Type-only imports: no backend code reaches the browser. */
-export const api = createApi<{ "app": typeof app_module; "connections": typeof connections_module; "corrections": typeof corrections_module; "deliveries": typeof deliveries_module; "integrations": typeof integrations_module; "ledgerly": typeof ledgerly_module; "maintenance": typeof maintenance_module; "onboarding": typeof onboarding_module; "reconcile": typeof reconcile_module; "runtime": typeof runtime_module }>();
+export const api = createApi<{ "app": typeof app_module; "apps": typeof apps_module; "connections": typeof connections_module; "corrections": typeof corrections_module; "deliveries": typeof deliveries_module; "integrations": typeof integrations_module; "ledgerly": typeof ledgerly_module; "maintenance": typeof maintenance_module; "onboarding": typeof onboarding_module; "reconcile": typeof reconcile_module; "runtime": typeof runtime_module }>();

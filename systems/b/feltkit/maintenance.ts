@@ -5,7 +5,7 @@
  */
 import { fail, s } from "@feltdb/feltkit";
 import type { MutationCtx } from "@feltdb/feltkit";
-import { app, corrections, deliveries, events, integrations, receipts, reconItems, reconRuns } from "./app.js";
+import { app, appRequests, corrections, deliveries, events, integrations, receipts, reconItems, reconRuns } from "./app.js";
 
 type Boundary = "source" | "target" | "provider" | "integration" | "combined";
 
@@ -137,7 +137,9 @@ export const eventContext = app.query({
     const integ = await ctx.db.get(integrations, e.integrationId);
     const lastDelivered = all.filter((d) => d.status === "delivered").sort((x, y) => y.updatedAt - x.updatedAt)[0];
     const lastReceipt = lastDelivered ? await ctx.db.get(receipts, lastDelivered.receiptId) : null;
+    const heldRequests = (await ctx.db.find(appRequests, { integrationId: e.integrationId })).filter((r) => r.heldBy === eventId);
     return {
+      heldRequests: heldRequests.map((r) => ({ requestId: r.requestId, status: r.status, result: r.result ?? null })),
       integrationKind: integ?.kind ?? null,
       lastDeliveredReceipt: lastReceipt ? lastReceipt.sealed : null,
       deliveredAttemptsSince: all.flatMap((d) => d.attempts.filter((a) => a.outcome === "delivered" && a.at >= e.openedAt).map((a) => ({ deliveryId: d.id, at: a.at, correction: a.correction ?? null, detail: a.detail ?? null }))),
@@ -343,7 +345,11 @@ export const recordAccounting = app.mutation({
 /** After a patch is active: the request that proves it (from a real delivery), recorded on the correction. */
 export const recordPostActivation = app.mutation({
   access: "mi.runtime",
-  args: { eventId: s.string(), correctionId: s.string(), observed: s.record(s.unknown()) },
+  args: {
+    eventId: s.string(), correctionId: s.string(), observed: s.record(s.unknown()),
+    accounting: s.optional(s.object({ affected: s.integer(), delivered: s.integer(), unresolved: s.integer(), duplicates: s.integer() })),
+    doneText: s.optional(s.string()),
+  },
   handler: async (ctx, a) => {
     const c = await ctx.db.get(corrections, a.correctionId);
     const e = await ctx.db.get(events, a.eventId);
@@ -354,11 +360,11 @@ export const recordPostActivation = app.mutation({
       status: "resolved",
       phase: "done",
       resolvedAt: now,
-      accounting: { affected: 0, delivered: 0, unresolved: 0, duplicates: 0 },
+      accounting: a.accounting ?? { affected: 0, delivered: 0, unresolved: 0, duplicates: 0 },
       timeline: [
         ...e.timeline,
         note(`Verified after activation: ${JSON.stringify(a.observed)}`, false, "verification"),
-        note("Done: your bookkeeping code is updated and verified on a real posting. Nothing was missed.", true, "resolved"),
+        note(a.doneText ?? "Done: your bookkeeping code is updated and verified on a real posting. Nothing was missed.", true, "resolved"),
       ],
     });
     await ctx.db.patch(integrations, e.integrationId, { status: "verified" });

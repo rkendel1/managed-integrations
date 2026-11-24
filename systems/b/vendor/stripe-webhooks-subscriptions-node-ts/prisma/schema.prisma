@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum StripeEventStatus {
+  received
+  processed
+  failed
+  ignored
+}
+
+model StripeEvent {
+  id              String           @id @default(cuid())
+  stripeEventId   String           @unique
+  type            String
+  livemode        Boolean
+  payload         Json
+  status          StripeEventStatus @default(received)
+  attemptCount    Int              @default(0)
+  lastError       String?
+  receivedAt      DateTime         @default(now())
+  processedAt     DateTime?
+
+  @@index([type])
+  @@index([status])
+}
+
+model Subscription {
+  id                   String   @id @default(cuid())
+  stripeSubscriptionId String   @unique
+  stripeCustomerId     String?
+  status               String
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Invoice {
+  id             String   @id @default(cuid())
+  stripeInvoiceId String  @unique
+  stripeCustomerId String?
+  stripeSubscriptionId String?
+  status         String
+  currency       String?
+  amountDue      Int?
+  paid           Boolean?
+  hostedInvoiceUrl String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model PaymentIntent {
+  id                   String   @id @default(cuid())
+  stripePaymentIntentId String  @unique
+  stripeCustomerId      String?
+  status               String
+  currency             String?
+  amount               Int?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+

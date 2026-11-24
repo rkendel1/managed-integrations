@@ -53,7 +53,21 @@ export function handlers(get: () => Runtime, qboSecret: () => string): Record<st
   return {
     async discover(item, ws) {
       const rt = get();
-      const kind = String(item.input.kind) as "order_sync" | "ledgerly";
+      const kind = String(item.input.kind) as "order_sync" | "ledgerly" | "stripe_app" | "qbo_tools";
+      if (kind === "stripe_app") {
+        // The application's own webhook route at Stripe identifies a deployment of it.
+        const c = await rt.call<{ sealed: string } | null>(ws, "runtime:sealedConnection", { provider: "stripe" });
+        const stripe = stripeClient(rt.open<{ apiKey: string }>(ws, "connection:stripe", c!.sealed).apiKey);
+        const eps = (await stripe.webhookEndpoints.list({ limit: 100 })).data.filter((e) => new URL(e.url).pathname === "/v1/stripe/webhook");
+        await rt.call(ws, "onboarding:recordDiscovery", { kind, outcome: eps.length ? "found" : "not_found", evidence: { matched: eps.length ? 3 : 0, endpoints: eps.map((e) => ({ url: e.url, apiVersion: e.api_version, events: e.enabled_events })), convention: "a Stripe webhook endpoint at the application's route /v1/stripe/webhook" } });
+        return { outcome: "done" };
+      }
+      if (kind === "qbo_tools") {
+        const g = await grant(rt, ws, qboSecret());
+        const r = await query<{ QueryResponse?: { CompanyInfo?: { CompanyName: string }[] } }>(g, "select * from CompanyInfo");
+        await rt.call(ws, "onboarding:recordDiscovery", { kind, outcome: r.status === 200 ? "found" : "insufficient_evidence", evidence: { matched: 3, company: r.body.QueryResponse?.CompanyInfo?.[0]?.CompanyName ?? null, convention: "QuickBooks connected; the tools act on this company" } });
+        return { outcome: "done" };
+      }
       const h = kind === "order_sync" ? await orderSyncHistory(rt, ws) : await ledgerlyHistory(rt, ws, qboSecret());
       const convention = kind === "order_sync" ? "NetSuite sales orders with external id shopify-<order id> (the adopted code's upsert key)" : "QuickBooks journal entries with DocNumber = the Stripe event id's last 21 characters (ledgerly's rule)";
       await rt.call(ws, "onboarding:recordDiscovery", {
