@@ -1,0 +1,23 @@
+{
+  "name": "@mi/adopted-stripe-subscriptions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@mi/contracts": "workspace:*",
+    "@mi/database": "workspace:*",
+    "@mi/integration-shopify-netsuite": "workspace:*",
+    "@mi/managed": "workspace:*",
+    "@mi/observability": "workspace:*",
+    "@mi/provider-connections": "workspace:*",
+    "@mi/reliability": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "zod": "^4.6.7",
+    "app-zod": "npm:zod@3.25.76",
+    "app-express": "npm:express@4.22.1",
+    "app-stripe": "npm:stripe@17.7.0"
+  }
+}

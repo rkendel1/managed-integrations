@@ -6,6 +6,7 @@
  */
 import { createShopifyNetsuiteRuntime, SHOPIFY_NETSUITE } from '@mi/adopted-order-sync';
 import { createStripeQuickbooksRuntime, STRIPE_QUICKBOOKS } from '@mi/adopted-ledgerly';
+import { createStripeSubscriptionsRuntime, STRIPE_SUBSCRIPTIONS } from '@mi/adopted-stripe-subscriptions';
 import { FLOW_TYPE } from '@mi/contracts';
 import type { Db } from '@mi/database';
 import type { CredentialCipher, ProviderEndpointConfig, RetryPolicy } from '@mi/integration-shopify-netsuite';
@@ -16,8 +17,40 @@ export const NATIVE_SHOPIFY_NETSUITE: IntegrationDescriptor = {
   flowType: FLOW_TYPE,
   name: 'Shopify → NetSuite orders',
   process: 'Shopify orders become NetSuite sales orders',
-  source: { id: 'shopify', name: 'Shopify' },
-  destination: { id: 'netsuite', name: 'NetSuite' },
+  shape: 'pipeline',
+  providers: [
+    {
+      id: 'shopify',
+      name: 'Shopify',
+      role: 'source',
+      api: 'Shopify Admin API',
+      version: '2026-10 (GraphQL)',
+      auth: 'Admin API access token (custom app); webhook HMAC-SHA256 with the app secret',
+      client: 'our GraphQL client (fetch)',
+      operations: [{ name: 'orders query by updatedAt', kind: 'read', effect: 'the orders to move' }],
+      semantics: 'an order: its line items, quantities, prices, currency and customer',
+      idempotency: 'one delivery per Shopify order id',
+      recovery: 'polling by updatedAt watermark; reconciliation by legacy id',
+      verification: ['every Shopify order in the window has exactly one NetSuite sales order'],
+    },
+    {
+      id: 'netsuite',
+      name: 'NetSuite',
+      role: 'target',
+      api: 'NetSuite REST record API + SuiteQL',
+      version: 'record/v1',
+      auth: 'OAuth 1.0a token-based authentication (TBA)',
+      client: 'our REST client (fetch, OAuth 1.0a signing)',
+      operations: [
+        { name: 'salesOrder upsert by external id', kind: 'write', effect: 'creates or replaces one sales order' },
+        { name: 'SuiteQL query', kind: 'read', effect: 'verification and reconciliation' },
+      ],
+      semantics: 'a sales order with the same items, quantities and prices as the source order',
+      idempotency: 'PUT salesOrder/eid:shopify-<order id> (upsert by external id)',
+      recovery: 'redelivery runs the same upsert; the external id makes it exactly-once',
+      verification: ['one sales order per external id', 'items, quantities and prices equal the Shopify order'],
+    },
+  ],
   transactions: {
     one: 'order',
     many: 'orders',
@@ -73,6 +106,7 @@ export const NATIVE_SHOPIFY_NETSUITE: IntegrationDescriptor = {
 export const DESCRIPTORS: readonly IntegrationDescriptor[] = [
   SHOPIFY_NETSUITE,
   STRIPE_QUICKBOOKS,
+  STRIPE_SUBSCRIPTIONS,
   NATIVE_SHOPIFY_NETSUITE,
 ];
 
@@ -95,6 +129,7 @@ export function createRegistry(deps: RegistryDeps): IntegrationRegistry {
   return new IntegrationRegistry(deps.db, [
     createShopifyNetsuiteRuntime(deps),
     createStripeQuickbooksRuntime(deps),
+    createStripeSubscriptionsRuntime(deps),
     { descriptor: NATIVE_SHOPIFY_NETSUITE },
   ]);
 }

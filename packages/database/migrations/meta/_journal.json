@@ -57,6 +57,13 @@
       "when": 1795483515067,
       "tag": "0007_three_sided",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795485160987,
+      "tag": "0008_provider_centric",
+      "breakpoints": true
     }
   ]
 }

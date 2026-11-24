@@ -88,8 +88,7 @@ interface MonitoringView {
   health: string;
   contract: {
     name: string;
-    source: { name: string };
-    destination: { name: string };
+    providers: { id: string; name: string; role: string; api: string; version: string; auth: string; client: string }[];
     capabilities: {
       discovery: string | null;
       recovery: string;
@@ -128,7 +127,7 @@ function Monitoring() {
     <Card data-testid="monitoring">
       <CardHeader
         title="Monitoring and maintenance contract"
-        description={`${d.contract.source.name} → ${d.contract.destination.name} · health ${d.monitoring?.health ?? d.health}${d.monitoring ? ` · facts from ${new Date(d.monitoring.at).toLocaleString()}` : ' · not probed yet'}`}
+        description={`${d.contract.providers.map((x) => `${x.name} (${x.role})`).join(' · ')} · health ${d.monitoring?.health ?? d.health}${d.monitoring ? ` · facts from ${new Date(d.monitoring.at).toLocaleString()}` : ' · not probed yet'}`}
       />
       <CardBody className="space-y-4">
         {d.monitoring ? (

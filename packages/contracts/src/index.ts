@@ -235,6 +235,8 @@ export const INCIDENT_KINDS = [
   'dependency_contract_change',
   /** The target stopped accepting what the integration writes (slice 7). */
   'target_contract_change',
+  /** A provider an adopted application depends on changed a contract the application relies on (slice 7). */
+  'provider_contract_change',
   /** The target holds data that differs from what was written/verified, despite a successful write (slice 7). */
   'destination_mismatch',
 ] as const;

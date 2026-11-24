@@ -10,6 +10,11 @@
  *
  * `combined` marks a maintenance window in which more than one boundary changed.
  *
+ * Provider-centric (slice 7 scope correction): `source` and `target` are ROLES a provider plays in a
+ * pipeline; `provider` is a provider an adopted application depends on in any other role (both, or a
+ * standalone dependency). Every provider-side fact also names its provider, so "what changed in Stripe" is
+ * one query whether Stripe is a pipeline's source or the only dependency of an application.
+ *
  * Durable representation: every observation of a contract (a source payload shape, a target's acceptance or
  * rejection class, the artifact that ran) is recorded by fingerprint in `contract_observations`. The first
  * fingerprint seen for a contract is its baseline; a later, different fingerprint is DRIFT — a fact with first
@@ -20,7 +25,7 @@ import { createHash } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import { contractObservations, type Db } from '@mi/database';
 
-export const BOUNDARIES = ['source', 'integration', 'target', 'combined'] as const;
+export const BOUNDARIES = ['source', 'integration', 'target', 'provider', 'combined'] as const;
 export type Boundary = (typeof BOUNDARIES)[number];
 
 export const fingerprintOf = (v: unknown) =>
@@ -30,6 +35,8 @@ export interface Observation {
   integrationId: string;
   boundary: Exclude<Boundary, 'combined'>;
   contract: string;
+  /** The provider; defaults to the contract's first segment ("stripe.event…" → stripe) for provider-side boundaries. */
+  provider?: string | null;
   version?: string | null;
   /** What identifies this contract variant: a shape, an acceptance class, an artifact id. */
   shape: unknown;
@@ -50,6 +57,7 @@ export async function observeContract(db: Db, o: Observation) {
     .values({
       integrationId: o.integrationId,
       boundary: o.boundary,
+      provider: o.provider !== undefined ? o.provider : o.boundary === 'integration' ? null : o.contract.split('.')[0]!,
       contract: o.contract,
       version: o.version ?? null,
       fingerprint,
@@ -91,6 +99,7 @@ export async function boundaryState(db: Db, integrationId: string) {
   return [...byContract.entries()].map(([contract, variants]) => ({
     contract,
     boundary: variants[0]!.boundary,
+    provider: variants[0]!.provider,
     baseline: variants.find((v) => v.status === 'baseline') ?? null,
     latest: [...variants].sort((a, b) => b.lastSeenAt.getTime() - a.lastSeenAt.getTime())[0]!,
     drift: variants.some((v) => v.status === 'observed'),

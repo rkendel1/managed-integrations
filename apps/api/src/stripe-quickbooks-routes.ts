@@ -13,9 +13,9 @@ import { QUEUES } from '@mi/contracts';
 import {
   completeQboAuthorization,
   connectStripe,
-  ingestStripeWebhook,
   qboAuthorizeUrl,
 } from '@mi/adopted-ledgerly';
+import type { IntegrationRegistry } from '@mi/managed';
 import { auditLog, connections, incidents, type Db } from '@mi/database';
 import { randomToken, sha256Hex } from '@mi/integration-shopify-netsuite';
 import { describeError } from '@mi/observability';
@@ -43,7 +43,11 @@ async function resumeReauthorization(db: Db, deps: ApiDeps, tenantId: string) {
     );
 }
 
-export async function registerStripeQuickbooksRoutes(app: FastifyInstance, deps: ApiDeps): Promise<void> {
+export async function registerStripeQuickbooksRoutes(
+  app: FastifyInstance,
+  deps: ApiDeps,
+  registry: IntegrationRegistry,
+): Promise<void> {
   const db = deps.db;
   const cipher = deps.config.cipher!;
   const endpoints = deps.config.endpoints;
@@ -65,12 +69,14 @@ export async function registerStripeQuickbooksRoutes(app: FastifyInstance, deps:
       async (req, reply) => {
         const params = z.object({ integrationId: z.string().uuid() }).safeParse(req.params);
         if (!params.success || !Buffer.isBuffer(req.body)) return reply.code(404).send();
-        const result = await ingestStripeWebhook({
-          db,
-          cipher,
+        // Shared Stripe ingress: whichever managed integration or application owns the endpoint receives it.
+        const runtime = await registry.forIntegration(params.data.integrationId);
+        if (!runtime?.receive) return reply.code(404).send();
+        const result = await runtime.receive({
           integrationId: params.data.integrationId,
+          provider: 'stripe',
           rawBody: req.body,
-          signature: req.headers['stripe-signature'] as string | undefined,
+          headers: { 'stripe-signature': req.headers['stripe-signature'] as string | undefined },
           correlationId: req.id,
         });
         if (result.execute && result.deliveryId)

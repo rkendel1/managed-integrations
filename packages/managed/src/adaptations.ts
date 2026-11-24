@@ -90,7 +90,8 @@ export interface AdaptationRecordInput {
   maintenanceEventId?: string | null;
   kind: AdaptationKind;
   /** The component whose change this answers (slice 7). Defaults to source. */
-  boundary?: 'source' | 'integration' | 'target' | 'combined';
+  boundary?: 'source' | 'integration' | 'target' | 'provider' | 'combined';
+  provider?: string | null;
   /** Affected operations / transactions. */
   impact?: Record<string, unknown>;
   /** The adopted artifact it applies to (repository, commit, package). */
@@ -118,6 +119,7 @@ export async function recordAdaptation(db: Db, p: AdaptationRecordInput): Promis
       kind: p.kind,
       status,
       boundary: p.boundary ?? 'source',
+      provider: p.provider ?? null,
       impact: p.impact ?? {},
       artifact: p.artifact,
       dependency: p.dependency,

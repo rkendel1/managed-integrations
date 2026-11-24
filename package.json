@@ -47,6 +47,8 @@
     "@mi/adopted-order-sync": "workspace:*",
     "@mi/adopted-ledgerly": "workspace:*",
     "@mi/managed": "workspace:*",
-    "@mi/integrations": "workspace:*"
+    "@mi/integrations": "workspace:*",
+    "@mi/adopted-stripe-subscriptions": "workspace:*",
+    "@mi/provider-connections": "workspace:*"
   }
 }

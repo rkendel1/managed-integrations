@@ -23,14 +23,46 @@ export interface Responsibilities {
   verify: readonly string[];
 }
 
+/**
+ * A provider the managed code connects to (slice 7: provider-centric). A provider may be read from (source),
+ * written to (target), both, or used as a standalone dependency; an integration may have one provider or
+ * several, with any roles. Everything the maintenance of that connection needs is stated here as data.
+ */
+export type ProviderRole = 'source' | 'target' | 'both' | 'dependency';
+export interface ProviderConnection extends ProviderRef {
+  role: ProviderRole;
+  /** API identity and the version the executed code actually uses (and where that is declared). */
+  api: string;
+  version: string;
+  auth: string;
+  /** Client implementation and the dependency that provides it. */
+  client: string;
+  operations: readonly {
+    name: string;
+    kind: 'read' | 'write' | 'event';
+    /** What it changes at the provider (writes) or what the code does with it (reads, events). */
+    effect: string;
+  }[];
+  /** Business meaning of the data exchanged. */
+  semantics: string;
+  idempotency: string;
+  /** How missed or failed work with this provider is found and recovered. */
+  recovery: string;
+  /** Criteria checked against the provider itself, independent of execution success. */
+  verification: readonly string[];
+}
+
 /** Where the executed code comes from. Null for software we wrote ourselves. */
 export interface AdoptedProvenance {
   repository: string;
   commit: string;
   license: string;
   package: string;
-  /** How it is attached: an unmodified, commit-pinned dependency. */
-  attachment: 'dependency';
+  /**
+   * How it is attached: an unmodified, commit-pinned dependency, or vendored (the executed files copied at
+   * the pinned commit, each sha256-pinned and checked against an independent clone).
+   */
+  attachment: 'dependency' | 'vendored';
   /** The only upstream entry points Managed Integrations calls. */
   entryPoints: readonly string[];
   /** Upstream behaviour deliberately not used, and why. */
@@ -71,8 +103,13 @@ export interface IntegrationDescriptor {
   name: string;
   /** What business process it supports, in one sentence. */
   process: string;
-  source: ProviderRef;
-  destination: ProviderRef;
+  /**
+   * `pipeline`: moves work from a source provider to a target provider. `application`: an adopted
+   * application that depends on one or more providers (it is not forced into a source → target shape).
+   */
+  shape: 'pipeline' | 'application';
+  /** Every provider connection the executed code uses, with its role. The single source of truth. */
+  providers: readonly ProviderConnection[];
   /** The business transaction it moves and the destination record it produces. */
   transactions: {
     one: string;
@@ -113,3 +150,12 @@ export interface IntegrationDescriptor {
 export function describedSignals(d: IntegrationDescriptor): Set<MonitoringSignal> {
   return new Set(d.capabilities.monitoring.map((m) => m.signal));
 }
+
+/** The provider work is read from (role source or both), if any. */
+export const sourceOf = (d: Pick<IntegrationDescriptor, 'providers'>) =>
+  d.providers.find((p) => p.role === 'source') ?? d.providers.find((p) => p.role === 'both') ?? null;
+/** The provider work is written to (role target or both), if any. */
+export const targetOf = (d: Pick<IntegrationDescriptor, 'providers'>) =>
+  d.providers.find((p) => p.role === 'target') ?? d.providers.find((p) => p.role === 'both') ?? null;
+export const providerOf = (d: Pick<IntegrationDescriptor, 'providers'>, id: string) =>
+  d.providers.find((p) => p.id === id) ?? null;

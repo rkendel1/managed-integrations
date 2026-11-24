@@ -92,7 +92,7 @@ export async function recordTargetContractChange(
     tenantId: integ!.tenantId,
     integrationId: integ!.id,
     kind: 'target_contract_change',
-    boundary: 'target',
+    boundary: 'target', provider: 'quickbooks',
     severity: 'high',
     title: 'QuickBooks no longer accepts the account mapping',
     reason: `QuickBooks refused a journal entry (${fault.code}): ${names} is inactive`,
@@ -113,7 +113,7 @@ export async function recordDestinationMismatch(db: Db, deliveryId: string, m: {
     tenantId: integ!.tenantId,
     integrationId: integ!.id,
     kind: 'destination_mismatch',
-    boundary: 'target',
+    boundary: 'target', provider: 'quickbooks',
     severity: 'high',
     title: 'QuickBooks keeps different entries than were written',
     reason: m.detail,
@@ -148,7 +148,7 @@ export async function advanceTargetContract(deps: MaintainDeps, inc: IncidentRow
       .from(deliveries)
       .where(and(eq(deliveries.integrationId, inc.integrationId!), eq(deliveries.outcome, 'held'), eq(deliveries.lastErrorClass, 'target_contract')));
     const impact = {
-      boundary: 'target',
+      boundary: 'target', provider: 'quickbooks',
       contract: f.contract,
       operations: [`JournalEntry create with ${acct.name} (${acct.code})`],
       affectedTransactions: held.map((h) => h.name),
@@ -169,13 +169,13 @@ export async function advanceTargetContract(deps: MaintainDeps, inc: IncidentRow
     const options = await optionsFor(deps, integ!, acct, rejected);
     if (!options.length) {
       const reason = `No active ${acct.type} account can replace ${acct.name}; a person must decide`;
-      await recordAdaptation(db, { integrationId: integ!.id, maintenanceEventId: inc.id, kind: 'unsupported', boundary: 'target', artifact: BASE_ARTIFACT, dependency: { provider: 'quickbooks', contract: f.contract }, codePath: {}, spec: { reason }, rationale: reason, actor: MAINTENANCE_ACTOR });
+      await recordAdaptation(db, { integrationId: integ!.id, maintenanceEventId: inc.id, kind: 'unsupported', boundary: 'target', provider: 'quickbooks', artifact: BASE_ARTIFACT, dependency: { provider: 'quickbooks', contract: f.contract }, codePath: {}, spec: { reason }, rationale: reason, actor: MAINTENANCE_ACTOR });
       return escalate(db, inc, reason);
     }
     const dec = await requestDecision(db, {
       integrationId: integ!.id,
       maintenanceEventId: inc.id,
-      boundary: 'target',
+      boundary: 'target', provider: 'quickbooks',
       question: `${acct.name} was made inactive in QuickBooks. Which account should Stripe entries that used it post to from now on?`,
       options,
       authority: 'customer',
@@ -198,7 +198,7 @@ export async function advanceTargetContract(deps: MaintainDeps, inc: IncidentRow
       integrationId: integ!.id,
       maintenanceEventId: inc.id,
       kind: 'configuration',
-      boundary: 'target',
+      boundary: 'target', provider: 'quickbooks',
       artifact: BASE_ARTIFACT,
       dependency: { provider: 'quickbooks', contract: f.contract, observed: f.observed },
       codePath: { configuration: `accountMap.${acct.code}` },
@@ -246,7 +246,7 @@ export async function advanceDestinationMismatch(deps: MaintainDeps, inc: Incide
     integrationId: inc.integrationId!,
     maintenanceEventId: inc.id,
     kind: 'unsupported',
-    boundary: 'target',
+    boundary: 'target', provider: 'quickbooks',
     artifact: BASE_ARTIFACT,
     dependency: { provider: 'quickbooks', contract: 'JournalEntry as stored' },
     codePath: {},
@@ -256,7 +256,7 @@ export async function advanceDestinationMismatch(deps: MaintainDeps, inc: Incide
     actor: MAINTENANCE_ACTOR,
   });
   await setFacts(db, inc.id, {
-    impactAssessment: { boundary: 'target', affectedTransactions: f.transactions, journalEntryIds: f.journalEntryIds, detail: f.detail },
+    impactAssessment: { boundary: 'target', provider: 'quickbooks', affectedTransactions: f.transactions, journalEntryIds: f.journalEntryIds, detail: f.detail },
     correction: { adaptationId: row.id, kind: 'unsupported', derivable: false, reason, upstreamModified: false, derivedAt: new Date().toISOString() },
   });
   return escalate(db, inc, reason);

@@ -287,7 +287,7 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
 
   await registerAdoptedWebhookRoutes(app, deps);
   await registerCustomerRoutes(app, deps);
-  await registerStripeQuickbooksRoutes(app, deps);
+  await registerStripeQuickbooksRoutes(app, deps, registry);
   await registerOperatorRoutes(app, deps);
 
   /* ------------------------------ web UI ------------------------------ */

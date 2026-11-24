@@ -230,8 +230,11 @@ const DESCRIPTOR: IntegrationDescriptor = {
   flowType: 'test.flow',
   name: 'Test',
   process: 'p',
-  source: { id: 'stripe', name: 'Stripe' },
-  destination: { id: 'quickbooks', name: 'QuickBooks' },
+  shape: 'pipeline',
+  providers: [
+    { id: 'stripe', name: 'Stripe', role: 'source', api: '', version: '', auth: '', client: '', operations: [], semantics: '', idempotency: '', recovery: '', verification: [] },
+    { id: 'quickbooks', name: 'QuickBooks', role: 'target', api: '', version: '', auth: '', client: '', operations: [], semantics: '', idempotency: '', recovery: '', verification: [] },
+  ],
   transactions: { one: 'transaction', many: 'transactions', record: 'entry', businessData: 'amounts' },
   adopted: null,
   execution: { trigger: '', idempotency: '' },

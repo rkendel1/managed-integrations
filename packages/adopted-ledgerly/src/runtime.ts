@@ -3,6 +3,7 @@
  * onboarding engine, monitoring and operator tooling reach it only through these hooks; nothing in the API,
  * worker or customer product is specific to it.
  */
+import { ingestStripeWebhook } from './ingest.ts';
 import { and, eq, gt, inArray, lt, ne } from 'drizzle-orm';
 import { adaptations, deliveries, incidents, integrations, reconciliationRuns, type Db } from '@mi/database';
 import type { CredentialCipher, ProviderEndpointConfig } from '@mi/integration-shopify-netsuite';
@@ -66,6 +67,16 @@ export function createStripeQuickbooksRuntime(deps: LedgerlyRuntimeDeps): Integr
       webhookBaseUrl: deps.webhookBaseUrl,
       enqueueReconciliation: services.enqueueReconciliation,
     }),
+
+    receive: (p) =>
+      ingestStripeWebhook({
+        db,
+        cipher,
+        integrationId: p.integrationId,
+        rawBody: p.rawBody,
+        signature: p.headers['stripe-signature'],
+        ...(p.correlationId ? { correlationId: p.correlationId } : {}),
+      }),
 
     async execute(deliveryId, trigger) {
       const r = await executeLedgerlyDelivery({ db, cipher, endpoints, deliveryId, trigger });

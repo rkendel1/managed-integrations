@@ -365,6 +365,8 @@ export const incidents = pgTable(
     accounting: jsonb('accounting'),
     /** Which component changed (slice 7): source | integration | target | combined. */
     boundary: text('boundary'),
+    /** The provider whose connection changed (slice 7, provider-centric); null for the adopted code itself. */
+    provider: text('provider'),
     /** Impact assessment: affected contract, operations, code paths and transactions (slice 7). */
     impactAssessment: jsonb('impact_assessment'),
     detectedAt: ts('detected_at').notNull().defaultNow(),
@@ -596,6 +598,8 @@ export const adaptations = pgTable(
     kind: text('kind').notNull(),
     /** The component whose change this correction answers (slice 7): source | integration | target | combined. */
     boundary: text('boundary').notNull().default('source'),
+    /** The provider connection this correction is about; null when it is about the adopted code itself. */
+    provider: text('provider'),
     /** Affected operations / transactions and recovery status (slice 7). */
     impact: jsonb('impact').notNull().default({}),
     status: text('status').notNull(),
@@ -635,6 +639,8 @@ export const contractObservations = pgTable(
       .references(() => integrations.id),
     /** source | integration | target */
     boundary: text('boundary').notNull(),
+    /** The provider the contract belongs to; null for the adopted code (artifact). */
+    provider: text('provider'),
     /** e.g. "shopify.webhook.orders/create", "netsuite.salesOrder.write", "artifact" */
     contract: text('contract').notNull(),
     version: text('version'),
@@ -647,6 +653,30 @@ export const contractObservations = pgTable(
     lastSeenAt: ts('last_seen_at').notNull().defaultNow(),
   },
   (t) => [uniqueIndex('contract_observations_uq').on(t.integrationId, t.contract, t.fingerprint)],
+);
+
+/**
+ * Slice 7 — the durable state an adopted APPLICATION keeps for itself (its own database), hosted by us and
+ * scoped to one managed integration. The adopted code reads and writes it through its own persistence calls
+ * (bound to this table); it is the application's record, separate from our delivery and evidence records,
+ * and it is what provider verification compares against the provider.
+ */
+export const appRecords = pgTable(
+  'app_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    integrationId: uuid('integration_id')
+      .notNull()
+      .references(() => integrations.id),
+    /** The application's own model name, e.g. "Subscription". */
+    model: text('model').notNull(),
+    /** The value of the model's unique key, e.g. a Stripe subscription id. */
+    key: text('key').notNull(),
+    data: jsonb('data').notNull(),
+    createdAt: ts('created_at').notNull().defaultNow(),
+    updatedAt: ts('updated_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('app_records_uq').on(t.integrationId, t.model, t.key)],
 );
 
 /**

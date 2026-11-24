@@ -13,6 +13,15 @@
  *  - webhook endpoints (POST/GET /v1/webhook_endpoints) and signed deliveries
  *    (Stripe-Signature: t=<unix>,v1=<HMAC-SHA256(secret, "<t>.<body>")>).
  * Webhook bodies are NOT expanded (nested objects are ids), as in real Stripe webhooks.
+ *
+ * Slice 7 (a Stripe-dependent application, not only the pipeline):
+ *  - subscriptions (customer.subscription.created/updated/deleted, GET /v1/subscriptions/:id). Before basil a
+ *    subscription carries `current_period_start/end`; from 2025-03-31.basil they live on each subscription
+ *    item (`items.data[].current_period_*`) and are gone from the subscription, as Stripe's changelog states.
+ *    Subscription events render the subscription AS IT WAS when the event happened (a snapshot);
+ *  - payment intents (POST/GET /v1/payment_intents, payment_intent.created/succeeded) and Checkout Sessions
+ *    (POST/GET /v1/checkout/sessions, checkout.session.completed);
+ *  - `Idempotency-Key` on POST: the same key returns the first response and creates nothing new.
  */
 import { createHmac } from 'node:crypto';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
@@ -59,6 +68,9 @@ interface Invoice {
   created: Unix;
   subscription: string;
   periodDays: number;
+  /** Amount due (defaults to amount_paid; an unpaid invoice has amount_paid 0). */
+  amount_due?: number;
+  status?: 'open' | 'paid';
 }
 interface Payout {
   id: string;
@@ -75,7 +87,40 @@ interface StoredEvent {
   created: Unix;
   /** The account's API version when the event was created. */
   api_version: string;
-  object: { kind: 'charge' | 'invoice' | 'payout'; id: string };
+  object: { kind: 'charge' | 'invoice' | 'payout' | 'subscription' | 'payment_intent' | 'checkout_session'; id: string };
+  /** Subscriptions: the object as it was when the event happened. */
+  snapshot?: Subscription;
+}
+interface Subscription {
+  id: string;
+  customer: string;
+  status: 'trialing' | 'active' | 'past_due' | 'canceled';
+  created: Unix;
+  price: string;
+  periodStart: Unix;
+  periodEnd: Unix;
+  cancel_at_period_end: boolean;
+  metadata: Record<string, string>;
+}
+interface PaymentIntent {
+  id: string;
+  amount: number;
+  currency: string;
+  customer: string | null;
+  status: 'requires_payment_method' | 'processing' | 'succeeded' | 'canceled';
+  created: Unix;
+}
+interface CheckoutSession {
+  id: string;
+  mode: 'subscription' | 'payment';
+  price: string;
+  customer_email: string | null;
+  success_url: string;
+  cancel_url: string;
+  status: 'open' | 'complete';
+  subscription: string | null;
+  customer: string | null;
+  created: Unix;
 }
 interface Endpoint {
   id: string;
@@ -108,6 +153,10 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
     refunds: new Map<string, Refund>(),
     invoices: new Map<string, Invoice>(),
     payouts: new Map<string, Payout>(),
+    subscriptions: new Map<string, Subscription>(),
+    paymentIntents: new Map<string, PaymentIntent>(),
+    checkoutSessions: new Map<string, CheckoutSession>(),
+    idempotency: new Map<string, unknown>(),
     events: [] as StoredEvent[],
     endpoints: [] as Endpoint[],
     dropWebhooks: 0,
@@ -225,7 +274,7 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
     const base: Record<string, unknown> = {
       id: i.id,
       object: 'invoice',
-      amount_due: i.amount_paid,
+      amount_due: i.amount_due ?? i.amount_paid,
       amount_paid: i.amount_paid,
       amount_remaining: 0,
       billing_reason: 'subscription_cycle',
@@ -241,9 +290,9 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
         url: `/v1/invoices/${i.id}/lines`,
       },
       starting_balance: 0,
-      status: 'paid',
+      status: i.status ?? 'paid',
       subscription: i.subscription,
-      total: i.amount_paid,
+      total: i.amount_due ?? i.amount_paid,
     };
     if (isBasil(version)) {
       // 2025-03-31.basil: charge / payment_intent / paid removed; payments, parent and total_taxes added.
@@ -276,7 +325,7 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
           ? renderCharge(state.charges.get(ch)!, sub(expand, 'charge'), version)
           : ch
         : null,
-      paid: true,
+      paid: (i.status ?? 'paid') === 'paid',
       tax: null,
     };
   }
@@ -304,7 +353,60 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
       type: 'bank_account',
     };
   }
-  function renderObject(o: StoredEvent['object'], version: string, expand: string[] = []) {
+  function renderSubscription(x: Subscription, version: string): Record<string, unknown> {
+    const item: Record<string, unknown> = {
+      id: `si_${x.id.slice(4)}`,
+      object: 'subscription_item',
+      price: { id: x.price, object: 'price' },
+      quantity: 1,
+      subscription: x.id,
+    };
+    const base: Record<string, unknown> = {
+      id: x.id,
+      object: 'subscription',
+      cancel_at_period_end: x.cancel_at_period_end,
+      created: x.created,
+      customer: x.customer,
+      items: { object: 'list', data: [item], has_more: false, total_count: 1 },
+      metadata: x.metadata,
+      status: x.status,
+    };
+    if (isBasil(version)) {
+      // 2025-03-31.basil: current_period_start/end moved from the subscription to its items.
+      item['current_period_start'] = x.periodStart;
+      item['current_period_end'] = x.periodEnd;
+      return base;
+    }
+    return { ...base, current_period_start: x.periodStart, current_period_end: x.periodEnd };
+  }
+  const renderPaymentIntent = (pi: PaymentIntent) => ({
+    id: pi.id,
+    object: 'payment_intent',
+    amount: pi.amount,
+    client_secret: `${pi.id}_secret_fixture`,
+    created: pi.created,
+    currency: pi.currency,
+    customer: pi.customer,
+    status: pi.status,
+  });
+  const renderCheckoutSession = (c: CheckoutSession) => ({
+    id: c.id,
+    object: 'checkout.session',
+    cancel_url: c.cancel_url,
+    client_reference_id: null,
+    created: c.created,
+    customer: c.customer,
+    customer_email: c.customer_email,
+    mode: c.mode,
+    status: c.status,
+    subscription: c.subscription,
+    success_url: c.success_url,
+    url: `https://checkout.stripe.test/c/pay/${c.id}`,
+  });
+  function renderObject(o: StoredEvent['object'], version: string, expand: string[] = [], snapshot?: Subscription) {
+    if (o.kind === 'subscription') return renderSubscription(snapshot ?? state.subscriptions.get(o.id)!, version);
+    if (o.kind === 'payment_intent') return renderPaymentIntent(state.paymentIntents.get(o.id)!);
+    if (o.kind === 'checkout_session') return renderCheckoutSession(state.checkoutSessions.get(o.id)!);
     if (o.kind === 'charge') return renderCharge(state.charges.get(o.id)!, expand, version);
     if (o.kind === 'invoice') return renderInvoice(state.invoices.get(o.id)!, expand, version);
     return renderPayout(state.payouts.get(o.id)!, expand);
@@ -316,7 +418,7 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
       object: 'event',
       api_version: version,
       created: e.created,
-      data: { object: renderObject(e.object, version) },
+      data: { object: renderObject(e.object, version, [], e.snapshot) },
       livemode: false,
       pending_webhooks: state.endpoints.length,
       request: { id: null, idempotency_key: null },
@@ -363,6 +465,7 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
   }
   function emit(type: string, object: StoredEvent['object'], created: Unix) {
     const e: StoredEvent = { id: id('evt'), type, created, api_version: state.accountApiVersion, object };
+    if (object.kind === 'subscription') e.snapshot = structuredClone(state.subscriptions.get(object.id)!);
     state.events.push(e);
     deliver(e);
     return e;
@@ -408,6 +511,7 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
       customer?: string;
       at?: Date;
       periodDays?: number;
+      subscription?: string;
     }) {
       const created = p.at ? Math.floor(p.at.getTime() / 1000) : now();
       const customer = p.customer ?? id('cus');
@@ -418,7 +522,7 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
         amount_paid: p.amount,
         charges: [],
         created,
-        subscription: id('sub'),
+        subscription: p.subscription ?? id('sub'),
         periodDays: p.periodDays ?? 30,
       };
       state.invoices.set(inv.id, inv);
@@ -528,6 +632,73 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
       state.payouts.set(po.id, po);
       return { payout: po, event: emit('payout.paid', { kind: 'payout', id: po.id }, created) };
     },
+    /* ---------------- subscriptions, payment intents, checkout (slice 7) */
+    /** A new subscription (customer.subscription.created), and its first paid invoice. */
+    createSubscription(p: { customer?: string; price?: string; amount?: number; periodDays?: number; metadata?: Record<string, string> } = {}) {
+      const created = now();
+      const sub: Subscription = {
+        id: id('sub'),
+        customer: p.customer ?? id('cus'),
+        status: 'active',
+        created,
+        price: p.price ?? 'price_FxPro',
+        periodStart: created,
+        periodEnd: created + (p.periodDays ?? 30) * 86400,
+        cancel_at_period_end: false,
+        metadata: p.metadata ?? {},
+      };
+      state.subscriptions.set(sub.id, sub);
+      const event = emit('customer.subscription.created', { kind: 'subscription', id: sub.id }, created);
+      const paid = control.payInvoice({ amount: p.amount ?? 2_900, customer: sub.customer, subscription: sub.id, periodDays: p.periodDays ?? 30 });
+      return { subscription: sub, event, invoice: paid.invoice, invoiceEvent: paid.event };
+    },
+    /** The next billing period starts (customer.subscription.updated with a new period). */
+    renewSubscription(subId: string, periodDays = 30) {
+      const sub = state.subscriptions.get(subId)!;
+      sub.periodStart = sub.periodEnd;
+      sub.periodEnd = sub.periodStart + periodDays * 86400;
+      sub.status = 'active';
+      return { event: emit('customer.subscription.updated', { kind: 'subscription', id: sub.id }, Math.max(now(), sub.created + 1)) };
+    },
+    /** A renewal payment fails: the subscription becomes past_due; its open invoice is unpaid. */
+    failRenewal(subId: string) {
+      const sub = state.subscriptions.get(subId)!;
+      sub.status = 'past_due';
+      const created = now();
+      const inv: Invoice = { id: id('in'), customer: sub.customer, currency: 'usd', amount_paid: 0, amount_due: 2_900, status: 'open', charges: [], created, subscription: sub.id, periodDays: 30 };
+      state.invoices.set(inv.id, inv);
+      return {
+        invoice: inv,
+        invoiceEvent: emit('invoice.payment_failed', { kind: 'invoice', id: inv.id }, created),
+        event: emit('customer.subscription.updated', { kind: 'subscription', id: sub.id }, created),
+      };
+    },
+    setCancelAtPeriodEnd(subId: string, v: boolean) {
+      const sub = state.subscriptions.get(subId)!;
+      sub.cancel_at_period_end = v;
+      return { event: emit('customer.subscription.updated', { kind: 'subscription', id: sub.id }, now()) };
+    },
+    cancelSubscription(subId: string) {
+      const sub = state.subscriptions.get(subId)!;
+      sub.status = 'canceled';
+      return { event: emit('customer.subscription.deleted', { kind: 'subscription', id: sub.id }, now()) };
+    },
+    /** The customer pays a PaymentIntent (payment_intent.succeeded). */
+    succeedPaymentIntent(piId: string) {
+      const pi = state.paymentIntents.get(piId)!;
+      pi.status = 'succeeded';
+      return { event: emit('payment_intent.succeeded', { kind: 'payment_intent', id: pi.id }, now()) };
+    },
+    /** The buyer completes a Checkout Session: subscription mode creates the subscription. */
+    completeCheckout(sessionId: string) {
+      const cs = state.checkoutSessions.get(sessionId)!;
+      const customer = id('cus');
+      cs.customer = customer;
+      cs.status = 'complete';
+      const created = cs.mode === 'subscription' ? control.createSubscription({ customer, price: cs.price }) : null;
+      cs.subscription = created?.subscription.id ?? null;
+      return { event: emit('checkout.session.completed', { kind: 'checkout_session', id: cs.id }, now()), subscription: created };
+    },
     /** The customer (or Stripe) moves a webhook endpoint to another API version. */
     setEndpointVersion(endpointId: string, version: string) {
       state.endpoints.find((e) => e.id === endpointId)!.api_version = version;
@@ -589,6 +760,18 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
     if (f?.type === 'http503' || f?.type === 'http500')
       return err(reply, f.type === 'http503' ? 503 : 500, 'api_error', 'Fixture outage');
     if (f?.type === 'http429') return err(reply, 429, 'rate_limit_error', 'Too many requests');
+    // Idempotency-Key on POST: a repeated key returns the first response (Stripe keeps keys for 24 hours).
+    const ik = req.method === 'POST' ? (req.headers['idempotency-key'] as string | undefined) : undefined;
+    if (ik && state.idempotency.has(`${req.url}:${ik}`)) {
+      reply.header('idempotent-replayed', 'true');
+      return reply.send(state.idempotency.get(`${req.url}:${ik}`));
+    }
+  });
+  app.addHook('onSend', async (req, reply, payload) => {
+    const ik = req.method === 'POST' ? (req.headers['idempotency-key'] as string | undefined) : undefined;
+    if (ik && reply.statusCode < 400 && !state.idempotency.has(`${req.url}:${ik}`) && typeof payload === 'string')
+      state.idempotency.set(`${req.url}:${ik}`, JSON.parse(payload));
+    return payload;
   });
 
   app.get('/v1/account', async () => ({
@@ -655,6 +838,58 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
     return p
       ? renderPayout(p, expandOf(req))
       : err(reply, 404, 'invalid_request_error', 'No such payout', 'resource_missing');
+  });
+  app.get('/v1/subscriptions/:id', async (req, reply) => {
+    const x = state.subscriptions.get((req.params as { id: string }).id);
+    return x
+      ? renderSubscription(x, versionOf(req))
+      : err(reply, 404, 'invalid_request_error', 'No such subscription', 'resource_missing');
+  });
+  app.post('/v1/payment_intents', async (req, reply) => {
+    const b = req.body as URLSearchParams;
+    const amount = Number(b.get('amount'));
+    if (!Number.isInteger(amount) || amount <= 0)
+      return err(reply, 400, 'invalid_request_error', 'Missing required param: amount.', 'parameter_missing');
+    const pi: PaymentIntent = {
+      id: id('pi'),
+      amount,
+      currency: b.get('currency') ?? 'usd',
+      customer: b.get('customer'),
+      status: 'requires_payment_method',
+      created: now(),
+    };
+    state.paymentIntents.set(pi.id, pi);
+    emit('payment_intent.created', { kind: 'payment_intent', id: pi.id }, pi.created);
+    return renderPaymentIntent(pi);
+  });
+  app.get('/v1/payment_intents/:id', async (req, reply) => {
+    const x = state.paymentIntents.get((req.params as { id: string }).id);
+    return x ? renderPaymentIntent(x) : err(reply, 404, 'invalid_request_error', 'No such payment_intent', 'resource_missing');
+  });
+  app.post('/v1/checkout/sessions', async (req, reply) => {
+    const b = req.body as URLSearchParams;
+    const price = b.get('line_items[0][price]');
+    const success = b.get('success_url');
+    if (!price || !success)
+      return err(reply, 400, 'invalid_request_error', 'Missing required param: line_items or success_url.', 'parameter_missing');
+    const cs: CheckoutSession = {
+      id: id('cs_test'),
+      mode: (b.get('mode') as 'subscription' | 'payment') ?? 'payment',
+      price,
+      customer_email: b.get('customer_email'),
+      success_url: success,
+      cancel_url: b.get('cancel_url') ?? success,
+      status: 'open',
+      subscription: null,
+      customer: null,
+      created: now(),
+    };
+    state.checkoutSessions.set(cs.id, cs);
+    return renderCheckoutSession(cs);
+  });
+  app.get('/v1/checkout/sessions/:id', async (req, reply) => {
+    const x = state.checkoutSessions.get((req.params as { id: string }).id);
+    return x ? renderCheckoutSession(x) : err(reply, 404, 'invalid_request_error', 'No such checkout.session', 'resource_missing');
   });
   app.post('/v1/webhook_endpoints', async (req, reply) => {
     const b = req.body as URLSearchParams;

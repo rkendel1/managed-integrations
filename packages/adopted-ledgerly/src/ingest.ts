@@ -8,7 +8,6 @@
  * One delivery per Stripe event id (Stripe retries the same event id); the encrypted payload is the input
  * the adopted code executes.
  */
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { deliveries, integrations, webhookReceipts, type Db } from '@mi/database';
 import { sha256Hex, type CredentialCipher } from '@mi/integration-shopify-netsuite';
@@ -18,27 +17,9 @@ import {
   MANAGED_EVENT_TYPES,
   webhookSecretAad,
 } from './contract.ts';
-import { docNumberOf } from './providers.ts';
+import { docNumberOf, verifyStripeSignature } from './providers.ts';
 
-const TOLERANCE_S = 300;
-
-export function verifyStripeSignature(
-  raw: Buffer,
-  header: string | undefined,
-  secret: string,
-  now = Date.now(),
-): boolean {
-  if (!header) return false;
-  const parts = header.split(',').map((p) => p.trim().split('='));
-  const t = Number(parts.find(([k]) => k === 't')?.[1]);
-  const sigs = parts.filter(([k]) => k === 'v1').map(([, v]) => v ?? '');
-  if (!Number.isFinite(t) || !sigs.length || Math.abs(now / 1000 - t) > TOLERANCE_S) return false;
-  const expected = Buffer.from(createHmac('sha256', secret).update(`${t}.`).update(raw).digest('hex'));
-  return sigs.some((s) => {
-    const b = Buffer.from(s);
-    return b.length === expected.length && timingSafeEqual(b, expected);
-  });
-}
+export { verifyStripeSignature } from '@mi/provider-connections';
 
 interface StripeEventIdentity {
   id: string;

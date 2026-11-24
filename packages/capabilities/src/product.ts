@@ -11,7 +11,7 @@
  * function of them, so the two cannot disagree about the outcome.
  */
 import { UPSTREAM_INPUT_CONTRACT, type Accounting, type Finding } from '@mi/adopted-order-sync';
-import type { IntegrationDescriptor } from '@mi/managed';
+import { sourceOf, targetOf, type IntegrationDescriptor } from '@mi/managed';
 import type { incidentEvents, incidents, reconciliationRuns } from '@mi/database';
 
 type IncidentRow = typeof incidents.$inferSelect;
@@ -40,8 +40,8 @@ export const SHOPIFY_WORDS: Words = {
 export function wordsOf(d: IntegrationDescriptor | undefined): Words {
   return d
     ? {
-        source: d.source.name,
-        destination: d.destination.name,
+        source: (sourceOf(d) ?? d.providers[0]!).name,
+        destination: (targetOf(d) ?? d.providers.at(-1)!).name,
         one: d.transactions.one,
         many: d.transactions.many,
         record: d.transactions.record,
@@ -653,7 +653,7 @@ export function responsibilitiesFor(
   if (d?.responsibilities)
     return [
       ...d.responsibilities.maintain,
-      `Check ${d.source.name} against ${d.destination.name}${reconcileIntervalMinutes ? ` every ${reconcileIntervalMinutes} minutes` : ''} so nothing is silently missed.`,
+      `Check ${d.providers.length > 1 ? d.providers.map((x) => x.name).join(' against ') : `${d.providers[0]!.name} against what your application recorded`}${reconcileIntervalMinutes ? ` every ${reconcileIntervalMinutes} minutes` : ''} so nothing is silently missed.`,
       `Tell you what happened and what it meant for your ${d.transactions.many}. Ask you only when a decision is yours.`,
     ];
   const common = [

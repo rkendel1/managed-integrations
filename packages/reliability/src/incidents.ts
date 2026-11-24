@@ -152,6 +152,7 @@ export function resolutionBlockers(row: IncidentRow, verification: Record<string
     row.kind === 'input_contract_change' ||
     row.kind === 'dependency_contract_change' ||
     row.kind === 'target_contract_change' ||
+    row.kind === 'provider_contract_change' ||
     row.kind === 'destination_mismatch' ||
     row.correction != null ||
     row.accounting != null;

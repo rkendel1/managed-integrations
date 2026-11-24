@@ -43,7 +43,7 @@ function stepText(status: string, impl: OnboardingImplementation): string {
   return (
     (
       {
-        connect: `Connect ${d.source.name} and ${d.destination.name}.`,
+        connect: `Connect ${d.providers.map((x) => x.name).join(' and ')}.`,
         discovering: 'Looking for your integration…',
         confirm: 'We found your integration. Confirm that you’d like us to maintain it.',
         select: 'Choose the integration you’d like us to maintain.',
@@ -93,7 +93,7 @@ function viewOne(impl: OnboardingImplementation, ob: OnboardingRow): Integration
     flowType: impl.descriptor.flowType,
     name: impl.descriptor.name,
     process: impl.descriptor.process,
-    systems: [impl.descriptor.source.name, impl.descriptor.destination.name],
+    systems: impl.descriptor.providers.map((x) => x.name),
     status: ob.status,
     next: stepText(ob.status, impl),
     discovery: d
@@ -150,7 +150,7 @@ async function view(
   );
   const systems = new Map<string, { id: string; name: string; connected: boolean; account: string | null }>();
   for (const impl of impls)
-    for (const p of [impl.descriptor.source, impl.descriptor.destination])
+    for (const p of impl.descriptor.providers)
       systems.set(p.id, {
         id: p.id,
         name: p.name,

@@ -1,0 +1,39 @@
+{
+  "id": "p0001-stripe-basil-field-locations",
+  "title": "Read subscription periods and invoice subscription/paid where Stripe API 2025-03-31.basil puts them",
+  "artifact": {
+    "repository": "https://github.com/abdelrahmansapryalwtany/stripe-webhooks-subscriptions-node-ts",
+    "commit": "4812d259e7e8e1e57785f2e09be448e5e3ad92b1"
+  },
+  "file": "src/webhooks/stripeEventProcessor.ts",
+  "baseSha256": "9cee1bbcca7a1de14c5d4917683beffe8be3c015e513ec4961581620de03c759",
+  "resultSha256": "0a6760237d70ca6a3d107817761645197175a36e6375b8c7981f3056c6e67034",
+  "find": "export async function processStripeEvent(event: Stripe.Event) {\n  switch (event.type) {",
+  "replace": "// p0001 (Managed Integrations, reviewed): Stripe API 2025-03-31.basil moved fields this processor reads.\n// Read them from their new places when the old ones are absent; events at earlier versions are unchanged.\nfunction basilCompatible(event: Stripe.Event): Stripe.Event {\n  const o = event.data.object as unknown as Record<string, any>;\n  if (o.object === 'subscription' && o.current_period_end === undefined) {\n    const item = o.items?.data?.[0];\n    return {\n      ...event,\n      data: { ...event.data, object: { ...o, current_period_start: item?.current_period_start, current_period_end: item?.current_period_end } }\n    } as unknown as Stripe.Event;\n  }\n  if (o.object === 'invoice' && o.subscription === undefined && o.parent !== undefined) {\n    return {\n      ...event,\n      data: {\n        ...event.data,\n        object: { ...o, subscription: o.parent?.subscription_details?.subscription ?? null, paid: o.paid ?? o.status === 'paid' }\n      }\n    } as unknown as Stripe.Event;\n  }\n  return event;\n}\n\nexport async function processStripeEvent(event: Stripe.Event) {\n  event = basilCompatible(event);\n  switch (event.type) {",
+  "addresses": {
+    "provider": "stripe",
+    "contract": "webhook event payload",
+    "change": "2025-03-31.basil: Subscription.current_period_start/end moved to subscription items; Invoice.subscription moved to parent.subscription_details.subscription; Invoice.paid removed"
+  },
+  "reason": "Webhook bodies are rendered at the webhook ENDPOINT's API version, not at the version the application's client declares. When the endpoint is on 2025-03-31.basil or later, the processor reads fields that no longer exist: every Subscription is stored with currentPeriodEnd null, and every Invoice with stripeSubscriptionId null and paid null \u2014 while the webhook answers 200, so nothing looks wrong.",
+  "originalBehavior": "currentPeriodEnd = sub.current_period_end; stripeSubscriptionId = inv.subscription; paid = inv.paid (all undefined under basil, stored as null)",
+  "replacementBehavior": "the same fields, taken from items.data[0].current_period_end, parent.subscription_details.subscription and status === 'paid' when the old field is absent; payloads that still carry the old fields are processed exactly as before",
+  "providerEvidence": [
+    "https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-subscription-current-period-start-and-end",
+    "https://docs.stripe.com/changelog/basil/2025-03-31/adds-new-parent-field-to-invoicing-objects",
+    "https://docs.stripe.com/changelog/basil/2025-03-31/deprecate-legacy-invoice-payment-fields",
+    "https://docs.stripe.com/webhooks/versioning (webhook bodies use the endpoint's API version)"
+  ],
+  "assumptions": [
+    "A subscription has one item, or its items share one billing period (the application stores one period end per subscription). With items on different periods the first item's period is stored.",
+    "'paid' means the invoice status is 'paid' (Stripe's replacement for the removed boolean).",
+    "Events from earlier API versions still carry the old fields and are not changed."
+  ],
+  "validation": [
+    "replay every recorded event at the earlier version through the original and the patched processor: identical records",
+    "replay every recorded basil event through the patched processor: records equal what Stripe states for the same objects",
+    "the webhook handler (signature check, idempotency, retries) is not changed",
+    "the original artifact still loads (rollback target)"
+  ],
+  "rollback": "Roll back the correction: the original artifact (unpatched processor) runs again; records written while it was active stay as written."
+}

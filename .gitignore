@@ -9,3 +9,6 @@ playwright-report
 test-results
 /var
 .maintenance
+
+# materialized adopted-application artifacts (slice 7)
+packages/*/.artifacts/

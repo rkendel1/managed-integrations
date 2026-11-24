@@ -127,7 +127,7 @@ export async function connectedProviders(db: Db, tenantId: string): Promise<Set<
 }
 
 export function systemsReady(d: IntegrationDescriptor, connected: Set<string>) {
-  return connected.has(d.source.id) && connected.has(d.destination.id);
+  return d.providers.every((p) => connected.has(p.id));
 }
 
 export async function getOnboarding(db: Db, tenantId: string, flowType: string): Promise<OnboardingRow> {

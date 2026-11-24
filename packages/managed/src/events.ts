@@ -95,7 +95,9 @@ export async function openMaintenanceEvent(
     finding: unknown;
     evidence?: Record<string, unknown>;
     /** The component that changed (slice 7). */
-    boundary?: 'source' | 'integration' | 'target' | 'combined';
+    boundary?: 'source' | 'integration' | 'target' | 'provider' | 'combined';
+    /** The provider whose connection changed (null for the adopted code itself). */
+    provider?: string | null;
   },
 ): Promise<{ incident: IncidentRow; created: boolean }> {
   const [inc, created] = await openIncident(db, {
@@ -122,7 +124,10 @@ export async function openMaintenanceEvent(
   if (p.boundary)
     await db
       .update(incidents)
-      .set({ boundary: sql`coalesce(${incidents.boundary}, ${p.boundary})` })
+      .set({
+        boundary: sql`coalesce(${incidents.boundary}, ${p.boundary})`,
+        ...(p.provider ? { provider: sql`coalesce(${incidents.provider}, ${p.provider})` } : {}),
+      })
       .where(eq(incidents.id, inc.id));
   const [fresh] = await db.select().from(incidents).where(eq(incidents.id, inc.id));
   return { incident: fresh!, created };
@@ -141,7 +146,7 @@ export async function blockingEvents(db: Db, integrationId: string, exceptIncide
   return open.filter(
     (i) =>
       i.id !== exceptIncidentId &&
-      ['input_contract_change', 'target_contract_change'].includes(i.kind) &&
+      ['input_contract_change', 'target_contract_change', 'provider_contract_change'].includes(i.kind) &&
       !(i.correction as { activatedAt?: string } | null)?.activatedAt &&
       !(i.evidence as { maintenance?: { escalated?: string } }).maintenance?.escalated,
   );

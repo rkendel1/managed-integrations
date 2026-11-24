@@ -244,8 +244,7 @@ export async function monitorIntegration(
   return { facts, changed, reauthorizationEventId };
 }
 
-const providerName = (d: IntegrationDescriptor, id: string) =>
-  d.source.id === id ? d.source.name : d.destination.id === id ? d.destination.name : id;
+const providerName = (d: IntegrationDescriptor, id: string) => d.providers.find((p) => p.id === id)?.name ?? id;
 
 /** One open event per integration: the customer must reconnect; work is held, not lost. */
 export async function openReauthorizationEvent(

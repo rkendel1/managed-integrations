@@ -100,6 +100,30 @@ export interface IntegrationRuntime {
   reconciliation?: ReconciliationOperations;
   descriptor: IntegrationDescriptor;
   onboarding?: OnboardingImplementation;
+  /**
+   * Durably receives a provider notification addressed to this integration (slice 7: the provider's ingress
+   * route is shared; the runtime that owns the integration verifies and records it).
+   */
+  receive?(p: {
+    integrationId: string;
+    provider: string;
+    rawBody: Buffer;
+    headers: Record<string, string | undefined>;
+    correlationId?: string;
+  }): Promise<{ httpStatus: number; disposition?: string; deliveryId?: string; execute: boolean; error?: string }>;
+  /**
+   * Runs one of an adopted APPLICATION's own operations on the customer's behalf (slice 7): e.g. the hosted
+   * application's "create checkout session" route or "create invoice" tool. Recorded durably (one record per
+   * request id: a repeated request returns the first result and does nothing again) and verified by reading
+   * the result back from the provider.
+   */
+  invoke?(p: {
+    integrationId: string;
+    operation: string;
+    input: Record<string, unknown>;
+    requestId: string;
+    principalId: string;
+  }): Promise<{ deliveryId: string; outcome: string; output: Record<string, unknown>; verification: Record<string, unknown>; replayed: boolean }>;
   /** Runs one delivery through the integration's executor (queue: adopted.execute). */
   execute?(deliveryId: string, trigger: ExecutionTrigger): Promise<unknown>;
   /** Scans the source for a reconciliation run (queue: adopted.reconcile). */
