@@ -24,11 +24,21 @@ set -a
 # shellcheck disable=SC1090
 . "${MI_B_SECRETS:?set MI_B_SECRETS to an env file with the FELTKIT_CREDENTIAL_* values}"
 set +a
-(MI_PUBLIC_URL=http://127.0.0.1:3100 nohup npx feltkit dev --port 3100 > "$LOGS/dev.log" 2>&1 &)
+# The repair agent (EVE, Node >= 24, its own package): started when MI_REPAIR_AGENT=1 and Node 24 is present.
+REPAIR_URL=""
+if [ "${MI_REPAIR_AGENT:-0}" = "1" ] && [ -x "${NODE24:-/opt/node24/bin/node}" ]; then
+  pkill -f "eve start" 2>/dev/null || true
+  AGENT_PW="${FELTKIT_CREDENTIAL_REPAIR_AGENT#*:}"
+  (cd agent-eve && PATH="$(dirname "${NODE24:-/opt/node24/bin/node}"):$PATH" npx eve build > "$LOGS/eve-build.log" 2>&1 && \
+    PATH="$(dirname "${NODE24:-/opt/node24/bin/node}"):$PATH" MI_REPAIR_AGENT_USER="${FELTKIT_CREDENTIAL_REPAIR_AGENT%%:*}" MI_REPAIR_AGENT_PASSWORD="$AGENT_PW" \
+    MI_REPAIR_ANTHROPIC_KEY="${MI_REPAIR_ANTHROPIC_KEY:?set MI_REPAIR_ANTHROPIC_KEY}" PORT=3300 nohup npx eve start > "$LOGS/eve.log" 2>&1 &)
+  REPAIR_URL=http://127.0.0.1:3300
+fi
+(MI_PUBLIC_URL=http://127.0.0.1:3100 MI_REPAIR_AGENT_URL="$REPAIR_URL" nohup npx feltkit dev --port 3100 > "$LOGS/dev.log" 2>&1 &)
 
 for _ in $(seq 1 120); do
-  if curl -sf http://127.0.0.1:3100/_feltkit/health >/dev/null && curl -sf http://127.0.0.1:5011/__fixture/state >/dev/null; then
-    echo "System B ready (state reset; simulators on 50xx)"
+  if curl -sf http://127.0.0.1:3100/_feltkit/health >/dev/null && curl -sf http://127.0.0.1:5011/__fixture/state >/dev/null && { [ -z "$REPAIR_URL" ] || curl -sf "$REPAIR_URL/eve/v1/health" >/dev/null; }; then
+    echo "System B ready (state reset; simulators on 50xx; repair agent: ${REPAIR_URL:-none, playbook planner})"
     exit 0
   fi
   sleep 0.5

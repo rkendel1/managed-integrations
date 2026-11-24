@@ -5,7 +5,7 @@
  */
 import { fail, s } from "@feltdb/feltkit";
 import type { MutationCtx } from "@feltdb/feltkit";
-import { app, appRequests, corrections, deliveries, events, integrations, receipts, reconItems, reconRuns } from "./app.js";
+import { app, appRequests, corrections, deliveries, events, integrations, receipts, reconItems, reconRuns, syncRuns } from "./app.js";
 
 type Boundary = "source" | "target" | "provider" | "integration" | "combined";
 
@@ -138,7 +138,13 @@ export const eventContext = app.query({
     const lastDelivered = all.filter((d) => d.status === "delivered").sort((x, y) => y.updatedAt - x.updatedAt)[0];
     const lastReceipt = lastDelivered ? await ctx.db.get(receipts, lastDelivered.receiptId) : null;
     const heldRequests = (await ctx.db.find(appRequests, { integrationId: e.integrationId })).filter((r) => r.heldBy === eventId);
+    const nativeRuns = integ?.kind === "native_sync"
+      ? (await ctx.db.find(syncRuns, { integrationId: e.integrationId })).filter((r) => r.startedAt >= e.openedAt).sort((a, b) => a.startedAt - b.startedAt)
+          .map((r) => ({ id: r.id, status: r.status, canary: r.canary ?? null, startedAt: r.startedAt, records: r.records, engineVersion: r.engineVersion }))
+      : [];
     return {
+      nativeRuns,
+      integrationSettings: integ?.settings ?? {},
       heldRequests: heldRequests.map((r) => ({ requestId: r.requestId, status: r.status, result: r.result ?? null })),
       integrationKind: integ?.kind ?? null,
       lastDeliveredReceipt: lastReceipt ? lastReceipt.sealed : null,
@@ -379,5 +385,18 @@ export const awaitOperator = app.mutation({
     const e = await ctx.db.get(events, eventId);
     if (!e) fail("NOT_FOUND", "No such event.");
     await ctx.db.patch(events, eventId, { phase: "await_operator", timeline: [...e.timeline, note(`Patch ${correctionId} validated; waiting for an operator to review and activate it`)] });
+  },
+});
+
+/** A canary that did not verify: the correction is rolled back and the event needs people. */
+export const rollbackFailedCanary = app.mutation({
+  access: "mi.runtime",
+  args: { eventId: s.string(), correctionId: s.string(), detail: s.string() },
+  handler: async (ctx, a) => {
+    const c = await ctx.db.get(corrections, a.correctionId);
+    const e = await ctx.db.get(events, a.eventId);
+    if (!c || !e) fail("NOT_FOUND", "No such correction or event.");
+    await ctx.db.patch(corrections, c.id, { status: "rolled_back", history: [...c.history, { at: Date.now(), from: c.status, to: "rolled_back", by: "runtime (canary failed)", note: a.detail }] });
+    await ctx.db.patch(events, e.id, { status: "requires_action", phase: "requires_action", timeline: [...e.timeline, note(`Canary failed and was rolled back: ${a.detail}`, false, "requires_action")] });
   },
 });

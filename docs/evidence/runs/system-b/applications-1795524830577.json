@@ -1,63 +1,63 @@
 {
   "scenario": "applications",
   "system": "B",
-  "startedAt": "2026-11-24T11:59:34.068Z",
-  "ms": 5386,
+  "startedAt": "2026-11-24T12:53:50.577Z",
+  "ms": 5231,
   "steps": [
     {
       "n": "S1",
       "text": "Adopted stripe-webhooks-subscriptions-node-ts @ 4812d259e7e8 (MIT), vendored; 15 files pinned; match: true",
-      "ms": 25
+      "ms": 21
     },
     {
       "n": "S2",
-      "text": "Discovered (one provider: Stripe): Stripe subscriptions application (stripe-webhooks-subscriptions-node-ts) — [{\"url\":\"https://subs-mwun6pbo.lumen.test/v1/stripe/webhook\",\"apiVersion\":\"2025-02-24.acacia\",\"events\":[\"customer.subscription.updated\",\"customer.subscription.created\",\"invoice.payment_succeeded\",\"invoice.payment_failed\"]}]",
-      "ms": 591
+      "text": "Discovered (one provider: Stripe): Stripe subscriptions application (stripe-webhooks-subscriptions-node-ts) — [{\"url\":\"https://subs-mwup4i29.lumen.test/v1/stripe/webhook\",\"apiVersion\":\"2025-02-24.acacia\",\"events\":[\"customer.subscription.updated\",\"customer.subscription.created\",\"invoice.payment_succeeded\",\"invoice.payment_failed\"]}]",
+      "ms": 558
     },
     {
       "n": "S3",
       "text": "Hosted and verified: {\"events\":16,\"records\":5,\"writes\":5,\"mismatches\":0} (its own records rebuilt from Stripe's events through its own code; each checked against Stripe)",
-      "ms": 931
+      "ms": 883
     },
     {
       "n": "S4",
       "text": "Detected: boundary provider; records differ from Stripe in [\"currentPeriodEnd\"] at 2025-03-31.basil (read at src/webhooks/stripeEventProcessor.ts:21, src/webhooks/stripeEventProcessor.ts:27); reviewed patch validated by replay: ✓ replay affected events: records equal Stripe · ✓ replay earlier-version events: identical records · ✓ only the event processor changes · ✓ rollback target available",
-      "ms": 1382
+      "ms": 1314
     },
     {
       "n": "S5",
       "text": "Operator switched the patch on. Customer view: \"Done: the 3 affected Stripe update(s) are stored again, each checked against Stripe. Nothing was lost.\"",
-      "ms": 1708
+      "ms": 1652
     },
     {
       "n": "S6",
       "text": "Zero loss: {\"affected\":3,\"delivered\":3,\"unresolved\":0,\"duplicates\":0}; all 6 records match Stripe",
-      "ms": 1712
+      "ms": 1657
     },
     {
       "n": "Q1",
       "text": "Adopted quickbooks-mcp @ ce1317e51d43; 73 files pinned (match: true); one provider: QuickBooks",
-      "ms": 2384
+      "ms": 2249
     },
     {
       "n": "Q2",
-      "text": "Invoice 1012 created via applications.invoke: succeeded, verified in QuickBooks: true; same request again: replayed=true; invoices: D7-mwun6pbo-1 $540",
-      "ms": 2582
+      "text": "Invoice 1012 created via applications.invoke: succeeded, verified in QuickBooks: true; same request again: replayed=true; invoices: D7-mwup4i29-1 $540",
+      "ms": 2430
     },
     {
       "n": "Q3",
       "text": "QuickBooks access lost → request held (nothing sent) → customer reconnected → ran once. \"Completed: the 1 request(s) that waited for QuickBooks ran once each and are in QuickBooks. Nothing was lost.\"; invoices: 2",
-      "ms": 4205
+      "ms": 3903
     },
     {
       "n": "Q4",
       "text": "Upstream 0.12.0: ✓ replay: requests identical but User-Agent and Request-Id (3 request(s) per version through a recording double (the create never reached QuickBooks); new User-Agent: node-quickbooks: version 2.0.50) · ✓ executed files unchanged in the release (27 executed files; changed: 0) · ✓ rollback target available (node-quickbooks 2.0.48 stays installed and loads)",
-      "ms": 4252
+      "ms": 3948
     },
     {
       "n": "Q5",
       "text": "Operator switched it on; next request used \"node-quickbooks: version 2.0.50\"; verified on real work and resolved; rolled back to the pinned set (drill)",
-      "ms": 5386
+      "ms": 5231
     }
   ]
 }

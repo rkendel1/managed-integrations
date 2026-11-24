@@ -39,7 +39,7 @@ export const app = feltkit({
       routes: ["/rt/"],
       required: true,
       principal: { id: "component:runtime", roles: ["runtime"] },
-      credentials: ["mi-keyring", "shopify-client-secret", "qbo-client-secret"],
+      credentials: ["mi-keyring", "shopify-client-secret", "qbo-client-secret", "repair-agent"],
       network: "egress",
       description: "Receives provider webhooks, holds customer provider credentials, runs adopted integration code.",
     },
@@ -70,7 +70,7 @@ export const integrations = app.collection(
   "integrations",
   {
     tenantId: s.optional(s.string()),
-    kind: s.enum(["order_sync", "ledgerly", "stripe_app", "qbo_tools"]),
+    kind: s.enum(["order_sync", "ledgerly", "stripe_app", "qbo_tools", "native_sync"]),
     enabled: s.boolean(),
     settings: s.record(s.unknown()),
     status: s.enum(["protected", "maintaining", "verified", "customer_action", "checking"]),
@@ -256,4 +256,25 @@ export const appRequests = app.collection(
     updatedAt: s.number(),
   },
   { tenant: true, unique: [["tenantId", "integrationId", "requestId"]] },
+);
+
+/** Runs of the native polling sync (cursor held unless every order in the window was delivered). */
+export const syncRuns = app.collection(
+  "sync_runs",
+  {
+    integrationId: s.string(),
+    status: s.enum(["running", "succeeded", "failed"]),
+    trigger: s.string(),
+    engineVersion: s.integer(),
+    canary: s.optional(s.integer()),
+    cursorBefore: s.string(),
+    cursorAfter: s.optional(s.string()),
+    delivered: s.integer(),
+    records: s.array(s.object({ sourceId: s.string(), reference: s.string(), outcome: s.string(), destinationRef: s.optional(s.string()) })),
+    errorClass: s.optional(s.string()),
+    errorMessage: s.optional(s.string()),
+    startedAt: s.number(),
+    finishedAt: s.optional(s.number()),
+  },
+  { tenant: true, indexes: [{ fields: ["integrationId", "startedAt"] }] },
 );

@@ -23,6 +23,7 @@ import { handlers as reconcileHandlers } from "./reconcile.ts";
 import * as ledgerly from "./ledgerly-runtime.ts";
 import { handlers as onboardingHandlers } from "./onboarding.ts";
 import * as apps from "./apps-runtime.ts";
+import { workers as nativeWorkers } from "./native.ts";
 
 const SHOPIFY_CLIENT_ID = process.env.SHOPIFY_CLIENT_ID ?? "fixture-shopify-client-id";
 const PUBLIC_URL = (process.env.MI_PUBLIC_URL ?? "http://127.0.0.1:3100").replace(/\/$/, "");
@@ -258,6 +259,7 @@ export default defineComponent(async (ctx) => {
     ...ledgerly.workers(() => rt, () => qboSecret, PUBLIC_URL),
     ...onboardingHandlers(() => rt, () => qboSecret),
     ...apps.workers(() => rt, () => qboSecret, PUBLIC_URL),
+    ...nativeWorkers(() => rt),
   };
 
   let stopped = false;

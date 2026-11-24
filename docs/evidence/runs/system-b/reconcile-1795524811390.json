@@ -1,0 +1,58 @@
+{
+  "scenario": "reconcile",
+  "system": "B",
+  "startedAt": "2026-11-24T12:53:31.390Z",
+  "ms": 3425,
+  "steps": [
+    {
+      "n": "1",
+      "text": "Order #R-mwup439b-1: webhook received and delivered to NetSuite by the adopted code",
+      "ms": 1359
+    },
+    {
+      "n": "2",
+      "text": "Order #R-mwup439b-2 created in Shopify; its webhook is lost in transit (simulator drop); NetSuite has no record",
+      "ms": 2365
+    },
+    {
+      "n": "3",
+      "text": "reconciliation.start → run mwup453397bf7eca50f6: {\"destination_exists_untracked\":2,\"delivered\":1,\"missing_delivery\":1,\"discovered\":4} in 2026-11-23T12:53:33.759Z → 2026-11-24T12:54:33.759Z",
+      "ms": 2690
+    },
+    {
+      "n": "4",
+      "text": "#R-mwup439b-1 → delivered; #R-mwup439b-2 → missing_delivery (exceptions listed first: missing_delivery)",
+      "ms": 2694
+    },
+    {
+      "n": "5",
+      "text": "reconciliation.recover for #R-mwup439b-2: accepted",
+      "ms": 2700
+    },
+    {
+      "n": "6",
+      "text": "Recovered through the adopted code and verified by reading NetSuite back (delivery mwup45hx7b098e2a697e)",
+      "ms": 3016
+    },
+    {
+      "n": "7",
+      "text": "NetSuite contains exactly one sales order for #R-mwup439b-2: id 9014",
+      "ms": 3019
+    },
+    {
+      "n": "8",
+      "text": "Second run mwup45l734f600604fc4: #R-mwup439b-2 → delivered",
+      "ms": 3344
+    },
+    {
+      "n": "9",
+      "text": "Duplicate recoveries refused (recovery already recovered; classified delivered); still exactly one record",
+      "ms": 3353
+    },
+    {
+      "n": "10",
+      "text": "Another company is refused reconciliation.items / recover / start: NOT_FOUND, NOT_FOUND, NOT_FOUND",
+      "ms": 3425
+    }
+  ]
+}

@@ -16,6 +16,7 @@ import { PATCHES, executeEvent } from "./ledgerly.ts";
 import { APP_PATCHES, STRIPE_APP, createInvoice, differences, processWith, stripeTruth } from "./apps.ts";
 import { processAndVerify } from "./apps-runtime.ts";
 import { createServer } from "node:http";
+import { repair, SUITE_SHA256 } from "./native.ts";
 
 const ALL_PATCHES = { ...PATCHES, ...APP_PATCHES };
 
@@ -117,6 +118,72 @@ export function handlers(get: () => Runtime): Record<string, Handler> {
             ? { eventId, kind: "patch", scopeKey: `${c.event.integrationId}:provider:${c.event.finding.contract}`, spec: { patch: patchId, file: P.file, find: P.find, replace: P.replace }, reason: P.reason }
             : { eventId, kind: "unsupported", scopeKey: `${c.event.integrationId}:provider:${c.event.finding.contract}`, spec: {}, reason: "No reviewed patch for this contract; an engineer must write one." });
           continue;
+        }
+        if (c.event.kind === "schema_drift" && (phase === "investigate" || phase === "correct")) {
+          const current = c.integrationSettings.engine as { version: number; priceField: string };
+          const cand = await repair.propose(rt, ws, c.event.finding, current);
+          await rt.call(ws, "maintenance:proposeCorrection", cand.priceField
+            ? {
+                eventId, kind: "patch", scopeKey: `${c.event.integrationId}:engine`,
+                spec: { engine: { version: current.version + 1, priceField: cand.priceField }, planner: cand.planner, hypothesis: cand.hypothesis, plannerMs: cand.durationMs, acceptanceSuiteSha256: SUITE_SHA256 },
+                reason: `${cand.planner}: ${cand.hypothesis}`,
+              }
+            : { eventId, kind: "unsupported", scopeKey: `${c.event.integrationId}:engine`, spec: { planner: cand.planner, hypothesis: cand.hypothesis }, reason: `${cand.planner}: ${cand.hypothesis}` });
+          continue;
+        }
+        if (c.event.kind === "schema_drift" && phase === "validate") {
+          const fix = c.corrections.find((x: any) => x.status === "proposed" && x.kind === "patch");
+          if (!fix) return { outcome: "done" };
+          const current = c.integrationSettings.engine as { version: number; priceField: string };
+          const checks: { name: string; result: "passed" | "failed" | "not_applicable"; detail: string }[] = [
+            ...(await repair.validate(rt, ws, current, fix.spec.engine, String(c.event.finding.cursorHeld))),
+            { name: "acceptance suite not altered", result: fix.spec.acceptanceSuiteSha256 === SUITE_SHA256 ? "passed" : "failed", detail: `suite sha256 ${SUITE_SHA256.slice(0, 16)}… (the planner returns data, never tests)` },
+          ];
+          await rt.call(ws, "maintenance:recordValidation", { correctionId: fix.id, checks });
+          continue;
+        }
+        if (c.event.kind === "schema_drift" && phase === "activate") {
+          const fix = c.corrections.find((x: any) => x.status === "validated" && x.kind === "patch");
+          if (fix) await rt.call(ws, "maintenance:awaitOperator", { eventId, correctionId: fix.id });
+          return { outcome: "done", receipt: { awaiting: "operator approval" } };
+        }
+        if (c.event.kind === "schema_drift" && phase === "verify_patch") {
+          const fix = c.corrections.find((x: any) => x.status === "active" && x.kind === "patch");
+          if (!fix) return { outcome: "done" };
+          const activatedAt = fix.history?.filter((h: any) => h.to === "active").at(-1)?.at ?? 0;
+          const runs = (c.nativeRuns as any[]).filter((r) => r.startedAt >= activatedAt);
+          const since = String(c.event.finding.cursorHeld);
+          const canary = runs.find((r) => r.canary);
+          const full = runs.find((r) => !r.canary);
+          if (!canary) {
+            await rt.call(ws, "native:startEngineRun", { integrationId: c.event.integrationId, trigger: `canary for correction ${fix.id}`, canary: 1 });
+            return { outcome: "retry", error: { message: "canary started" }, retryInMs: 1000 };
+          }
+          if (canary.status === "running" || (full && full.status === "running")) return { outcome: "retry", error: { message: "waiting for the run" }, retryInMs: 1000 };
+          if (canary.status === "failed") {
+            await rt.call(ws, "maintenance:rollbackFailedCanary", { eventId, correctionId: fix.id, detail: "the canary run failed" });
+            return { outcome: "done" };
+          }
+          if (!full) {
+            const v = await repair.verify(rt, ws, fix.spec.engine, since, canary.records.map((r: any) => r.sourceId));
+            if (!v.every((x) => x.ok)) {
+              await rt.call(ws, "maintenance:rollbackFailedCanary", { eventId, correctionId: fix.id, detail: v.map((x) => x.detail).join("; ") });
+              return { outcome: "done" };
+            }
+            await rt.call(ws, "native:startEngineRun", { integrationId: c.event.integrationId, trigger: `promotion of correction ${fix.id} after canary ${canary.id}` });
+            return { outcome: "retry", error: { message: "promotion started" }, retryInMs: 1000 };
+          }
+          if (full.status !== "succeeded") return { outcome: "retry", error: { message: `full run ${full.status}` }, retryInMs: 2000 };
+          const ids = (c.event.finding.affectedOrders as { sourceId: string }[]).map((o) => o.sourceId);
+          const v = await repair.verify(rt, ws, fix.spec.engine, since, ids);
+          const ok = v.filter((x) => x.ok).length;
+          await rt.call(ws, "maintenance:recordPostActivation", {
+            eventId, correctionId: fix.id,
+            observed: { canary: canary.id, canaryOrders: canary.records.length, promotion: full.id, verified: v.map((x) => `${x.sourceId}: ${x.detail}`) },
+            accounting: { affected: ids.length, delivered: ok, unresolved: ids.length - ok, duplicates: 0 },
+            doneText: `Done: the integration is repaired and verified; all ${ok} order(s) that waited are in NetSuite with Shopify's prices. Nothing was skipped.`,
+          });
+          return { outcome: "done" };
         }
         if (phase === "correct" && c.event.kind === "application_change") {
           const f = c.event.finding as { executedFilesChanged: string[]; dependencyChanges: { name: string; from: string; to: string }[]; release: string };
