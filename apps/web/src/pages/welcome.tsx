@@ -1,8 +1,10 @@
 /**
- * Onboarding (slice 5): Connect → Discover → Confirm → Protect, on one page that shows only what the
- * current step needs. Discovery starts by itself once both systems are connected. Rendered from
- * onboarding.status / discover / confirm (AppPort; the same capabilities MCP exposes); connecting uses
- * the existing connection routes (OAuth redirect for Shopify, M2M certificate for NetSuite).
+ * Onboarding (slice 5; several integrations per customer since slice 6): Connect → Discover → Confirm →
+ * Protect, on one page. The customer connects the business systems they use; discovery starts by itself
+ * when the connected systems change, and each integration found is confirmed and protected on its own.
+ * Rendered from onboarding.status / discover / confirm (AppPort; the same capabilities MCP exposes);
+ * connecting uses the provider connection routes (OAuth for Shopify and QuickBooks, M2M certificate for
+ * NetSuite, a restricted key for Stripe).
  */
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
@@ -19,13 +21,14 @@ interface Candidate {
   summary: string;
   confidence: string | null;
 }
-interface OnboardingView {
-  status: 'connect' | 'discovering' | 'confirm' | 'select' | 'activating' | 'managed' | 'blocked';
+type Status = 'connect' | 'discovering' | 'confirm' | 'select' | 'activating' | 'managed' | 'blocked';
+interface FlowView {
+  flowType: string;
+  name: string;
+  process: string;
+  systems: string[];
+  status: Status;
   next: string;
-  connections: {
-    shopify: { connected: boolean; account: string | null };
-    netsuite: { connected: boolean; account: string | null };
-  };
   discovery: { outcome: string; checked: number; candidates: Candidate[] } | null;
   responsibilities: { version: string; maintain: string[]; access: string[]; verify: string[] };
   activation: {
@@ -35,11 +38,17 @@ interface OnboardingView {
   integrationId: string | null;
   problem: string | null;
 }
+interface OnboardingView {
+  status: Status;
+  next: string;
+  systems: { id: string; name: string; connected: boolean; account: string | null }[];
+  integrations: FlowView[];
+}
 
 const muted = 'text-slate-500 dark:text-zinc-500';
 const panel = 'rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-zinc-900/40';
 const STEPS = ['Connect', 'Discover', 'Confirm', 'Protect'] as const;
-const stepIndex = (s: OnboardingView['status']) =>
+const stepIndex = (s: Status) =>
   s === 'connect' ? 0 : s === 'discovering' ? 1 : s === 'confirm' || s === 'select' ? 2 : 3;
 
 function Check({ done }: { done: boolean }) {
@@ -63,34 +72,42 @@ export function Welcome() {
     queryKey: ['appport', 'onboarding.status'],
     queryFn: () => callCapability<OnboardingView>('onboarding.status', {}),
     refetchInterval: (x) =>
-      x.state.data?.status === 'activating' || x.state.data?.status === 'discovering' ? 2000 : false,
+      x.state.data?.integrations.some((i) => i.status === 'activating' || i.status === 'discovering')
+        ? 2000
+        : false,
   });
   const d = q.data;
-  const discovering = useRef(false);
-  // Discovery starts by itself as soon as both systems are connected (no customer action).
+  const looked = useRef<string | null>(null);
+  // Discovery starts by itself whenever the set of connected systems changes (no customer action).
   useEffect(() => {
-    if (
-      d?.status === 'connect' &&
-      d.connections.shopify.connected &&
-      d.connections.netsuite.connected &&
-      !discovering.current
-    ) {
-      discovering.current = true;
+    if (!d) return;
+    const connected = d.systems
+      .filter((x) => x.connected)
+      .map((x) => x.id)
+      .sort()
+      .join(',');
+    const pending = d.integrations.length === 0 || d.integrations.some((i) => i.status === 'connect');
+    if (connected.split(',').length >= 2 && pending && looked.current !== connected) {
+      looked.current = connected;
       callCapability('onboarding.discover', {})
         .then(() => qc.invalidateQueries({ queryKey: ['appport'] }))
-        .catch(setError)
-        .finally(() => (discovering.current = false));
+        .catch(setError);
     }
   }, [d, qc]);
   if (q.error) return <ErrorNote error={q.error} />;
   if (!d) return null;
   const at = stepIndex(d.status);
+  const rediscover = () =>
+    callCapability('onboarding.discover', {}).then(
+      () => qc.invalidateQueries({ queryKey: ['appport'] }),
+      setError,
+    );
   return (
     <div className="mx-auto max-w-3xl space-y-6" data-testid="onboarding" data-status={d.status}>
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Put your integration under management</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Put your integrations under management</h1>
         <p className={cn('mt-1 text-sm', muted)}>
-          Connect your systems. We find your integration, you confirm, we take care of it.
+          Connect the business systems you use. We find your integrations, you confirm, we take care of them.
         </p>
         <ol className="mt-5 flex items-center gap-3 text-sm">
           {STEPS.map((s, i) => (
@@ -105,26 +122,28 @@ export function Welcome() {
         </ol>
       </header>
       <ErrorNote error={error} />
-      {d.problem ? <ErrorNote error={new Error(d.problem)} /> : null}
-      {d.status === 'connect' || d.status === 'blocked' ? <Connect d={d} onError={setError} /> : null}
-      {d.status === 'discovering' ? (
-        <p className={panel}>Looking for your integration in Shopify and NetSuite…</p>
-      ) : null}
-      {d.status === 'confirm' || d.status === 'select' ? <Confirm d={d} onError={setError} /> : null}
-      {d.status === 'activating' || d.status === 'managed' ? <Protect d={d} /> : null}
-      {d.status === 'blocked' ? (
-        <Button
-          variant="outline"
-          onClick={() =>
-            callCapability('onboarding.discover', {}).then(
-              () => qc.invalidateQueries({ queryKey: ['appport'] }),
-              setError,
-            )
-          }
+      {d.integrations.map((f) => (
+        <section
+          key={f.flowType}
+          className="space-y-3"
+          data-testid="onboarding-integration"
+          data-flow={f.flowType}
+          data-status={f.status}
         >
-          Try again
-        </Button>
-      ) : null}
+          {f.problem ? <ErrorNote error={new Error(f.problem)} /> : null}
+          {f.status === 'discovering' ? (
+            <p className={panel}>Looking for your integration in {f.systems.join(' and ')}…</p>
+          ) : null}
+          {f.status === 'confirm' || f.status === 'select' ? <Confirm f={f} onError={setError} /> : null}
+          {f.status === 'activating' || f.status === 'managed' ? <Protect f={f} /> : null}
+          {f.status === 'blocked' ? (
+            <Button variant="outline" onClick={rediscover}>
+              Try again
+            </Button>
+          ) : null}
+        </section>
+      ))}
+      <Connect d={d} onError={setError} />
     </div>
   );
 }
@@ -133,152 +152,200 @@ function Connect({ d, onError }: { d: OnboardingView; onError: (e: unknown) => v
   const qc = useQueryClient();
   const [shop, setShop] = useState('');
   const [ns, setNs] = useState({ accountDomain: '', clientId: '', certificateId: '' });
+  const [stripeKey, setStripeKey] = useState('');
   const [publicKey, setPublicKey] = useState<string | null>(null);
-  async function shopify(e: FormEvent) {
-    e.preventDefault();
+  const sys = (id: string) =>
+    d.systems.find((x) => x.id === id) ?? { id, name: id, connected: false, account: null };
+  const run = (fn: () => Promise<unknown>) => async (e?: FormEvent) => {
+    e?.preventDefault();
     try {
-      const r = await api<{ url: string }>('/api/customer/connections/shopify/authorize', {
-        method: 'POST',
-        body: { shop },
-      });
-      window.location.assign(r.url); // Shopify asks the merchant to approve, then returns here
+      await fn();
     } catch (err) {
       onError(err);
     }
-  }
-  async function netsuite(e: FormEvent) {
-    e.preventDefault();
-    try {
-      const r = await api<{ publicKeyPem: string }>('/api/customer/connections/netsuite', {
-        method: 'POST',
-        body: ns,
-      });
-      setPublicKey(r.publicKeyPem);
-    } catch (err) {
-      onError(err);
-    }
-  }
-  async function verify() {
-    try {
-      await api('/api/customer/connections/netsuite/verify', { method: 'POST', body: {} });
-      await qc.invalidateQueries({ queryKey: ['appport'] });
-    } catch (err) {
-      onError(err);
-    }
-  }
+  };
+  const anyManaged = d.integrations.some((i) => i.status === 'managed');
   return (
-    <div className="grid gap-4 md:grid-cols-2">
-      <System
-        title="Shopify"
-        connected={d.connections.shopify.connected}
-        account={d.connections.shopify.account}
-      >
-        <form onSubmit={shopify} className="space-y-3">
-          <Field label="Your shop">
-            <input
-              aria-label="Shopify shop"
-              className={inputClass}
-              placeholder="your-store.myshopify.com"
-              value={shop}
-              onChange={(e) => setShop(e.target.value)}
-              required
-            />
-          </Field>
-          <Button type="submit" size="sm">
-            Connect Shopify
-          </Button>
-          <p className={cn('text-xs', muted)}>Shopify will ask you to approve read access to orders.</p>
-        </form>
-      </System>
-      <System
-        title="NetSuite"
-        connected={d.connections.netsuite.connected}
-        account={d.connections.netsuite.account}
-      >
-        {!publicKey ? (
-          <form onSubmit={netsuite} className="space-y-3">
-            {(['accountDomain', 'clientId', 'certificateId'] as const).map((k) => (
-              <Field
-                key={k}
-                label={
-                  {
-                    accountDomain: 'Account domain (Setup › Company › Company URLs › SuiteTalk)',
-                    clientId: 'Integration client ID',
-                    certificateId: 'Certificate ID',
-                  }[k]
-                }
-              >
-                <input
-                  aria-label={`NetSuite ${k}`}
-                  className={inputClass}
-                  value={ns[k]}
-                  onChange={(e) => setNs({ ...ns, [k]: e.target.value })}
-                  required
-                />
-              </Field>
-            ))}
+    <div className="space-y-3">
+      {anyManaged ? <h2 className="text-sm font-medium">Connect another system</h2> : null}
+      <div className="grid gap-4 md:grid-cols-2">
+        <System s={sys('shopify')}>
+          <form
+            onSubmit={run(async () => {
+              const r = await api<{ url: string }>('/api/customer/connections/shopify/authorize', {
+                method: 'POST',
+                body: { shop },
+              });
+              window.location.assign(r.url); // Shopify asks the merchant to approve, then returns here
+            })}
+            className="space-y-3"
+          >
+            <Field label="Your shop">
+              <input
+                aria-label="Shopify shop"
+                className={inputClass}
+                placeholder="your-store.myshopify.com"
+                value={shop}
+                onChange={(e) => setShop(e.target.value)}
+                required
+              />
+            </Field>
             <Button type="submit" size="sm">
-              Connect NetSuite
+              Connect Shopify
             </Button>
+            <p className={cn('text-xs', muted)}>Shopify will ask you to approve read access to orders.</p>
           </form>
-        ) : (
-          <div className="space-y-3 text-sm">
-            <p>
-              Upload this public key as a certificate in NetSuite (OAuth 2.0 Client Credentials setup), then
-              verify.
-            </p>
-            <textarea
-              readOnly
-              aria-label="NetSuite public key"
-              className={cn(inputClass, 'h-28 font-mono text-[11px]')}
-              value={publicKey}
-            />
-            <Button size="sm" onClick={verify}>
-              I’ve uploaded it — verify
+        </System>
+        <System s={sys('netsuite')}>
+          {!publicKey ? (
+            <form
+              onSubmit={run(async () => {
+                const r = await api<{ publicKeyPem: string }>('/api/customer/connections/netsuite', {
+                  method: 'POST',
+                  body: ns,
+                });
+                setPublicKey(r.publicKeyPem);
+              })}
+              className="space-y-3"
+            >
+              {(['accountDomain', 'clientId', 'certificateId'] as const).map((k) => (
+                <Field
+                  key={k}
+                  label={
+                    {
+                      accountDomain: 'Account domain (Setup › Company › Company URLs › SuiteTalk)',
+                      clientId: 'Integration client ID',
+                      certificateId: 'Certificate ID',
+                    }[k]
+                  }
+                >
+                  <input
+                    aria-label={`NetSuite ${k}`}
+                    className={inputClass}
+                    value={ns[k]}
+                    onChange={(e) => setNs({ ...ns, [k]: e.target.value })}
+                    required
+                  />
+                </Field>
+              ))}
+              <Button type="submit" size="sm">
+                Connect NetSuite
+              </Button>
+            </form>
+          ) : (
+            <div className="space-y-3 text-sm">
+              <p>
+                Upload this public key as a certificate in NetSuite (OAuth 2.0 Client Credentials setup), then
+                verify.
+              </p>
+              <textarea
+                readOnly
+                aria-label="NetSuite public key"
+                className={cn(inputClass, 'h-28 font-mono text-[11px]')}
+                value={publicKey}
+              />
+              <Button
+                size="sm"
+                onClick={run(async () => {
+                  await api('/api/customer/connections/netsuite/verify', { method: 'POST', body: {} });
+                  await qc.invalidateQueries({ queryKey: ['appport'] });
+                })}
+              >
+                I’ve uploaded it — verify
+              </Button>
+            </div>
+          )}
+        </System>
+        <System s={sys('stripe')}>
+          <form
+            onSubmit={run(async () => {
+              await api('/api/customer/connections/stripe', { method: 'POST', body: { apiKey: stripeKey } });
+              setStripeKey('');
+              await qc.invalidateQueries({ queryKey: ['appport'] });
+            })}
+            className="space-y-3"
+          >
+            <Field label="Restricted key (Stripe › Developers › API keys)">
+              <input
+                aria-label="Stripe restricted key"
+                type="password"
+                autoComplete="off"
+                className={inputClass}
+                placeholder="rk_live_…"
+                value={stripeKey}
+                onChange={(e) => setStripeKey(e.target.value)}
+                required
+              />
+            </Field>
+            <Button type="submit" size="sm">
+              Connect Stripe
             </Button>
+            <p className={cn('text-xs', muted)}>
+              Read access to payments and payouts, and permission to send us notifications.
+            </p>
+          </form>
+        </System>
+        <System s={sys('quickbooks')}>
+          <div className="space-y-3">
+            <Button
+              size="sm"
+              onClick={run(async () => {
+                const r = await api<{ url: string }>('/api/customer/connections/quickbooks/authorize', {
+                  method: 'POST',
+                  body: {},
+                });
+                window.location.assign(r.url); // Intuit asks you to approve, then returns here
+              })}
+            >
+              Connect QuickBooks
+            </Button>
+            <p className={cn('text-xs', muted)}>
+              QuickBooks will ask you to approve access to your company’s accounting.
+            </p>
           </div>
-        )}
-      </System>
+        </System>
+      </div>
     </div>
   );
 }
 
 function System({
-  title,
-  connected,
-  account,
+  s,
   children,
 }: {
-  title: string;
-  connected: boolean;
-  account: string | null;
+  s: { id: string; name: string; connected: boolean; account: string | null };
   children: ReactNode;
 }) {
   return (
-    <section className={panel} data-testid={`connect-${title.toLowerCase()}`} data-connected={connected}>
+    <section className={panel} data-testid={`connect-${s.id}`} data-connected={s.connected}>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="font-semibold">{title}</h2>
-        {connected ? (
-          <span className="text-xs text-emerald-600 dark:text-emerald-300">Connected · {account}</span>
+        <h2 className="font-semibold">{s.name}</h2>
+        {s.connected ? (
+          <span className="text-xs text-emerald-600 dark:text-emerald-300">Connected · {s.account}</span>
         ) : null}
       </div>
-      {connected ? <p className={cn('text-sm', muted)}>Connected. Nothing else is needed here.</p> : children}
+      {s.connected ? (
+        <p className={cn('text-sm', muted)}>Connected. Nothing else is needed here.</p>
+      ) : (
+        children
+      )}
     </section>
   );
 }
 
-function Confirm({ d, onError }: { d: OnboardingView; onError: (e: unknown) => void }) {
+function Confirm({ f, onError }: { f: FlowView; onError: (e: unknown) => void }) {
   const qc = useQueryClient();
-  const choices = d.discovery?.candidates ?? [];
+  const choices = f.discovery?.candidates ?? [];
   const selectable = choices.filter((c) => c.kind !== 'unsupported');
-  const [chosen, setChosen] = useState<string>(d.status === 'confirm' ? (selectable[0]?.id ?? '') : '');
+  const [chosen, setChosen] = useState<string>(f.status === 'confirm' ? (selectable[0]?.id ?? '') : '');
   const [busy, setBusy] = useState(false);
   async function confirm() {
     setBusy(true);
     try {
       await callCapability('onboarding.confirm', {
         candidateId: chosen,
-        responsibilitiesVersion: d.responsibilities.version,
+        responsibilitiesVersion: f.responsibilities.version,
+        flowType: f.flowType,
       });
       await qc.invalidateQueries({ queryKey: ['appport'] });
     } catch (err) {
@@ -287,24 +354,21 @@ function Confirm({ d, onError }: { d: OnboardingView; onError: (e: unknown) => v
       setBusy(false);
     }
   }
-  const found = d.status === 'confirm' ? choices[0] : null;
+  const found = f.status === 'confirm' ? choices[0] : null;
   return (
     <section className={cn(panel, 'space-y-5')} data-testid="onboarding-confirm">
       {found ? (
         <div>
-          <h2 className="text-lg font-semibold">
-            We found your{' '}
-            {found.title.replace('Shopify orders → NetSuite sales orders', 'Shopify → NetSuite')} integration
-          </h2>
+          <h2 className="text-lg font-semibold">We found your {f.name} integration</h2>
           <p className={cn('mt-1 text-sm', muted)}>{found.summary}</p>
           <p className="mt-3 text-sm">Confirm that you’d like us to maintain it.</p>
         </div>
       ) : (
         <div>
           <h2 className="text-lg font-semibold">
-            {d.discovery?.outcome === 'ambiguous'
-              ? 'We found more than one way your orders reach NetSuite'
-              : 'We could not find an integration we can take over'}
+            {f.discovery?.outcome === 'ambiguous'
+              ? `We found more than one way your data moves from ${f.systems[0]} to ${f.systems[1]}`
+              : `${f.systems[0]} → ${f.systems[1]}: no integration we can take over`}
           </h2>
           <p className={cn('mt-1 text-sm', muted)}>Choose the integration you’d like us to maintain.</p>
           <div className="mt-3 space-y-2" role="radiogroup">
@@ -322,7 +386,7 @@ function Confirm({ d, onError }: { d: OnboardingView; onError: (e: unknown) => v
               >
                 <input
                   type="radio"
-                  name="candidate"
+                  name={`candidate-${f.flowType}`}
                   value={c.id}
                   disabled={c.kind === 'unsupported'}
                   checked={chosen === c.id}
@@ -345,9 +409,9 @@ function Confirm({ d, onError }: { d: OnboardingView; onError: (e: unknown) => v
         </div>
       )}
       <div className="grid gap-4 text-sm md:grid-cols-3">
-        <List title="What we will maintain" items={d.responsibilities.maintain} />
-        <List title="Access we use" items={d.responsibilities.access} />
-        <List title="What we verify" items={d.responsibilities.verify} />
+        <List title="What we will maintain" items={f.responsibilities.maintain} />
+        <List title="Access we use" items={f.responsibilities.access} />
+        <List title="What we verify" items={f.responsibilities.verify} />
       </div>
       <Button onClick={confirm} disabled={!chosen || busy}>
         Maintain this integration
@@ -371,17 +435,17 @@ function List({ title, items }: { title: string; items: readonly string[] }) {
   );
 }
 
-function Protect({ d }: { d: OnboardingView }) {
-  const b = d.activation?.baseline;
+function Protect({ f }: { f: FlowView }) {
+  const b = f.activation?.baseline;
   return (
     <section className={cn(panel, 'space-y-4')} data-testid="onboarding-protect">
       <h2 className="text-lg font-semibold">
-        {d.status === 'managed'
-          ? 'Your Shopify → NetSuite integration is under management.'
-          : 'Setting up protection…'}
+        {f.status === 'managed'
+          ? `Your ${f.name} integration is under management.`
+          : `Setting up protection for ${f.name}…`}
       </h2>
       <ul className="space-y-2 text-sm">
-        {(d.activation?.steps ?? []).map((s) => (
+        {(f.activation?.steps ?? []).map((s) => (
           <li key={s.label} className="flex items-center gap-2">
             <Check done={s.done} /> {s.label}
           </li>
@@ -389,14 +453,14 @@ function Protect({ d }: { d: OnboardingView }) {
       </ul>
       {b ? (
         <p className="text-sm" data-testid="onboarding-baseline">
-          We checked {b['checked']} recent order(s): {b['accountedFor']} are in NetSuite
+          We checked {b['checked']} recent transaction(s): {b['accountedFor']} are in {f.systems[1]}
           {Number(b['missing'])
-            ? `; ${b['missing']} never reached NetSuite — we’ll ask you before sending orders from before we took over`
+            ? `; ${b['missing']} never reached ${f.systems[1]} — we’ll ask you before sending anything from before we took over`
             : ''}
           .
         </p>
       ) : null}
-      {d.status === 'managed' ? (
+      {f.status === 'managed' ? (
         <Link
           to="/app"
           className="inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-zinc-900"

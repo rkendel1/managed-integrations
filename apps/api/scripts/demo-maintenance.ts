@@ -265,7 +265,7 @@ const ev = must(
     };
     validation: { passed: boolean; checks: { name: string; passed: boolean; detail: string }[] };
     accounting: {
-      orders: { order: string; category: string; verified: boolean }[];
+      transactions: { label: string; category: string; verified: boolean }[];
       duplicates: number;
       zeroLoss: boolean;
       populationComplete: boolean;
@@ -312,12 +312,12 @@ for (const o of delayed) {
     `${o.name}: ${g.attempts.map((x) => `attempt ${x.attemptNo} ${x.outcome}${x.trigger ? ` (${x.trigger.kind})` : ''}`).join(' → ')}`,
   );
 }
-const recovered = ev.accounting.orders.filter((o) =>
+const recovered = ev.accounting.transactions.filter((o) =>
   ['delayed', 'discovered', 'failed'].includes(o.category),
 );
 step(
   9,
-  `Recovered ${recovered.length} order(s): ${recovered.map((o) => `${o.order} (${o.category})`).join(', ')}`,
+  `Recovered ${recovered.length} order(s): ${recovered.map((o) => `${o.label} (${o.category})`).join(', ')}`,
   recovered,
 );
 

@@ -727,7 +727,7 @@ interface Evidence {
     }[];
   } | null;
   accounting: {
-    orders: { order: string; category: string; verified: boolean; detail: string }[];
+    transactions: { label: string; reference: string; category: string; verified: boolean; detail: string }[];
     zeroLoss: boolean;
     populationComplete: boolean;
   } | null;
@@ -897,10 +897,10 @@ export function OpsMaintenanceEvent() {
             </Table>
           ) : null}
           {d.accounting ? (
-            <Table head={['Order', 'Category', 'Verified', 'Destination check']}>
-              {d.accounting.orders.map((o) => (
-                <tr key={o.order} data-testid="accounting-order">
-                  <Td>{o.order}</Td>
+            <Table head={['Transaction', 'Category', 'Verified', 'Destination check']}>
+              {d.accounting.transactions.map((o) => (
+                <tr key={`${o.label}:${o.reference}`} data-testid="accounting-order">
+                  <Td>{o.label}</Td>
                   <Td>{o.category.replace(/_/g, ' ')}</Td>
                   <Td>{o.verified ? 'yes' : 'no'}</Td>
                   <Td className="text-xs">{o.detail}</Td>

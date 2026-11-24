@@ -78,8 +78,102 @@ export function OpsIntegration() {
   return (
     <>
       <IntegrationDetail eventBase="/ops/maintenance-events" />
+      <Monitoring />
       <AdoptedCode />
     </>
+  );
+}
+
+interface MonitoringView {
+  health: string;
+  contract: {
+    name: string;
+    source: { name: string };
+    destination: { name: string };
+    capabilities: {
+      discovery: string | null;
+      recovery: string;
+      verification: string;
+      monitoring: { signal: string; method: string }[];
+      corrections: { pattern: string; status: string; note: string }[];
+    };
+    limitations: string[];
+  } | null;
+  monitoring: {
+    at: string;
+    health: string;
+    signals: { signal: string; state: string; detail: string }[];
+  } | null;
+}
+const STATE_TONE: Record<string, string> = {
+  ok: 'text-emerald-600',
+  attention: 'text-amber-600',
+  failing: 'text-rose-600',
+  not_monitored: 'text-slate-400',
+};
+
+/** Operators: the integration's maintenance contract and its latest durable monitoring facts. */
+function Monitoring() {
+  const { integrationId } = useParams();
+  const q = useQuery({
+    queryKey: ['appport', 'monitoring.integration', integrationId],
+    queryFn: () => callCapability<MonitoringView>('monitoring.integration', { integrationId }),
+    retry: false,
+  });
+  const d = q.data;
+  if (q.error || !d?.contract) return null;
+  const method = (signal: string) =>
+    d.contract!.capabilities.monitoring.find((m) => m.signal === signal)?.method ?? '';
+  return (
+    <Card data-testid="monitoring">
+      <CardHeader
+        title="Monitoring and maintenance contract"
+        description={`${d.contract.source.name} → ${d.contract.destination.name} · health ${d.monitoring?.health ?? d.health}${d.monitoring ? ` · facts from ${new Date(d.monitoring.at).toLocaleString()}` : ' · not probed yet'}`}
+      />
+      <CardBody className="space-y-4">
+        {d.monitoring ? (
+          <Table head={['Signal', 'State', 'Observed', 'How it is monitored']}>
+            {d.monitoring.signals.map((s) => (
+              <tr key={s.signal} data-testid="monitoring-signal" data-signal={s.signal} data-state={s.state}>
+                <Td className="font-mono text-xs">{s.signal}</Td>
+                <Td className={`text-xs font-medium ${STATE_TONE[s.state] ?? ''}`}>
+                  {s.state.replace('_', ' ')}
+                </Td>
+                <Td className="text-xs">{s.detail}</Td>
+                <Td className="text-xs text-slate-500">{method(s.signal)}</Td>
+              </tr>
+            ))}
+          </Table>
+        ) : null}
+        <Table head={['Correction pattern', 'Support', 'Note']}>
+          {d.contract.capabilities.corrections.map((c) => (
+            <tr key={c.pattern}>
+              <Td className="font-mono text-xs">{c.pattern}</Td>
+              <Td className="text-xs">{c.status.replace('_', ' ')}</Td>
+              <Td className="text-xs">{c.note}</Td>
+            </tr>
+          ))}
+        </Table>
+        <div className="grid gap-3 text-xs md:grid-cols-2">
+          <p>
+            <strong>Recovery:</strong> {d.contract.capabilities.recovery}
+          </p>
+          <p>
+            <strong>Verification:</strong> {d.contract.capabilities.verification}
+          </p>
+        </div>
+        {d.contract.limitations.length ? (
+          <div className="text-xs" data-testid="limitations">
+            <strong>Limitations:</strong>
+            <ul className="mt-1 list-disc pl-4">
+              {d.contract.limitations.map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </CardBody>
+    </Card>
   );
 }
 
@@ -125,7 +219,8 @@ function AdoptedCode() {
               ? ` (patches: ${d.running.patches.map((p) => `${p.id} on ${p.file}`).join(', ')})`
               : ' (original upstream code, no patches)'}{' '}
             · {d.adaptations.filter((a) => a.status === 'active' && a.kind === 'adapter').length} active
-            adapter(s)
+            adapter(s) · {d.adaptations.filter((a) => a.status === 'active' && a.kind === 'patch').length}{' '}
+            active patch(es)
           </p>
           <Table
             head={['Provider contract the code depends on', 'Expected', 'Read by upstream at', 'Effect']}

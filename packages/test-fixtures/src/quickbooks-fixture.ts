@@ -144,15 +144,13 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
     done(null, new URLSearchParams(String(body)));
   });
   const fault = (reply: FastifyReply, error: string, detail: string, status = 400) =>
-    reply
-      .code(status)
-      .send({
-        Fault: {
-          Error: [{ Message: error, Detail: detail, code: String(status === 400 ? 6000 : status) }],
-          type: status === 401 ? 'AUTHENTICATION' : 'ValidationFault',
-        },
-        time: new Date().toISOString(),
-      });
+    reply.code(status).send({
+      Fault: {
+        Error: [{ Message: error, Detail: detail, code: String(status === 400 ? 6000 : status) }],
+        type: status === 401 ? 'AUTHENTICATION' : 'ValidationFault',
+      },
+      time: new Date().toISOString(),
+    });
 
   /* ----------------------------------------------------------------- OAuth 2.0 */
 
@@ -297,6 +295,18 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
       return fault(reply, 'Invalid company', 'realm', 403);
     return { CompanyInfo: { CompanyName: state.companyName, Id: '1' }, time: new Date().toISOString() };
   });
+
+  /* ----------------------------------------------------------------- fixture control over HTTP (demos) */
+  app.post('/__fixture/revoke', async () => {
+    control.revokeRefreshTokens();
+    control.expireAccessTokens();
+    return { ok: true };
+  });
+  app.get('/__fixture/state', async () => ({
+    realmId,
+    journalEntries: [...state.journalEntries.values()],
+    requestLog: state.requestLog.slice(-50),
+  }));
 
   return { app, state, control, realmId, clientId, clientSecret };
 }

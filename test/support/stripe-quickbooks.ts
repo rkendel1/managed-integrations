@@ -42,13 +42,34 @@ export async function startStripeQuickbooks(prefix = 'Fx') {
 
 const silent = { info() {}, warn() {}, error() {}, debug() {} };
 
-/** The customer's own deployment of ledgerly, posting with their own QuickBooks authorization. */
-export async function theirLedgerly(f: {
-  stripe: StripeFixture;
-  qbo: QuickBooksFixture;
+export interface TheirDeploymentConfig {
   stripeUrl: string;
+  stripeKey: string;
   qboUrl: string;
-}) {
+  qboClientId: string;
+  qboClientSecret: string;
+  realmId: string;
+}
+type Fixtures = { stripe: StripeFixture; qbo: QuickBooksFixture; stripeUrl: string; qboUrl: string };
+
+/** The customer's own deployment of ledgerly, posting with their own QuickBooks authorization. */
+export async function theirLedgerly(f0: TheirDeploymentConfig | Fixtures) {
+  const c: TheirDeploymentConfig =
+    'stripeKey' in f0
+      ? f0
+      : {
+          stripeUrl: f0.stripeUrl,
+          stripeKey: f0.stripe.apiKey(),
+          qboUrl: f0.qboUrl,
+          qboClientId: f0.qbo.clientId,
+          qboClientSecret: f0.qbo.clientSecret,
+          realmId: f0.qbo.realmId,
+        };
+  const f = {
+    stripeUrl: c.stripeUrl,
+    qboUrl: c.qboUrl,
+    qbo: { clientId: c.qboClientId, clientSecret: c.qboClientSecret, realmId: c.realmId },
+  };
   const redirect = 'http://their-ledgerly.example/oauth/qbo/callback';
   const auth = await fetch(
     `${f.qboUrl}/connect/oauth2?client_id=${f.qbo.clientId}&response_type=code&scope=com.intuit.quickbooks.accounting&redirect_uri=${encodeURIComponent(redirect)}&state=s`,
@@ -70,7 +91,7 @@ export async function theirLedgerly(f: {
     })
   ).json()) as { access_token: string };
   const { modules } = await loadLedgerly();
-  const sdk = stripeSdk(f.stripe.apiKey(), f.stripeUrl);
+  const sdk = stripeSdk(c.stripeKey, f.stripeUrl);
   const accountMap: QboAccountMap = Object.fromEntries(
     Object.values(modules.ACCOUNTS).map((a) => [
       a.code,

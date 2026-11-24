@@ -679,5 +679,37 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
     has_more: false,
   }));
 
+  /* ------------------------------------------------------------------ fixture control over HTTP (demos) */
+  const at = (daysAgo?: number) => (daysAgo ? new Date(Date.now() - daysAgo * 86_400_000) : undefined);
+  app.post('/__fixture/charge', async (req) => {
+    const b = (req.body ?? {}) as { amount: number; fee?: number; daysAgo?: number };
+    const r = control.createCharge({
+      amount: b.amount,
+      ...(b.fee != null ? { fee: b.fee } : {}),
+      ...(b.daysAgo ? { at: at(b.daysAgo)! } : {}),
+    });
+    return { chargeId: r.charge.id, eventId: r.event.id };
+  });
+  app.post('/__fixture/invoice', async (req) => {
+    const b = (req.body ?? {}) as { amount: number; daysAgo?: number };
+    const r = control.payInvoice({ amount: b.amount, ...(b.daysAgo ? { at: at(b.daysAgo)! } : {}) });
+    return { invoiceId: r.invoice.id, eventId: r.event.id, chargeEventId: r.chargeEvent.id };
+  });
+  app.post('/__fixture/payout', async (req) => {
+    const b = (req.body ?? {}) as { amount: number; daysAgo?: number };
+    const r = control.createPayout({ amount: b.amount, ...(b.daysAgo ? { at: at(b.daysAgo)! } : {}) });
+    return { payoutId: r.payout.id, eventId: r.event.id };
+  });
+  app.post('/__fixture/drop-webhooks', async (req) => {
+    control.dropNextWebhooks(Number((req.body as { n?: number })?.n ?? 1));
+    return { ok: true };
+  });
+  app.get('/__fixture/state', async () => ({
+    accountId,
+    events: state.events.length,
+    endpoints: state.endpoints.map(({ secret: _s, ...e }) => e),
+    deliveries: state.deliveries.slice(-50),
+  }));
+
   return { app, state, control, accountId, apiKey: () => state.apiKey };
 }

@@ -88,7 +88,9 @@ async function login(email: string, password: string) {
   if (!r.ok) fail(`login ${email}: ${r.status}`);
   return (r.headers.get('set-cookie') ?? '').split(';')[0]!;
 }
+type Overall = { status: string; next: string; integrations: Status[] };
 type Status = {
+  flowType: string;
   status: string;
   next: string;
   discovery: {
@@ -189,7 +191,11 @@ await post(`${NETSUITE}/__fixture/public-key`, { pem: ns.publicKeyPem }); // the
 const verified = await post(`${API}/api/customer/connections/netsuite/verify`, {}, H);
 step('A3', `NetSuite connected (machine-to-machine certificate) → ${String(verified['status'])}`);
 
-const found = await customer<Status>('onboarding_discover');
+/** Slice 6: one onboarding per integration kind; this demo is about Shopify → NetSuite. */
+const SHOPIFY_FLOW = 'adopted.shopify_erp_order_sync.netsuite';
+const flowOf = (o: Overall): Status =>
+  o.integrations.find((i) => i.flowType === SHOPIFY_FLOW) ?? ({ status: o.status, next: o.next, discovery: null, integrationId: null } as unknown as Status);
+const found = flowOf(await customer<Overall>('onboarding_discover'));
 if (found.status !== 'confirm') fail(`discovery: ${found.status} ${JSON.stringify(found.discovery)}`);
 const cand = found.discovery!.candidates[0]!;
 step('A4', `Discovered: ${cand.summary} (confidence: ${cand.confidence})`, found.discovery);
@@ -198,13 +204,16 @@ show(
 );
 
 actions.push('confirm: maintain this integration');
-const conf = await customer<Status>('onboarding_confirm', {
-  candidateId: cand.id,
-  responsibilitiesVersion: found.responsibilities.version,
-});
+const conf = flowOf(
+  await customer<Overall>('onboarding_confirm', {
+    candidateId: cand.id,
+    responsibilitiesVersion: found.responsibilities.version,
+    flowType: SHOPIFY_FLOW,
+  }),
+);
 step('A5', `Customer confirmed; ${conf.next}`);
 const managed = await wait('management to become active', async () => {
-  const s = await customer<Status>('onboarding_status');
+  const s = flowOf(await customer<Overall>('onboarding_status'));
   return s.status === 'managed' ? s : undefined;
 });
 const b = managed.activation!.baseline!;
@@ -312,7 +321,7 @@ const acme = await mcp(
     process.env.SEED_CUSTOMER_PASSWORD || 'customer-demo-password',
   ),
 );
-const acmeView = await acme<Status>('onboarding_status');
+const acmeView = flowOf(await acme<Overall>('onboarding_status'));
 step(
   'C1',
   `Another tenant sees only its own onboarding (status ${acmeView.status}, integration ${acmeView.integrationId === managed.integrationId ? 'LEAKED' : 'its own'})`,

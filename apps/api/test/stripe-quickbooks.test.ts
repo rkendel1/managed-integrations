@@ -25,12 +25,16 @@ import {
   deliveryAttempts,
   incidents,
   integrations,
+  observations,
+  onboardings,
   reconciliationItems,
   users,
   type DbHandle,
 } from '@mi/database';
 import { loadServiceConfig, type ServiceConfig } from '@mi/integration-shopify-netsuite';
 import { createLogger } from '@mi/observability';
+import { createNetSuiteFixture, createShopifyFixture, type NetSuiteFixture, type ShopifyFixture } from '@mi/test-fixtures';
+import { SHOPIFY_NETSUITE } from '@mi/adopted-order-sync';
 import { buildApp } from '../src/app.ts';
 import { ensureQueues } from '../src/queues.ts';
 import { createRuntimeWorker } from '../../worker/src/runtime-worker.ts';
@@ -39,6 +43,8 @@ import { drainer, startStripeQuickbooks, theirLedgerly } from '../../../test/sup
 
 let dbh: DbHandle;
 let fx: Awaited<ReturnType<typeof startStripeQuickbooks>>;
+let shop: ShopifyFixture | undefined;
+let ns: NetSuiteFixture | undefined;
 let app: FastifyInstance;
 let boss: PgBoss;
 let base: string;
@@ -46,7 +52,7 @@ let config: ServiceConfig;
 let worker: ReturnType<typeof createRuntimeWorker>;
 let jobs: ReturnType<typeof drainer>;
 
-async function setup() {
+async function setup(extraEnv: Record<string, string> = {}) {
   dbh = await freshDb();
   fx = await startStripeQuickbooks();
   boss = new PgBoss({ connectionString: TEST_DB_URL, schema: `pgboss_sq_${randomBytes(3).toString('hex')}` });
@@ -59,6 +65,7 @@ async function setup() {
     CREDENTIAL_ENCRYPTION_KEYS: `k1:${randomBytes(32).toString('base64')}`,
     PUBLIC_BASE_URL: 'http://localhost:3000',
     ...fx.env,
+    ...extraEnv,
   });
   (config as { cipher: unknown }).cipher = testCipher;
   app = await buildApp({ db: dbh.db, boss, config, logLevel: 'silent' });
@@ -79,6 +86,9 @@ afterEach(async () => {
   await app?.close();
   await boss?.stop({ graceful: false });
   await fx?.close();
+  await shop?.app.close();
+  await ns?.app.close();
+  shop = ns = undefined;
   await dbh?.close();
 });
 
@@ -136,6 +146,22 @@ async function customer(email = 'finance@lumen.test') {
       actions.push('connect Stripe (restricted key)');
       const res = await rest('/api/customer/connections/stripe', { apiKey });
       return { status: res.status, body: (await res.json()) as { status?: string; error?: string } };
+    },
+    async connectShopify(domain: string) {
+      actions.push('connect Shopify (shop name)');
+      const start = (await (await rest('/api/customer/connections/shopify/authorize', { shop: domain })).json()) as { url: string };
+      actions.push('approve in Shopify');
+      const red = await fetch(start.url, { redirect: 'manual' });
+      const cb = new URL(red.headers.get('location')!);
+      return (await fetch(`${base}${cb.pathname}${cb.search}`, { redirect: 'manual' })).headers.get('location');
+    },
+    async connectNetSuite() {
+      actions.push('connect NetSuite');
+      const res = (await (
+        await rest('/api/customer/connections/netsuite', { accountDomain: '1234567-sb1.suitetalk.api.netsuite.com', clientId: ns!.clientId, certificateId: ns!.certificateId })
+      ).json()) as { publicKeyPem: string };
+      ns!.control.registerPublicKey(res.publicKeyPem);
+      return (await (await rest('/api/customer/connections/netsuite/verify', {})).json()) as { status: string };
     },
     async connectQuickBooks(opts: { deny?: boolean } = {}) {
       actions.push('connect QuickBooks');
@@ -509,6 +535,68 @@ describe(
       const [un] = await dbh.db.select().from(adaptations).where(eq(adaptations.integrationId, integ.id));
       expect(un).toMatchObject({ kind: 'unsupported', status: 'unsupported' });
       expect(entriesFor(event.id)).toHaveLength(0);
+    });
+
+    it('one organization, two integrations: shared connections, one onboarding per integration, both managed and monitored through their own runtimes', async () => {
+      shop = createShopifyFixture({ shopDomain: 'lumen-studio.myshopify.com', firstOrderId: 7_100_000_001n });
+      ns = createNetSuiteFixture();
+      await shop.app.listen({ port: 0, host: '127.0.0.1' });
+      await ns.app.listen({ port: 0, host: '127.0.0.1' });
+      ns.state.oneWorld = false; // the adopted Shopify code sends no subsidiary (documented gap)
+      await setup({
+        SHOPIFY_CLIENT_ID: shop.clientId,
+        SHOPIFY_CLIENT_SECRET: shop.clientSecret,
+        SHOPIFY_BASE_URL_OVERRIDE: `http://127.0.0.1:${(shop.app.server.address() as AddressInfo).port}`,
+        NETSUITE_BASE_URL_OVERRIDE: `http://127.0.0.1:${(ns.app.server.address() as AddressInfo).port}`,
+      });
+      const { c, integ: stripeInteg } = await onboard();
+      // the same customer adds their store: Shopify and NetSuite are connected once, next to Stripe and QuickBooks
+      expect(await c.connectShopify('lumen-studio.myshopify.com')).toMatch(/connected=shopify/);
+      expect((await c.connectNetSuite()).status).toBe('verified');
+      const both = await c.call<Status>('onboarding.discover');
+      expect(both.systems.map((x) => [x.id, x.connected])).toEqual([
+        ['shopify', true],
+        ['netsuite', true],
+        ['stripe', true],
+        ['quickbooks', true],
+      ]);
+      expect(both.integrations.map((x) => [x.flowType, x.status])).toEqual([
+        [SHOPIFY_NETSUITE.flowType, 'select'],
+        [LEDGERLY_FLOW_TYPE, 'managed'],
+      ]);
+      // the Shopify store has no existing integration: the customer chooses the managed one (starts now)
+      const shopFlow = both.integrations.find((x) => x.flowType === SHOPIFY_NETSUITE.flowType)!;
+      expect(shopFlow.discovery!.candidates.map((x) => x.id)).toEqual(['new.shopify_orders_netsuite']);
+      await c.call('onboarding.confirm', {
+        candidateId: 'new.shopify_orders_netsuite',
+        responsibilitiesVersion: shopFlow.responsibilities.version,
+        flowType: SHOPIFY_NETSUITE.flowType,
+      });
+      await jobs.drain(async () => (await c.call<Status>('onboarding.status')).integrations.every((x) => x.status === 'managed'), 60_000);
+      // one connection per provider, one onboarding record per integration kind
+      expect((await dbh.db.select().from(connections).where(eq(connections.tenantId, c.tenantId))).map((x) => x.providerId).sort()).toEqual([
+        'netsuite',
+        'quickbooks',
+        'shopify',
+        'stripe',
+      ]);
+      expect((await dbh.db.select().from(onboardings).where(eq(onboardings.tenantId, c.tenantId))).map((x) => x.flowType).sort()).toEqual(
+        [SHOPIFY_NETSUITE.flowType, LEDGERLY_FLOW_TYPE].sort(),
+      );
+      // the customer product: two integrations, each described in its own business terms
+      const portfolio = await c.call<{ integrations: { name: string; process: string }[] }>('portfolio.list');
+      expect(portfolio.integrations.map((x) => [x.name, x.process]).sort()).toEqual([
+        ['Shopify → NetSuite orders', 'Shopify orders become NetSuite sales orders'],
+        ['Stripe → QuickBooks accounting', 'Stripe payments, refunds and payouts become balanced QuickBooks journal entries'],
+      ]);
+      // monitoring: the shared tick probes each integration through its own runtime and records durable facts
+      await worker.handlers.tick();
+      const facts = await dbh.db.select().from(observations).where(eq(observations.kind, 'monitoring'));
+      expect(new Set(facts.map((f) => f.integrationId)).size).toBe(2);
+      const stripeFacts = facts.find((f) => f.integrationId === stripeInteg.id)!.data as { signals: { signal: string; state: string }[] };
+      expect(
+        stripeFacts.signals.filter((x) => ['source_available', 'destination_available', 'credentials'].includes(x.signal)).map((x) => x.state),
+      ).toEqual(['ok', 'ok', 'ok']);
     });
 
     it('isolation and authority: another customer sees nothing of it, cannot confirm it, and no customer can touch corrections', async () => {

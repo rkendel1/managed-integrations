@@ -4,6 +4,8 @@
  */
 import { createNetSuiteFixture } from './netsuite-fixture.ts';
 import { createShopifyFixture } from './shopify-fixture.ts';
+import { createStripeFixture } from './stripe-fixture.ts';
+import { createQuickBooksFixture } from './quickbooks-fixture.ts';
 
 const shopifyPort = Number(process.env.FIXTURE_SHOPIFY_PORT ?? 4010);
 const netsuitePort = Number(process.env.FIXTURE_NETSUITE_PORT ?? 4020);
@@ -32,3 +34,12 @@ console.log(`[fixture] shopify  http://${host}:${shopify3Port} (northwind-goods.
 await netsuite.app.listen({ port: netsuitePort, host });
 console.log(`[fixture] shopify  http://${host}:${shopifyPort}`);
 console.log(`[fixture] netsuite http://${host}:${netsuitePort}`);
+// Slice 6: Stripe and QuickBooks Online fixtures for the Stripe → QuickBooks integration.
+const stripePort = Number(process.env.FIXTURE_STRIPE_PORT ?? 4030);
+const qboPort = Number(process.env.FIXTURE_QBO_PORT ?? 4040);
+const stripe = createStripeFixture({ prefix: 'Lm' });
+const qbo = createQuickBooksFixture();
+await stripe.app.listen({ port: stripePort, host });
+await qbo.app.listen({ port: qboPort, host });
+console.log(`[fixture] stripe   http://${host}:${stripePort} (key ${stripe.apiKey()})`);
+console.log(`[fixture] qbo      http://${host}:${qboPort} (realm ${qbo.realmId})`);
