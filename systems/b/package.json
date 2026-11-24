@@ -14,9 +14,11 @@
   },
   "dependencies": {
     "@feltdb/feltkit": "^0.4.0",
+    "ledgerly": "github:jakethehoffer/ledgerly#3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "shopify-sync": "github:Milo-ai-HQ/shopify-erp-order-sync#d01b51d95993598580cdcffda6537a6f20a10a3a"
+    "shopify-sync": "github:Milo-ai-HQ/shopify-erp-order-sync#d01b51d95993598580cdcffda6537a6f20a10a3a",
+    "stripe": "^16.12.0"
   },
   "devDependencies": {
     "@types/node": "22.19.1",

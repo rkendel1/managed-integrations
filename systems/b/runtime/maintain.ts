@@ -12,6 +12,8 @@ import { ADAPTERS, UPSTREAM, contractViolations, type Payload } from "./order-sy
 import { toCanonicalOrder } from "shopify-sync/src/mapping.js";
 import { graphql } from "./shopify.ts";
 import { readSalesOrder } from "./netsuite.ts";
+import { PATCHES, executeEvent } from "./ledgerly.ts";
+import { grant, query } from "./quickbooks.ts";
 
 type Handler = (item: ComponentWorkItem, ws: string) => Promise<ComponentWorkOutcome>;
 
@@ -75,6 +77,49 @@ export function handlers(get: () => Runtime): Record<string, Handler> {
           });
           continue;
         }
+        if (phase === "await_customer" || phase === "await_operator" || phase === "requires_action" || phase === "done") return { outcome: "done", receipt: { phase } };
+        if (phase === "correct" && c.event.kind === "provider_contract") {
+          const patchId = c.event.finding.patch as string | null;
+          await rt.call(ws, "maintenance:proposeCorrection", patchId
+            ? { eventId, kind: "patch", scopeKey: `${c.event.integrationId}:provider:${c.event.finding.contract}`, spec: { patch: patchId, file: PATCHES[patchId]!.file, find: PATCHES[patchId]!.find, replace: PATCHES[patchId]!.replace }, reason: PATCHES[patchId]!.reason }
+            : { eventId, kind: "unsupported", scopeKey: `${c.event.integrationId}:provider:${c.event.finding.contract}`, spec: {}, reason: "No reviewed patch for this contract; an engineer must write one." });
+          continue;
+        }
+        if (phase === "validate" && c.event.kind === "provider_contract") {
+          const fix = c.corrections.find((x: any) => x.status === "proposed" && x.kind === "patch");
+          if (!fix) return { outcome: "done" };
+          if (!c.lastDeliveredReceipt) return { outcome: "retry", error: { message: "no booked event to replay yet" }, retryInMs: 2000 };
+          const event = rt.open<{ id: string; type: string }>(ws, "receipt", c.lastDeliveredReceipt);
+          const settings = await rt.call(ws, "ledgerly:settings", { integrationId: c.event.integrationId });
+          const g = await grant(rt, ws, (rt as any).qboSecret ?? "");
+          const key = rt.open<{ apiKey: string }>(ws, "connection:stripe", (await rt.call(ws, "runtime:sealedConnection", { provider: "stripe" })).sealed).apiKey;
+          const before = await executeEvent(event, key, g, settings.settings.accountMap, [], { dryRun: true });
+          const after = await executeEvent(event, key, g, settings.settings.accountMap, [String(fix.spec.patch)], { dryRun: true });
+          const strip = (u: string) => { const x = new URL(u); x.searchParams.delete("minorversion"); return x.toString(); };
+          const sameBodies = before.requests.length > 0 && before.requests.length === after.requests.length && before.requests.every((r, i) => r.body === after.requests[i]!.body && strip(r.url) === strip(after.requests[i]!.url));
+          const minor = after.requests.map((r) => Number(new URL(r.url).searchParams.get("minorversion")));
+          const checks: { name: string; result: "passed" | "failed" | "not_applicable"; detail: string }[] = [
+            { name: "applies to the pinned source", result: after.artifact !== before.artifact ? "passed" : "failed", detail: `patched artifact ${after.artifact} built from the pin; unpatched ${before.artifact}` },
+            { name: "replay: only the minor version changes", result: sameBodies ? "passed" : "failed", detail: `${before.requests.length} QuickBooks request(s) for ${event.id}: bodies and other parameters identical` },
+            { name: "declares the served minor version", result: minor.length && minor.every((m) => m >= Number(c.event.finding.minimum)) ? "passed" : "failed", detail: `minorversion ${[...new Set(minor)].join(",")} (QuickBooks minimum ${c.event.finding.minimum})` },
+            { name: "rollback target available", result: "passed", detail: `the unpatched artifact ${before.artifact} still loads; rollback switches back to it` },
+          ];
+          await rt.call(ws, "maintenance:recordValidation", { correctionId: fix.id, checks });
+          continue;
+        }
+        if (phase === "activate" && c.event.kind === "provider_contract") {
+          const fix = c.corrections.find((x: any) => x.status === "validated" && x.kind === "patch");
+          if (fix) await rt.call(ws, "maintenance:awaitOperator", { eventId, correctionId: fix.id });
+          return { outcome: "done", receipt: { awaiting: "operator activation" } };
+        }
+        if (phase === "verify_patch") {
+          const fix = c.corrections.find((x: any) => x.status === "active" && x.kind === "patch");
+          const proof = fix && c.deliveredAttemptsSince.find((a: any) => a.correction?.split(",").includes(fix.id) && /minorversion=\d+/.test(a.detail ?? ""));
+          if (!proof) return { outcome: "retry", error: { message: "waiting for the next posting on the patched code" }, retryInMs: 1000 };
+          const declared = /minorversion=(\d+)/.exec(proof.detail)![1];
+          await rt.call(ws, "maintenance:recordPostActivation", { eventId, correctionId: fix.id, observed: { delivery: proof.deliveryId, minorversionRequested: Number(declared), artifact: /artifact (\w+)/.exec(proof.detail)?.[1] ?? null } });
+          return { outcome: "done" };
+        }
         if (phase === "correct") {
           const name = adapterFor(missing);
           await rt.call(ws, "maintenance:proposeCorrection", name
@@ -124,9 +169,28 @@ export function handlers(get: () => Runtime): Record<string, Handler> {
           const recovered = r.items.filter((i: any) => i.recovery !== "none");
           const pending = c.affected.filter((d: any) => d.status !== "delivered").length + recovered.filter((i: any) => !i.verifiedAt && i.recovery !== "failed").length;
           if (pending) return { outcome: "retry", error: { message: `waiting for ${pending} order(s)` }, retryInMs: 1000 };
+          const sources = [...new Set([...c.affected.map((d: any) => d.sourceId), ...recovered.map((i: any) => i.sourceId)])];
+          if (c.integrationKind === "ledgerly") {
+            const g = await grant(rt, ws, (rt as any).qboSecret ?? "");
+            let found = 0;
+            let dup = 0;
+            const checks: string[] = [];
+            for (const evId of sources) {
+              const doc = evId.length <= 21 ? evId : evId.slice(-21);
+              const r = await query<{ QueryResponse?: { JournalEntry?: unknown[] } }>(g, `select * from JournalEntry where DocNumber in ('${doc}')`);
+              const n = r.body.QueryResponse?.JournalEntry?.length ?? 0;
+              if (n === 1) found++;
+              if (n > 1) dup++;
+              checks.push(`${evId}: ${n} journal entr${n === 1 ? "y" : "ies"} in QuickBooks`);
+            }
+            await rt.call(ws, "maintenance:recordAccounting", {
+              eventId, affected: sources.length, delivered: found, unresolved: sources.length - found - dup, duplicates: dup, checks,
+              doneText: `Completed: all ${sources.length} Stripe transaction(s) that waited or were missed are in QuickBooks exactly once. Nothing was lost.`,
+            });
+            return { outcome: "done", receipt: { affected: sources.length, delivered: found } };
+          }
           const ns = await rt.netsuite(ws);
           if (!ns) return { outcome: "retry", error: { message: "NetSuite not connected" }, retryInMs: 2000 };
-          const sources = [...new Set([...c.affected.map((d: any) => d.sourceId), ...recovered.map((i: any) => i.sourceId)])];
           let delivered = 0;
           let unresolved = 0;
           const checks: string[] = [];

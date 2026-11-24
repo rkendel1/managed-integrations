@@ -20,6 +20,7 @@ import { accessToken, AuthorizationLost, forgetToken, newKeyPair, type NetSuiteC
 import { ADAPTERS, UPSTREAM, contractViolations, execute, type Payload } from "./order-sync.ts";
 import { handlers as maintenanceHandlers } from "./maintain.ts";
 import { handlers as reconcileHandlers } from "./reconcile.ts";
+import * as ledgerly from "./ledgerly-runtime.ts";
 
 const SHOPIFY_CLIENT_ID = process.env.SHOPIFY_CLIENT_ID ?? "fixture-shopify-client-id";
 const PUBLIC_URL = (process.env.MI_PUBLIC_URL ?? "http://127.0.0.1:3100").replace(/\/$/, "");
@@ -57,11 +58,13 @@ export default defineComponent(async (ctx) => {
   if (!keyring || !shopifySecret) {
     return { health: () => ({ state: "unconfigured", detail: "Set credential-ref:mi-keyring and credential-ref:shopify-client-secret." }) };
   }
+  const qboSecret = (await ctx.credential("qbo-client-secret")) ?? "";
   const sealer = createSealer(keyring);
   const stateKey = ctx.derive("oauth-state");
 
-  const rt: Runtime = {
+  const rt: Runtime & { qboSecret: string } = {
     ctx,
+    qboSecret,
     sealer,
     shopifySecret,
     call: (workspace, fn, args = {}) => ctx.call(fn, args, { tenant: workspace }),
@@ -88,10 +91,13 @@ export default defineComponent(async (ctx) => {
     return i > 0 && mac.length === expected.length && timingSafeEqual(mac, expected) ? v : null;
   };
 
+  const ledgerlyRoutes = ledgerly.routes(rt, { readBody, send, signState, readState, publicUrl: PUBLIC_URL, qboSecret });
+
   async function request(req: IncomingMessage, res: ServerResponse) {
     const url = new URL(req.url ?? "/", PUBLIC_URL);
     const parts = url.pathname.split("/").filter(Boolean); // ["rt", ...]
     try {
+      if (await ledgerlyRoutes(req, res, url)) return;
       // Shopify orders/create → /rt/hooks/shopify/<workspace>/<integrationId>
       if (req.method === "POST" && parts[1] === "hooks" && parts[2] === "shopify" && parts.length === 5) {
         const [, , , workspace, integrationId] = parts as [string, string, string, string, string];
@@ -104,7 +110,7 @@ export default defineComponent(async (ctx) => {
         const webhookId = h("x-shopify-webhook-id");
         if (!webhookId) return send(res, 400, { error: "missing X-Shopify-Webhook-Id" });
         const payload = JSON.parse(raw.toString("utf8")) as Payload;
-        const result = await rt.call(workspace, "runtime:ingestOrder", {
+        const result = await rt.call(workspace, "runtime:ingest", {
           integrationId,
           providerEventId: webhookId,
           topic: h("x-shopify-topic") ?? "",
@@ -171,6 +177,10 @@ export default defineComponent(async (ctx) => {
       const deliveryId = String(item.input.deliveryId);
       const c = await rt.call(ws, "runtime:deliveryContext", { deliveryId });
       if (c.delivery.status === "delivered") return { outcome: "done", receipt: { skipped: "already delivered" } };
+      if (c.integration.kind === "ledgerly") {
+        const by = `runtime (${ledgerly.UPSTREAM_LABEL})`;
+        return ledgerly.deliver(rt, ws, c, qboSecret, (outcome, extra = {}) => rt.call(ws, "runtime:recordAttempt", { deliveryId, outcome, by, ...extra }));
+      }
       let payload = rt.open<Payload>(ws, "receipt", c.receipt.sealed);
       const applied: string[] = [];
       for (const a of c.adapters as { id: string; adapter: string; appliesTo: string[] }[]) {
@@ -237,6 +247,7 @@ export default defineComponent(async (ctx) => {
     },
     ...maintenanceHandlers(() => rt),
     ...reconcileHandlers(() => rt),
+    ...ledgerly.workers(() => rt, () => qboSecret, PUBLIC_URL),
   };
 
   let stopped = false;

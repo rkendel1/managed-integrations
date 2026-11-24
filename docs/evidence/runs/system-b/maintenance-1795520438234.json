@@ -1,63 +1,63 @@
 {
   "scenario": "maintenance",
   "system": "B",
-  "startedAt": "2026-11-24T11:28:49.776Z",
-  "ms": 3754,
+  "startedAt": "2026-11-24T11:40:38.234Z",
+  "ms": 4014,
   "steps": [
     {
       "n": "1",
-      "text": "Integration mwum36lq3b5a45adebe9 is protected",
-      "ms": 610
+      "text": "Integration mwumidgh8b3889a8bfc1 is protected",
+      "ms": 1025
     },
     {
       "n": "2",
-      "text": "Baseline: #M-mwum369c-0 (2026-10 payload) delivered normally",
-      "ms": 918
+      "text": "Baseline: #M-mwumicwq-0 (2026-10 payload) delivered normally",
+      "ms": 1182
     },
     {
       "n": "3",
       "text": "Provider change: Shopify now sends 2027-01 payloads (line_items[].price removed; price_set kept)",
-      "ms": 919
+      "ms": 1183
     },
     {
       "n": "4",
-      "text": "Three orders in the new format; the webhook for #M-mwum369c-2 is lost in transit",
-      "ms": 926
+      "text": "Three orders in the new format; the webhook for #M-mwumicwq-2 is lost in transit",
+      "ms": 1189
     },
     {
       "n": "5",
-      "text": "One maintenance event mwum374s68b42f72615f (input_contract_changed, boundary source) — resolved",
-      "ms": 3474
+      "text": "One maintenance event mwumie0t5c05d8edb194 (input_contract_changed, boundary source) — resolved",
+      "ms": 3718
     },
     {
       "n": "6",
       "text": "Investigated: 2027-01 lacks line_items[].price; the adopted code reads it at src/mapping.js:11",
-      "ms": 3507
+      "ms": 3750
     },
     {
       "n": "7",
       "text": "Corrected by adapter \"line-price-from-price-set\" — validation passed (applies to every held payload; adopted code unchanged; business data preserved (Shopify Admin API); rollback target available); active",
-      "ms": 3507
+      "ms": 3750
     },
     {
       "n": "8",
-      "text": "#M-mwum369c-1 and #M-mwum369c-3: first attempt held (input contract), then delivered through the adapter",
-      "ms": 3523
+      "text": "#M-mwumicwq-1 and #M-mwumicwq-3: first attempt held (input contract), then delivered through the adapter",
+      "ms": 3773
     },
     {
       "n": "9",
       "text": "Each order is in NetSuite exactly once with Shopify's price (7.25, 9.50, 11.00), including the lost one",
-      "ms": 3527
+      "ms": 3777
     },
     {
       "n": "10",
       "text": "Accounting: {\"affected\":3,\"delivered\":3,\"unresolved\":0,\"duplicates\":0}; no customer action; customer status completed",
-      "ms": 3531
+      "ms": 3782
     },
     {
       "n": "11",
       "text": "Customer timeline (no internals):",
-      "ms": 3531,
+      "ms": 3782,
       "data": [
         "Shopify changed the format of new orders. We are adapting your integration; no order will be lost.",
         "We adapted your integration to the change. Orders that were held are being delivered now.",
@@ -67,17 +67,17 @@
     {
       "n": "12",
       "text": "Operator sees the same customer projection plus the evidence behind it",
-      "ms": 3535
+      "ms": 3788
     },
     {
       "n": "13",
       "text": "Another company is refused: NOT_FOUND",
-      "ms": 3594
+      "ms": 3855
     },
     {
       "n": "14",
-      "text": "A new 2027-01 order (#M-mwum369c-4) now flows normally; status verified",
-      "ms": 3753
+      "text": "A new 2027-01 order (#M-mwumicwq-4) now flows normally; status verified",
+      "ms": 4014
     }
   ]
 }

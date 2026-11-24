@@ -39,7 +39,7 @@ export const app = feltkit({
       routes: ["/rt/"],
       required: true,
       principal: { id: "component:runtime", roles: ["runtime"] },
-      credentials: ["mi-keyring", "shopify-client-secret"],
+      credentials: ["mi-keyring", "shopify-client-secret", "qbo-client-secret"],
       network: "egress",
       description: "Receives provider webhooks, holds customer provider credentials, runs adopted integration code.",
     },
@@ -190,6 +190,8 @@ export const corrections = app.collection(
     validation: s.optional(s.object({ passed: s.boolean(), checks: s.array(s.object({ name: s.string(), result: s.enum(["passed", "failed", "not_applicable"]), detail: s.string() })) })),
     question: s.optional(s.object({ text: s.string(), options: s.array(s.string()), authority: s.enum(["customer", "operator"]) })),
     answer: s.optional(s.object({ choice: s.string(), by: s.string(), at })),
+    /** What was observed after activation (e.g. the next request declared the patched behaviour). */
+    postActivation: s.optional(s.record(s.unknown())),
     history: s.array(s.object({ at, from: s.string(), to: s.string(), by: s.string(), note: s.optional(s.string()) })),
     createdAt: at,
   },

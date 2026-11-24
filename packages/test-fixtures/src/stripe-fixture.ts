@@ -429,6 +429,9 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
   /* ------------------------------------------------------------------ webhooks */
 
   function deliver(e: StoredEvent) {
+    // A lost event is lost for every endpoint (with one endpoint, identical to dropping one delivery).
+    const lost = state.dropWebhooks > 0;
+    if (lost) state.dropWebhooks--;
     for (const ep of state.endpoints) {
       if (!ep.enabled_events.includes(e.type) && !ep.enabled_events.includes('*')) continue;
       const body = JSON.stringify(renderEvent(e, ep.api_version));
@@ -440,8 +443,7 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
         status: null,
       };
       state.deliveries.push(rec);
-      if (state.dropWebhooks > 0) {
-        state.dropWebhooks--;
+      if (lost) {
         rec.dropped = true;
         continue;
       }

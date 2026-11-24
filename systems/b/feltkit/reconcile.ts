@@ -109,7 +109,8 @@ export const runContext = app.query({
   handler: async (ctx, { runId }) => {
     const r = await ctx.db.get(reconRuns, runId);
     if (!r) fail("NOT_FOUND", "No such run.");
-    return runView(r);
+    const i = await ctx.db.get(integrations, r.integrationId);
+    return { ...runView(r), kind: i?.kind ?? null };
   },
 });
 
@@ -161,7 +162,8 @@ export const itemContext = app.query({
   handler: async (ctx, { itemId }) => {
     const i = await ctx.db.get(reconItems, itemId);
     if (!i) fail("NOT_FOUND", "No such item.");
-    return { id: i.id, integrationId: i.integrationId, sourceId: i.sourceId, recovery: i.recovery, deliveryId: i.deliveryId ?? null };
+    const integ = await ctx.db.get(integrations, i.integrationId);
+    return { id: i.id, integrationId: i.integrationId, sourceId: i.sourceId, recovery: i.recovery, deliveryId: i.deliveryId ?? null, kind: integ?.kind ?? null };
   },
 });
 

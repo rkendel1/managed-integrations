@@ -12,7 +12,7 @@ type Boundary = "source" | "target" | "provider" | "integration" | "combined";
 /** Open the event for this change, or join the one already open (one event per change, not per order). */
 export async function openOrJoinEvent(
   ctx: MutationCtx,
-  e: { integrationId: string; kind: string; boundary: Boundary; dedupeKey: string; finding: Record<string, unknown>; customerText: string },
+  e: { integrationId: string; kind: string; boundary: Boundary; dedupeKey: string; finding: Record<string, unknown>; customerText: string; phase?: string; customerAction?: boolean },
 ): Promise<string> {
   const open = (await ctx.db.find(events, { dedupeKey: e.dedupeKey })).find((x) => x.status !== "resolved");
   if (open) return open.id;
@@ -23,6 +23,8 @@ export async function openOrJoinEvent(
     boundary: e.boundary,
     status: "detected",
     dedupeKey: e.dedupeKey,
+    ...(e.phase ? { phase: e.phase } : {}),
+    ...(e.customerAction ? { status: "requires_action" as const } : {}),
     finding: e.finding,
     timeline: [
       { at: now, status: "detected", text: e.customerText, customerVisible: true },
@@ -30,9 +32,27 @@ export async function openOrJoinEvent(
     ],
     openedAt: now,
   });
-  await ctx.db.patch(integrations, e.integrationId, { status: "maintaining" });
-  ctx.afterCommit.work("runtime", "maintain", { eventId: id }, { maxAttempts: 100 });
+  await ctx.db.patch(integrations, e.integrationId, { status: e.customerAction ? "customer_action" : "maintaining" });
+  if (!e.customerAction) ctx.afterCommit.work("runtime", "maintain", { eventId: id }, { maxAttempts: 100 });
   return id;
+}
+
+/** The customer reconnected a target: its access events continue (recover what was lost, verify, account). */
+export async function resumeAccessEvents(ctx: MutationCtx, provider: string) {
+  for (const e of await ctx.db.find(events, { kind: "authorization_lost" })) {
+    if (e.status === "resolved" || (e.finding as { provider?: string } | undefined)?.provider !== provider) continue;
+    await ctx.db.patch(events, e.id, {
+      status: "recovery",
+      phase: "recover",
+      timeline: [
+        ...e.timeline,
+        { at: Date.now(), status: "recovery", text: `${provider} reconnected by the customer`, customerVisible: false },
+        { at: Date.now(), status: "recovery", text: "Thanks for reconnecting. We are delivering everything that waited and checking nothing was missed.", customerVisible: true },
+      ],
+    });
+    await ctx.db.patch(integrations, e.integrationId, { status: "maintaining" });
+    ctx.afterCommit.work("runtime", "maintain", { eventId: e.id }, { maxAttempts: 100 });
+  }
 }
 
 const TimelineEntry = s.object({ at: s.number(), status: s.string(), text: s.string() });
@@ -62,11 +82,11 @@ export const get = app.query({
     return {
       id: e.id,
       integrationId: e.integrationId,
-      status: e.status === "resolved" ? "completed" : pending.some((p) => p.question?.authority === "customer") ? "customer_action" : "in_progress",
+      status: e.status === "resolved" ? "completed" : e.phase === "await_customer" || pending.some((p) => p.question?.authority === "customer") ? "customer_action" : "in_progress",
       headline: visible[0]?.text ?? "",
       timeline: visible,
       ...(e.accounting ? { accounting: e.accounting } : {}),
-      customerAction: pending.some((p) => p.question?.authority === "customer"),
+      customerAction: e.phase === "await_customer" || pending.some((p) => p.question?.authority === "customer"),
       openedAt: e.openedAt,
       ...(e.resolvedAt ? { resolvedAt: e.resolvedAt } : {}),
     };
@@ -114,8 +134,14 @@ export const eventContext = app.query({
       const r = await ctx.db.get(receipts, d.receiptId);
       if (r) sealed.push({ deliveryId: d.id, sourceId: d.sourceId, sealed: r.sealed, apiVersion: r.apiVersion ?? null });
     }
+    const integ = await ctx.db.get(integrations, e.integrationId);
+    const lastDelivered = all.filter((d) => d.status === "delivered").sort((x, y) => y.updatedAt - x.updatedAt)[0];
+    const lastReceipt = lastDelivered ? await ctx.db.get(receipts, lastDelivered.receiptId) : null;
     return {
-      event: { id: e.id, integrationId: e.integrationId, status: e.status, phase: e.phase ?? "investigate", finding: e.finding ?? {}, openedAt: e.openedAt, reconRunId: e.reconRunId ?? null },
+      integrationKind: integ?.kind ?? null,
+      lastDeliveredReceipt: lastReceipt ? lastReceipt.sealed : null,
+      deliveredAttemptsSince: all.flatMap((d) => d.attempts.filter((a) => a.outcome === "delivered" && a.at >= e.openedAt).map((a) => ({ deliveryId: d.id, at: a.at, correction: a.correction ?? null, detail: a.detail ?? null }))),
+      event: { id: e.id, kind: e.kind, integrationId: e.integrationId, status: e.status, phase: e.phase ?? "investigate", finding: e.finding ?? {}, openedAt: e.openedAt, reconRunId: e.reconRunId ?? null },
       corrections: fixes.map((c) => ({ id: c.id, kind: c.kind, status: c.status, spec: c.spec, validation: c.validation ?? null })),
       affected: affected.map((d) => ({ id: d.id, sourceId: d.sourceId, reference: d.reference, status: d.status, destinationRef: d.destinationRef ?? null })),
       receipts: sealed,
@@ -198,6 +224,19 @@ export async function activateCorrection(ctx: MutationCtx, correctionId: string,
   if (clash) fail("CONFLICT", `Correction ${clash.id} is already active for this scope.`);
   const now = Date.now();
   await ctx.db.patch(corrections, c.id, { status: "active", history: [...c.history, { at: now, from: c.status, to: "active", by }] });
+  if (c.eventId && c.kind === "patch") {
+    // A patch changes what the adopted code sends; it is verified on the next real request.
+    const e = await ctx.db.get(events, c.eventId);
+    if (e) {
+      await ctx.db.patch(events, e.id, {
+        status: "verification",
+        phase: "verify_patch",
+        timeline: [...e.timeline, note(`Patch ${c.id} activated by ${by}; verifying on the next request`, false, "verification")],
+      });
+      ctx.afterCommit.work("runtime", "maintain", { eventId: e.id }, { maxAttempts: 100 });
+    }
+    return;
+  }
   if (c.eventId) {
     const e = await ctx.db.get(events, c.eventId);
     if (e) {
@@ -278,7 +317,7 @@ export const recoveryItems = app.query({
 /** Close the event with its accounting; resolved only when nothing is unresolved or duplicated. */
 export const recordAccounting = app.mutation({
   access: "mi.runtime",
-  args: { eventId: s.string(), affected: s.integer(), delivered: s.integer(), unresolved: s.integer(), duplicates: s.integer(), checks: s.array(s.string()) },
+  args: { eventId: s.string(), affected: s.integer(), delivered: s.integer(), unresolved: s.integer(), duplicates: s.integer(), checks: s.array(s.string()), doneText: s.optional(s.string()) },
   handler: async (ctx, a) => {
     const e = await ctx.db.get(events, a.eventId);
     if (!e) fail("NOT_FOUND", "No such event.");
@@ -293,10 +332,46 @@ export const recordAccounting = app.mutation({
         ...e.timeline,
         note(`Verification: ${a.checks.join("; ")}`, false, "verification"),
         ok
-          ? note(`Completed: all ${a.affected} affected order(s) are in NetSuite exactly once with Shopify's prices. Nothing was lost and nothing is needed from you.`, true, "resolved")
+          ? note(a.doneText ?? `Completed: all ${a.affected} affected order(s) are in NetSuite exactly once with Shopify's prices. Nothing was lost and nothing is needed from you.`, true, "resolved")
           : note(`${a.unresolved} order(s) still need attention; our team has it.`, true, "requires_action"),
       ],
     });
     if (ok) await ctx.db.patch(integrations, e.integrationId, { status: "verified" });
+  },
+});
+
+/** After a patch is active: the request that proves it (from a real delivery), recorded on the correction. */
+export const recordPostActivation = app.mutation({
+  access: "mi.runtime",
+  args: { eventId: s.string(), correctionId: s.string(), observed: s.record(s.unknown()) },
+  handler: async (ctx, a) => {
+    const c = await ctx.db.get(corrections, a.correctionId);
+    const e = await ctx.db.get(events, a.eventId);
+    if (!c || !e) fail("NOT_FOUND", "No such correction or event.");
+    const now = Date.now();
+    await ctx.db.patch(corrections, c.id, { postActivation: { ...a.observed, at: now } });
+    await ctx.db.patch(events, e.id, {
+      status: "resolved",
+      phase: "done",
+      resolvedAt: now,
+      accounting: { affected: 0, delivered: 0, unresolved: 0, duplicates: 0 },
+      timeline: [
+        ...e.timeline,
+        note(`Verified after activation: ${JSON.stringify(a.observed)}`, false, "verification"),
+        note("Done: your bookkeeping code is updated and verified on a real posting. Nothing was missed.", true, "resolved"),
+      ],
+    });
+    await ctx.db.patch(integrations, e.integrationId, { status: "verified" });
+  },
+});
+
+/** The patch-awaiting-operator state is visible to the driver (it stops there until an operator acts). */
+export const awaitOperator = app.mutation({
+  access: "mi.runtime",
+  args: { eventId: s.string(), correctionId: s.string() },
+  handler: async (ctx, { eventId, correctionId }) => {
+    const e = await ctx.db.get(events, eventId);
+    if (!e) fail("NOT_FOUND", "No such event.");
+    await ctx.db.patch(events, eventId, { phase: "await_operator", timeline: [...e.timeline, note(`Patch ${correctionId} validated; waiting for an operator to review and activate it`)] });
   },
 });

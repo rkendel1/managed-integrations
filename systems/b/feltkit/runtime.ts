@@ -4,7 +4,7 @@
  */
 import { fail, s } from "@feltdb/feltkit";
 import { app, connections, corrections, deliveries, integrations, receipts, reconItems, tickets } from "./app.js";
-import { openOrJoinEvent } from "./maintenance.js";
+import { openOrJoinEvent, resumeAccessEvents } from "./maintenance.js";
 
 const MAX_AUTOMATIC = 5;
 
@@ -43,12 +43,13 @@ export const storeConnection = app.mutation({
     };
     if (existing) await ctx.db.patch(connections, existing.id, fields);
     else await ctx.db.insert(connections, { provider: a.provider, ...fields });
-    // A restored target connection releases work that was waiting for it.
-    if (a.provider === "netsuite" && a.status === "verified") {
+    // A restored target connection releases work that was waiting for it, and resumes the access event.
+    if ((a.provider === "netsuite" || a.provider === "quickbooks") && a.status === "verified" && existing?.status !== "verified") {
       for (const d of await ctx.db.find(deliveries, { status: "awaiting_authorization" })) {
         await ctx.db.patch(deliveries, d.id, { status: "queued", updatedAt: Date.now() });
         ctx.afterCommit.work("runtime", "deliver", { deliveryId: d.id }, { maxAttempts: MAX_AUTOMATIC });
       }
+      await resumeAccessEvents(ctx, a.provider);
     }
   },
 });
@@ -63,8 +64,11 @@ export const sealedConnection = app.query({
   },
 });
 
-/** A verified Shopify orders/create event (signature and shop already checked by the component). */
-export const ingestOrder = app.mutation({
+/**
+ * A verified provider event (signature already checked by the component): Shopify orders/create for the
+ * order sync, any Stripe event for ledgerly (ledgerly decides what is bookable).
+ */
+export const ingest = app.mutation({
   access: "mi.runtime",
   args: {
     integrationId: s.string(),
@@ -79,7 +83,7 @@ export const ingestOrder = app.mutation({
   returns: s.object({ disposition: s.string(), deliveryId: s.optional(s.string()) }),
   handler: async (ctx, a) => {
     const integ = await ctx.db.get(integrations, a.integrationId);
-    if (!integ || !integ.enabled || integ.kind !== "order_sync") fail("NOT_FOUND", "No such integration.");
+    if (!integ || !integ.enabled || (integ.kind !== "order_sync" && integ.kind !== "ledgerly")) fail("NOT_FOUND", "No such integration.");
     const now = Date.now();
     const seen = await ctx.db.find(receipts, { integrationId: a.integrationId, providerEventId: a.providerEventId });
     if (seen.length) return { disposition: "duplicate_webhook" };
@@ -95,7 +99,7 @@ export const ingestOrder = app.mutation({
         disposition,
         receivedAt: now,
       });
-    if (a.topic !== "orders/create") {
+    if (integ.kind === "order_sync" && a.topic !== "orders/create") {
       await receipt("ignored_topic");
       return { disposition: "ignored_topic" };
     }
@@ -137,7 +141,8 @@ export const deliveryContext = app.query({
     return {
       delivery: { id: d.id, status: d.status, reference: d.reference, sourceId: d.sourceId, automaticAttempts: d.automaticAttempts },
       receipt: { sealed: r.sealed, apiVersion: r.apiVersion ?? null, id: r.id },
-      integration: { id: integ.id, settings: integ.settings, enabled: integ.enabled },
+      integration: { id: integ.id, kind: integ.kind, settings: integ.settings, enabled: integ.enabled },
+      patches: active.filter((c) => c.kind === "patch").map((c) => ({ id: c.id, patch: String(c.spec.patch) })),
       adapters: active.filter((c) => c.kind === "adapter").map((c) => ({ id: c.id, adapter: String(c.spec.adapter), appliesTo: (c.spec.appliesTo as string[] | undefined) ?? [] })),
     };
   },
@@ -164,6 +169,20 @@ export const recordAttempt = app.mutation({
     const automaticAttempts = a.outcome === "failed" ? d.automaticAttempts + 1 : d.automaticAttempts;
     const retry = a.outcome === "failed" && automaticAttempts < MAX_AUTOMATIC;
     let heldBy: string | undefined;
+    if (a.outcome === "awaiting_authorization") {
+      const integ = await ctx.db.get(integrations, d.integrationId);
+      const target = integ?.kind === "ledgerly" ? "quickbooks" : "netsuite";
+      heldBy = await openOrJoinEvent(ctx, {
+        integrationId: d.integrationId,
+        kind: "authorization_lost",
+        boundary: "target",
+        dedupeKey: `${d.integrationId}:authorization:${target}`,
+        finding: { provider: target, detail: a.detail ?? null },
+        customerText: `${target === "quickbooks" ? "QuickBooks" : "NetSuite"} stopped accepting our access. Reconnect it and we will deliver everything that waited; nothing is lost.`,
+        phase: "await_customer",
+        customerAction: true,
+      });
+    }
     if (a.outcome === "held") {
       heldBy = await openOrJoinEvent(ctx, {
         integrationId: d.integrationId,
