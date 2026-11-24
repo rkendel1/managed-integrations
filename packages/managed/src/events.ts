@@ -7,14 +7,14 @@
  * Resolution is guarded in @mi/reliability (`resolutionBlockers`): no event with maintenance facts resolves
  * without a finding, a validated and activated correction, complete accounting and passed verification.
  */
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, ne, sql } from 'drizzle-orm';
 import type { IncidentKind } from '@mi/contracts';
 import { incidentEvents, incidents, type Db } from '@mi/database';
 import { openIncident, type IncidentRow } from '@mi/reliability';
 
 export const MAINTENANCE_ACTOR = 'system:maintenance';
 
-export type FactName = 'finding' | 'investigation' | 'correction' | 'validation' | 'accounting';
+export type FactName = 'finding' | 'investigation' | 'correction' | 'validation' | 'accounting' | 'impactAssessment';
 
 export async function setFacts(db: Db, id: string, facts: Partial<Record<FactName, unknown>>) {
   await db
@@ -94,6 +94,8 @@ export async function openMaintenanceEvent(
     classificationNote: string;
     finding: unknown;
     evidence?: Record<string, unknown>;
+    /** The component that changed (slice 7). */
+    boundary?: 'source' | 'integration' | 'target' | 'combined';
   },
 ): Promise<{ incident: IncidentRow; created: boolean }> {
   const [inc, created] = await openIncident(db, {
@@ -117,6 +119,30 @@ export async function openMaintenanceEvent(
     await note(db, inc, p.customerNote, true, { step: 'noticed' });
   }
   await setFindingOnce(db, inc.id, p.finding);
+  if (p.boundary)
+    await db
+      .update(incidents)
+      .set({ boundary: sql`coalesce(${incidents.boundary}, ${p.boundary})` })
+      .where(eq(incidents.id, inc.id));
   const [fresh] = await db.select().from(incidents).where(eq(incidents.id, inc.id));
   return { incident: fresh!, created };
+}
+
+/**
+ * The release gate for a combined maintenance window (slice 7): other open maintenance events of the same
+ * integration that still hold work or still await a correction. While any exists, held work is not released by
+ * one event alone — the whole source → transformation → target path must be correctable first.
+ */
+export async function blockingEvents(db: Db, integrationId: string, exceptIncidentId: string) {
+  const open = await db
+    .select()
+    .from(incidents)
+    .where(and(eq(incidents.integrationId, integrationId), ne(incidents.status, 'resolved')));
+  return open.filter(
+    (i) =>
+      i.id !== exceptIncidentId &&
+      ['input_contract_change', 'target_contract_change'].includes(i.kind) &&
+      !(i.correction as { activatedAt?: string } | null)?.activatedAt &&
+      !(i.evidence as { maintenance?: { escalated?: string } }).maintenance?.escalated,
+  );
 }

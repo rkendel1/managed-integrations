@@ -363,6 +363,10 @@ export const incidents = pgTable(
     validation: jsonb('validation'),
     /** Transaction accounting for the affected window. */
     accounting: jsonb('accounting'),
+    /** Which component changed (slice 7): source | integration | target | combined. */
+    boundary: text('boundary'),
+    /** Impact assessment: affected contract, operations, code paths and transactions (slice 7). */
+    impactAssessment: jsonb('impact_assessment'),
     detectedAt: ts('detected_at').notNull().defaultNow(),
     resolvedAt: ts('resolved_at'),
     createdAt: createdAt(),
@@ -588,8 +592,12 @@ export const adaptations = pgTable(
       .references(() => integrations.id),
     /** The maintenance event (incident) that motivated it; null for operator-initiated proposals. */
     maintenanceEventId: uuid('maintenance_event_id').references(() => incidents.id),
-    /** adapter | patch | unsupported */
+    /** adapter | patch | configuration | decision | unsupported */
     kind: text('kind').notNull(),
+    /** The component whose change this correction answers (slice 7): source | integration | target | combined. */
+    boundary: text('boundary').notNull().default('source'),
+    /** Affected operations / transactions and recovery status (slice 7). */
+    impact: jsonb('impact').notNull().default({}),
     status: text('status').notNull(),
     /** The adopted artifact it applies to: repository, commit, package, file hashes it relies on. */
     artifact: jsonb('artifact').notNull(),
@@ -610,6 +618,35 @@ export const adaptations = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [index('adaptations_integration_status_idx').on(t.integrationId, t.status)],
+);
+
+/**
+ * Slice 7 — what each boundary of an integration actually looks like over time: the source contracts it
+ * reads (e.g. webhook version and payload shape), its own implementation (artifact, dependencies) and the
+ * target contracts it writes to (acceptance, record shape). One row per distinct fingerprint; the first one
+ * seen (or one accepted by a correction) is the baseline, so drift is a durable, queryable fact.
+ */
+export const contractObservations = pgTable(
+  'contract_observations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    integrationId: uuid('integration_id')
+      .notNull()
+      .references(() => integrations.id),
+    /** source | integration | target */
+    boundary: text('boundary').notNull(),
+    /** e.g. "shopify.webhook.orders/create", "netsuite.salesOrder.write", "artifact" */
+    contract: text('contract').notNull(),
+    version: text('version'),
+    fingerprint: text('fingerprint').notNull(),
+    /** baseline | observed | accepted */
+    status: text('status').notNull(),
+    sample: jsonb('sample').notNull().default({}),
+    count: integer('count').notNull().default(1),
+    firstSeenAt: ts('first_seen_at').notNull().defaultNow(),
+    lastSeenAt: ts('last_seen_at').notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('contract_observations_uq').on(t.integrationId, t.contract, t.fingerprint)],
 );
 
 /**

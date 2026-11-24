@@ -34,6 +34,24 @@ export const QBO_DEFAULT_ACCOUNTS: Record<string, string> = {
   'FX Gain/Loss': '100',
 };
 
+/** QuickBooks AccountType per fixture account (Intuit's account classification). */
+export const QBO_DEFAULT_ACCOUNT_TYPES: Record<string, string> = {
+  'Operating Bank': 'Bank',
+  'Stripe Clearing': 'Other Current Asset',
+  'Accounts Receivable': 'Accounts Receivable',
+  'Disputes Receivable': 'Other Current Asset',
+  'Sales Tax Payable': 'Other Current Liability',
+  'Deferred Revenue': 'Other Current Liability',
+  'Customer Credit Balance': 'Other Current Liability',
+  'Subscription Revenue': 'Income',
+  'Application Fee Revenue': 'Income',
+  'Refunds Issued': 'Income',
+  'Stripe Processing Fees': 'Expense',
+  'Payment Disputes': 'Expense',
+  'Bad Debt Expense': 'Expense',
+  'FX Gain/Loss': 'Other Income',
+};
+
 export interface QboLine {
   Id?: string;
   DetailType: 'JournalEntryLineDetail';
@@ -67,6 +85,11 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
   const state = {
     companyName: opts.companyName ?? 'Fixture Books Inc.',
     accounts: { ...QBO_DEFAULT_ACCOUNTS },
+    accountTypes: { ...QBO_DEFAULT_ACCOUNT_TYPES } as Record<string, string>,
+    /** Account ids the customer made inactive in their chart of accounts. */
+    inactive: new Set<string>(),
+    /** Simulates something in the customer's company changing an entry after it was saved (fixture-only). */
+    mutateOnCreate: null as null | ((e: QboJournalEntryRecord) => void),
     journalEntries: new Map<string, QboJournalEntryRecord>(),
     byRequestId: new Map<string, string>(),
     codes: new Map<string, { redirectUri: string; used: boolean }>(),
@@ -101,6 +124,17 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
   };
 
   const control = {
+    /** The customer makes an account inactive (QuickBooks keeps it; new transactions may not use it). */
+    deactivateAccount(id: string) {
+      state.inactive.add(id);
+    },
+    /** The customer adds an account to their chart of accounts. */
+    addAccount(name: string, type: string) {
+      const id = String(200 + Object.keys(state.accounts).length);
+      state.accounts[name] = id;
+      state.accountTypes[name] = type;
+      return id;
+    },
     /** Every refresh token stops working (the customer disconnected the app, or the token expired). */
     revokeRefreshTokens() {
       for (const t of state.refreshTokens.values()) t.revoked = true;
@@ -249,6 +283,23 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
         'Invalid Reference Id',
         `Account ${unknown.JournalEntryLineDetail.AccountRef.value} not found`,
       );
+    // Intuit: referencing an inactive list entity is refused (error 610, "Object Not Found").
+    if (lines.some((l) => state.inactive.has(l.JournalEntryLineDetail.AccountRef.value)))
+      return reply.code(400).send({
+        Fault: {
+          Error: [
+            {
+              Message: 'Object Not Found',
+              Detail:
+                "Something you're trying to use has been made inactive. Check the fields with accounts, customers, items, vendors or employees.",
+              code: '610',
+              element: '',
+            },
+          ],
+          type: 'ValidationFault',
+        },
+        time: new Date().toISOString(),
+      });
     const Id = String(++seq);
     const rec: QboJournalEntryRecord = {
       ...body,
@@ -259,11 +310,18 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
     };
     state.journalEntries.set(Id, rec);
     if (requestId) state.byRequestId.set(requestId, Id);
-    return { JournalEntry: rec, time: new Date().toISOString() };
+    const answer = JSON.parse(JSON.stringify(rec)) as QboJournalEntryRecord;
+    state.mutateOnCreate?.(rec); // the response shows what was sent; the stored record is what QuickBooks keeps
+    return { JournalEntry: answer, time: new Date().toISOString() };
   });
 
-  const IN =
-    /^select \* from (JournalEntry|Account) where (DocNumber|Name) in \((.*)\)(?: maxresults (\d+))?$/i;
+  const IN = /^select \* from (JournalEntry|Account) where (DocNumber|Name|Id) in \((.*)\)(?: maxresults (\d+))?$/i;
+  const accountRow = ([Name, Id]: [string, string]) => ({
+    Id,
+    Name,
+    Active: !state.inactive.has(Id),
+    AccountType: state.accountTypes[Name] ?? 'Other Current Asset',
+  });
   app.get('/v3/company/:realm/query', async (req, reply) => {
     if ((req.params as { realm: string }).realm !== realmId)
       return fault(reply, 'Invalid company', 'realm', 403);
@@ -273,6 +331,9 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
         QueryResponse: { CompanyInfo: [{ CompanyName: state.companyName, Id: '1' }] },
         time: new Date().toISOString(),
       };
+    // Inactive entities are only listed when asked for explicitly (Intuit: "where Active in (true, false)").
+    if (/^select \* from Account where Active in \(true, false\)/i.test(query))
+      return { QueryResponse: { Account: Object.entries(state.accounts).map(accountRow) }, time: new Date().toISOString() };
     const m = IN.exec(query);
     if (!m) return fault(reply, 'QueryParserError', `Unsupported query in fixture: ${query}`);
     const values = [...m[3]!.matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((x) => x[1]!.replace(/\\'/g, "'"));
@@ -285,9 +346,10 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
         time: new Date().toISOString(),
       };
     }
+    const byId = m[2]!.toLowerCase() === 'id';
     const rows = Object.entries(state.accounts)
-      .filter(([name]) => values.includes(name))
-      .map(([Name, Id]) => ({ Id, Name, Active: true }));
+      .filter(([name, id]) => (byId ? values.includes(id) : values.includes(name) && !state.inactive.has(id)))
+      .map(accountRow);
     return { QueryResponse: rows.length ? { Account: rows } : {}, time: new Date().toISOString() };
   });
   app.get('/v3/company/:realm/companyinfo/:id', async (req, reply) => {

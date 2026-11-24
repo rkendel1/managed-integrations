@@ -29,6 +29,7 @@ import {
   onboardings,
   reconciliationItems,
   reconciliationRuns,
+  contractObservations,
   users,
   type DbHandle,
 } from '@mi/database';
@@ -41,6 +42,7 @@ import {
   type ShopifyFixture,
 } from '@mi/test-fixtures';
 import { SHOPIFY_NETSUITE } from '@mi/adopted-order-sync';
+import { accountTransactions } from '@mi/managed';
 import { buildApp } from '../src/app.ts';
 import { ensureQueues } from '../src/queues.ts';
 import { createRuntimeWorker } from '../../worker/src/runtime-worker.ts';
@@ -672,6 +674,229 @@ describe(
         ['monitoring.integration', { integrationId: integ.id }],
       ] as const)
         await expect(c.call(name, input)).rejects.toMatchObject({ code: 'FORBIDDEN' });
+    });
+
+    /* ======================= slice 7: target boundary ======================= */
+
+    it('target-only change: an account the mapping posts to is made inactive — held, customer decides, a failed validation is rejected, the corrected configuration is validated, recovered, verified; history untouched; rollback restores', async () => {
+      // INVARIANT: every Stripe transaction lands in QuickBooks exactly once, balanced, with the same amounts and
+      // sides, on an account of the same kind; entries already in the books are never rewritten.
+      await setup();
+      const { c, integ } = await onboard();
+      const before = fx.stripe.control.createCharge({ amount: 4_200 }).event;
+      await jobs.drain(async () => entriesFor(before.id).length === 1);
+      // The customer reorganizes their chart of accounts: a new clearing account, the old one made inactive.
+      const newId = fx.qbo.control.addAccount('Stripe Clearing 2027', 'Other Current Asset');
+      fx.qbo.control.deactivateAccount('91');
+      const held = fx.stripe.control.createCharge({ amount: 6_600 }).event;
+      await jobs.drain(async () => {
+        const [x] = await dbh.db
+          .select()
+          .from(incidents)
+          .where(and(eq(incidents.integrationId, integ.id), eq(incidents.kind, 'target_contract_change')));
+        return x?.status === 'requires_action';
+      });
+      const [ev] = await dbh.db
+        .select()
+        .from(incidents)
+        .where(and(eq(incidents.integrationId, integ.id), eq(incidents.kind, 'target_contract_change')));
+      // detection with evidence: the refusal AND QuickBooks' own account record
+      expect(ev).toMatchObject({
+        boundary: 'target',
+        finding: {
+          observed: { code: '610' },
+          inactiveAccounts: [{ qboId: '91', code: '1010', type: 'Other Current Asset' }],
+        },
+      });
+      expect(ev!.impactAssessment).toMatchObject({
+        boundary: 'target',
+        affectedTransactions: [expect.stringContaining('Charge')],
+      });
+      const [hd] = await dbh.db.select().from(deliveries).where(eq(deliveries.sourceId, held.id));
+      expect(hd).toMatchObject({ outcome: 'held', lastErrorClass: 'target_contract' });
+      expect(entriesFor(held.id)).toHaveLength(0);
+      // the customer sees a business question with evidence-backed options (same account type only)
+      type Ev = {
+        state: string;
+        decision: { id: string; question: string; options: { id: string; label: string }[] } | null;
+      };
+      const story = await c.call<Ev>('maintenance.events.get', { eventId: ev!.id });
+      expect(story.state).toBe('needs_you');
+      expect(story.decision!.options.map((o) => o.label).sort()).toEqual([
+        'Disputes Receivable',
+        'Stripe Clearing 2027',
+      ]);
+      // a choice that fails validation (the account was made inactive after the question was asked) is rejected
+      fx.qbo.control.deactivateAccount('92');
+      await c.call('maintenance.decide', { eventId: ev!.id, decisionId: story.decision!.id, optionId: '92' });
+      await jobs.drain(
+        async () => !!(await c.call<Ev>('maintenance.events.get', { eventId: ev!.id })).decision,
+      );
+      const corr1 = await dbh.db
+        .select()
+        .from(adaptations)
+        .where(and(eq(adaptations.maintenanceEventId, ev!.id), eq(adaptations.kind, 'configuration')));
+      expect(corr1.map((x) => x.status)).toEqual(['rejected']);
+      expect(
+        (corr1[0]!.validation as { checks: { name: string; status: string }[] }).checks.find((x) =>
+          x.name.startsWith('replacement account'),
+        )!.status,
+      ).toBe('failed');
+      expect(entriesFor(held.id)).toHaveLength(0); // still held: nothing activated
+      // the customer chooses again; validated; activated; held work posted and verified
+      const again = await c.call<Ev>('maintenance.events.get', { eventId: ev!.id });
+      expect(again.decision!.options.map((o) => o.id)).toEqual([newId]);
+      await c.call('maintenance.decide', {
+        eventId: ev!.id,
+        decisionId: again.decision!.id,
+        optionId: newId,
+      });
+      await jobs.drain(
+        async () =>
+          (await dbh.db.select().from(incidents).where(eq(incidents.id, ev!.id)))[0]!.status === 'resolved',
+        60_000,
+      );
+      const [done] = await dbh.db.select().from(incidents).where(eq(incidents.id, ev!.id));
+      expect(done!.accounting).toMatchObject({
+        zeroLoss: true,
+        populationComplete: true,
+        unresolved: 0,
+        duplicates: 0,
+        delayed: 1,
+      });
+      const [je] = entriesFor(held.id);
+      expect(
+        je!.Line.find(
+          (l) =>
+            l.JournalEntryLineDetail.PostingType === 'Debit' &&
+            l.JournalEntryLineDetail.AccountRef.value === newId,
+        ),
+      ).toBeTruthy();
+      // history untouched: the earlier entry still posts to the (now inactive) original account, and still verifies
+      expect(
+        entriesFor(before.id)[0]!.Line.some((l) => l.JournalEntryLineDetail.AccountRef.value === '91'),
+      ).toBe(true);
+      const corr = await dbh.db.select().from(adaptations).where(eq(adaptations.maintenanceEventId, ev!.id));
+      expect(corr.map((x) => [x.kind, x.boundary, x.status])).toEqual([
+        ['decision', 'target', 'active'],
+        ['configuration', 'target', 'rejected'],
+        ['decision', 'target', 'active'],
+        ['configuration', 'target', 'active'],
+      ]);
+      // the boundary's durable record: baseline acceptance, the refusal (answered), what is active
+      const obs = await dbh.db
+        .select()
+        .from(contractObservations)
+        .where(
+          and(
+            eq(contractObservations.integrationId, integ.id),
+            eq(contractObservations.contract, 'quickbooks.journalentry.write'),
+          ),
+        );
+      expect(obs.map((o) => o.status).sort()).toEqual(['accepted', 'baseline']);
+      // rollback restores the previous mapping; accounting and evidence of the event remain
+      const active = corr.find((x) => x.kind === 'configuration' && x.status === 'active')!;
+      await worker.registry
+        .get(LEDGERLY_FLOW_TYPE)!
+        .adaptations!.rollback(active.id, 'operator:test', 'rollback drill');
+      const [after] = await dbh.db.select().from(integrations).where(eq(integrations.id, integ.id));
+      expect(
+        (after!.config as { accountMap: Record<string, { qboId: string }> }).accountMap['1010']!.qboId,
+      ).toBe('91');
+      expect(
+        (await dbh.db.select().from(incidents).where(eq(incidents.id, ev!.id)))[0]!.accounting,
+      ).toMatchObject({ zeroLoss: true });
+    });
+
+    it('incorrect destination data despite a successful API response: detected by read-back, nothing edited in the books, the customer is asked, no zero-loss claim', async () => {
+      await setup();
+      const { c, integ } = await onboard();
+      // Something in the customer's company rewrites entries after they are saved (QuickBooks still answers 200).
+      fx.qbo.state.mutateOnCreate = (e) => {
+        const fee = e.Line.find((l) => l.JournalEntryLineDetail.AccountRef.value === '97');
+        const clearing = e.Line.find((l) => l.JournalEntryLineDetail.AccountRef.value === '91');
+        if (fee && clearing) {
+          fee.Amount = Math.round((fee.Amount + 1) * 100) / 100;
+          clearing.Amount = Math.round((clearing.Amount - 1) * 100) / 100;
+        }
+      };
+      const x = fx.stripe.control.createCharge({ amount: 10_000 }).event;
+      await jobs.drain(async () => {
+        const [i] = await dbh.db
+          .select()
+          .from(incidents)
+          .where(and(eq(incidents.integrationId, integ.id), eq(incidents.kind, 'destination_mismatch')));
+        return !!(i?.evidence as { maintenance?: { escalated?: string } } | undefined)?.maintenance
+          ?.escalated;
+      });
+      const [del] = await dbh.db.select().from(deliveries).where(eq(deliveries.sourceId, x.id));
+      expect(del!.validation).toMatchObject({
+        destinationMismatch: { journalEntryIds: [expect.any(String)] },
+      });
+      const [ev] = await dbh.db
+        .select()
+        .from(incidents)
+        .where(and(eq(incidents.integrationId, integ.id), eq(incidents.kind, 'destination_mismatch')));
+      expect(ev).toMatchObject({ boundary: 'target', status: 'requires_action' });
+      const story = await c.call<{
+        state: string;
+        claim: { zeroLoss: boolean };
+        customerAction: { text: string };
+      }>('maintenance.events.get', { eventId: ev!.id });
+      expect(story).toMatchObject({
+        state: 'needs_you',
+        claim: { zeroLoss: false },
+        customerAction: { text: 'Review the listed entries in QuickBooks.' },
+      });
+      expect(entriesFor(x.id)).toHaveLength(1); // nothing deleted or duplicated
+      // independent reconciliation agrees: the entry exists but is not what Stripe implies
+      const s = await startLedgerlyReconciliation(dbh.db, {
+        integrationId: integ.id,
+        trigger: 'manual',
+        window: { from: days(1), to: new Date(Date.now() + 1000) },
+      });
+      await scanLedgerlyReconciliation({
+        db: dbh.db,
+        cipher: testCipher,
+        endpoints: config.endpoints,
+        runId: s.runId,
+        workerId: 'w',
+      });
+      const [item] = await dbh.db
+        .select()
+        .from(reconciliationItems)
+        .where(and(eq(reconciliationItems.runId, s.runId), eq(reconciliationItems.sourceOrderId, x.id)));
+      expect(item).toMatchObject({ classification: 'ambiguous' });
+      expect(item!.reason).toMatch(/accounts or amounts differ/);
+    });
+
+    it('incomplete source population: when Stripe cannot be read completely, the check is partial and nothing is claimed', async () => {
+      await setup();
+      const { integ } = await onboard();
+      fx.stripe.state.faults.add({ target: 'api', type: 'http503', count: 20 });
+      const s = await startLedgerlyReconciliation(dbh.db, {
+        integrationId: integ.id,
+        trigger: 'manual',
+        window: { from: days(5), to: new Date() },
+      });
+      await scanLedgerlyReconciliation({
+        db: dbh.db,
+        cipher: testCipher,
+        endpoints: config.endpoints,
+        runId: s.runId,
+        workerId: 'w',
+      });
+      const [run] = await dbh.db.select().from(reconciliationRuns).where(eq(reconciliationRuns.id, s.runId));
+      expect(run).toMatchObject({ status: 'completed', outcome: 'partial' });
+      const acc = accountTransactions({
+        window: { from: run!.windowFrom, to: run!.windowTo },
+        sourceRunId: run!.id,
+        readCompletely: false,
+        items: [],
+        affectedSourceIds: [],
+        detectedAt: new Date(),
+      });
+      expect(acc).toMatchObject({ zeroLoss: false, populationComplete: false });
     });
   },
 );

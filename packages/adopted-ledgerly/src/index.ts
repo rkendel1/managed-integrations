@@ -10,3 +10,4 @@ export * from './onboarding.ts';
 export * from './maintenance.ts';
 export * from './descriptor.ts';
 export * from './runtime.ts';
+export * from './target.ts';

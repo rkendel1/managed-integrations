@@ -63,6 +63,7 @@ export function createApiAppPortRuntime(deps: {
   runOnboardingDiscovery?: (tenantId: string) => Promise<void>;
   enqueueOnboardingActivation?: (tenantId: string, flowType: string) => Promise<void>;
   registry?: import('@mi/managed').IntegrationRegistry;
+  enqueueMaintenance?: (incidentId: string) => Promise<void>;
   telemetry?: TelemetrySink;
 }): AppPortRuntime {
   const resolveIdentity = async (headers: CallerHeaders) => {
@@ -96,6 +97,7 @@ export function createApiAppPortRuntime(deps: {
       : {}),
     ...(deps.runOnboardingDiscovery ? { runOnboardingDiscovery: deps.runOnboardingDiscovery } : {}),
     ...(deps.registry ? { registry: deps.registry } : {}),
+    ...(deps.enqueueMaintenance ? { enqueueMaintenance: deps.enqueueMaintenance } : {}),
     ...(deps.enqueueOnboardingActivation
       ? { enqueueOnboardingActivation: deps.enqueueOnboardingActivation }
       : {}),

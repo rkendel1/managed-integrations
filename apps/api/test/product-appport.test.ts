@@ -405,7 +405,10 @@ describe('customer product through AppPort', () => {
       .filter((t) => /^(maintenance|portfolio)_/.test(t.name))
       .map((t) => t.name)
       .sort();
+    // slice 7: the one write is answering a question the system asked (a decision); it cannot resolve an event,
+    // activate or roll back a correction — those stay with the maintenance lifecycle and its validation.
     expect(maint).toEqual([
+      'maintenance_decide',
       'maintenance_events_evidence',
       'maintenance_events_get',
       'portfolio_integration',

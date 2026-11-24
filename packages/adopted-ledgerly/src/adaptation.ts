@@ -17,8 +17,8 @@
  */
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { and, desc, eq } from 'drizzle-orm';
-import { deliveries, integrations, type Db } from '@mi/database';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { adaptations, deliveries, integrations, type Db } from '@mi/database';
 import type { CredentialCipher, ProviderEndpointConfig } from '@mi/integration-shopify-netsuite';
 import {
   activateAdaptation as activateGeneric,
@@ -69,18 +69,65 @@ export interface LedgerlyRuntime {
   adaptationIds: string[];
 }
 export async function selectRuntime(rows: AdaptationRow[]): Promise<LedgerlyRuntime> {
-  if (rows.some((r) => r.kind !== 'patch'))
-    throw new Error('Only reviewed patches can change this integration');
-  return { artifact: await loadLedgerly(rows.map(patchOf)), adaptationIds: rows.map((r) => r.id) };
+  if (rows.some((r) => r.kind === 'adapter')) throw new Error('No adapters exist for this integration');
+  // Code: reviewed patches only. Configuration corrections live in the integration's configuration (versioned);
+  // decisions change nothing by themselves.
+  return {
+    artifact: await loadLedgerly(rows.filter((r) => r.kind === 'patch').map(patchOf)),
+    adaptationIds: rows.map((r) => r.id),
+  };
 }
 export async function runtimeFor(db: Db, integrationId: string) {
   return selectRuntime(await activeAdaptations(db, integrationId));
 }
 
+/** A configuration correction of the account mapping (target boundary). */
+export interface AccountMapSpec {
+  type: 'account_map';
+  code: string;
+  from: { qboId: string; name: string };
+  to: { qboId: string; name: string };
+  decisionId: string;
+}
+
 export const RUNTIME_HOOKS: RuntimeHooks = {
-  scopeKey: (r) => `p:${patchOf(r).file}`,
+  scopeKey: (r) =>
+    r.kind === 'patch'
+      ? `p:${patchOf(r).file}`
+      : r.kind === 'configuration'
+        ? `c:${(r.spec as unknown as AccountMapSpec).type}:${(r.spec as unknown as AccountMapSpec).code}`
+        : `${r.kind}:${r.id}`,
   loadRuntime: (rows) => selectRuntime(rows),
 };
+
+/** Hooks bound to the database: configuration corrections change the integration's (versioned) configuration. */
+export function runtimeHooks(db: Db): RuntimeHooks {
+  const setMap = async (row: AdaptationRow, to: 'from' | 'to') => {
+    const spec = row.spec as unknown as AccountMapSpec;
+    await db.transaction(async (tx) => {
+      const [integ] = await tx.select().from(integrations).where(eq(integrations.id, row.integrationId)).for('update');
+      const config = LedgerlyConfigSchema.parse(integ!.config);
+      const current = config.accountMap[spec.code];
+      const expected = to === 'to' ? spec.from : spec.to;
+      // Never silently overwrite: the mapping must still be what this correction was validated against.
+      if (current?.qboId !== expected.qboId)
+        throw new AdaptationError('CONFLICT', `Account mapping for ${spec.code} changed since validation (now ${current?.qboId})`);
+      await tx
+        .update(integrations)
+        .set({
+          config: { ...config, accountMap: { ...config.accountMap, [spec.code]: spec[to] } },
+          configVersion: sql`${integrations.configVersion} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(integrations.id, row.integrationId));
+    });
+  };
+  return {
+    ...RUNTIME_HOOKS,
+    apply: (row) => setMap(row, 'to'),
+    revert: (row) => setMap(row, 'from'),
+  };
+}
 
 export async function proposePatch(
   db: Db,
@@ -170,7 +217,11 @@ export async function validateLedgerlyAdaptation(
   const add = (n: string, ok: boolean | null, d: string) => list.add(n, ok, d);
   let artifactIds = { before: '', after: '' };
   try {
-    if (row0.kind !== 'patch') throw new Error('Only reviewed patches are supported for this integration');
+    if (row0.kind === 'configuration') {
+      artifactIds = await validateAccountMapping(db, cipher, endpoints, row0, list);
+      return recordValidation(db, adaptationId, list.checks, artifactIds);
+    }
+    if (row0.kind !== 'patch') throw new Error('Only reviewed patches and configuration are validated here');
     const p = patchOf(row0);
     const [integ] = await db.select().from(integrations).where(eq(integrations.id, row0.integrationId));
     const config = LedgerlyConfigSchema.parse(integ!.config);
@@ -291,9 +342,9 @@ export const activateLedgerlyAdaptation = (
   actor: string,
   note: string,
   opts?: { acceptLimitations?: boolean },
-) => activateGeneric(db, id, actor, note, RUNTIME_HOOKS, opts);
+) => activateGeneric(db, id, actor, note, runtimeHooks(db), opts);
 export const rollbackLedgerlyAdaptation = (db: Db, id: string, actor: string, reason: string) =>
-  rollbackGeneric(db, id, actor, reason, RUNTIME_HOOKS);
+  rollbackGeneric(db, id, actor, reason, runtimeHooks(db));
 export const rejectLedgerlyAdaptation = (db: Db, id: string, actor: string, reason: string) =>
   rejectGeneric(db, id, actor, reason);
 
@@ -423,4 +474,113 @@ export async function ledgerlyRunningCode(db: Db, integrationId: string): Promis
     adaptations: rows,
     catalog: patchCatalog().map((p) => ({ id: p.id, title: p.title, file: p.file })),
   };
+}
+
+/**
+ * Validation of an account-mapping correction (target boundary). The invariant: the same Stripe money lands on
+ * the same kind of account, balanced, with only the replaced account changed — and nothing already in the books
+ * is touched.
+ */
+async function validateAccountMapping(
+  db: Db,
+  cipher: CredentialCipher,
+  endpoints: ProviderEndpointConfig,
+  row: AdaptationRow,
+  list: CheckList,
+): Promise<{ before: string; after: string }> {
+  const spec = row.spec as unknown as AccountMapSpec;
+  const [integ] = await db.select().from(integrations).where(eq(integrations.id, row.integrationId));
+  const config = LedgerlyConfigSchema.parse(integ!.config);
+  const before = config.accountMap as QboAccountMap;
+  const after: QboAccountMap = { ...before, [spec.code]: spec.to };
+  const qbo = new QuickBooksAccess(db, cipher, endpoints, integ!.tenantId);
+  const rt = await runtimeFor(db, row.integrationId);
+  const m = rt.artifact.modules;
+
+  // 1. the replacement exists, is active, and is the same kind of account as the one it replaces
+  const accts = await accountsById(qbo, [spec.from.qboId, spec.to.qboId]);
+  const old = accts.find((a) => a.Id === spec.from.qboId);
+  const neu = accts.find((a) => a.Id === spec.to.qboId);
+  list.add(
+    'replacement account is active and of the same type',
+    !!neu?.Active && !!old && neu.AccountType === old.AccountType,
+    neu ? `${neu.Name} (${neu.AccountType}, ${neu.Active ? 'active' : 'inactive'}) replaces ${old?.Name ?? spec.from.qboId} (${old?.AccountType ?? '?'})` : `account ${spec.to.qboId} not found`,
+  );
+  // 2. authority: the customer chose it
+  const [dec] = await db.select().from(adaptations).where(eq(adaptations.id, spec.decisionId));
+  const choice = (dec?.spec as { choice?: string; decidedBy?: string } | undefined)?.choice;
+  list.add('decided by the customer', dec?.status === 'active' && choice === spec.to.qboId, dec ? `decision ${dec.status}, choice ${choice ?? 'none'}` : 'no decision');
+  // 3–4. stored and held transactions: only the replaced account changes; amounts and balance identical
+  const stripe = await stripeFor(db, cipher, endpoints, integ!.tenantId);
+  const rows = await db
+    .select()
+    .from(deliveries)
+    .where(and(eq(deliveries.integrationId, row.integrationId), inArray(deliveries.outcome, ['delivered', 'held'])))
+    .orderBy(desc(deliveries.createdAt))
+    .limit(40);
+  let compared = 0;
+  let onlyAccount = 0;
+  let heldOk = 0;
+  let held = 0;
+  for (const d of rows) {
+    if (!d.receiptId) continue;
+    const { event } = await payloadOfReceipt(db, cipher, d.receiptId);
+    let r;
+    try {
+      r = m.mapEvent(await m.expandEvent(stripe.sdk, event));
+    } catch {
+      continue;
+    }
+    for (const e of r.entries) {
+      const x = m.toQbo(e, before);
+      const y = m.toQbo(e, after);
+      compared++;
+      const same = x.Line.length === y.Line.length && x.Line.every((l, i) => {
+        const l2 = y.Line[i]!;
+        const swapped = l.JournalEntryLineDetail.AccountRef.value === spec.from.qboId;
+        return l.Amount === l2.Amount && l.JournalEntryLineDetail.PostingType === l2.JournalEntryLineDetail.PostingType &&
+          (swapped ? l2.JournalEntryLineDetail.AccountRef.value === spec.to.qboId : l2.JournalEntryLineDetail.AccountRef.value === l.JournalEntryLineDetail.AccountRef.value);
+      });
+      if (same) onlyAccount++;
+      if (d.outcome === 'held') {
+        held++;
+        if (m.checkBalance(e).balanced && same) heldOk++;
+      }
+    }
+  }
+  list.add(
+    'only the replaced account changes (amounts and sides identical)',
+    compared ? onlyAccount === compared : null,
+    compared ? `${onlyAccount}/${compared} entries identical apart from ${spec.from.name} → ${spec.to.name}` : 'no stored transactions to compare',
+  );
+  list.add(
+    'held transactions map to balanced entries',
+    held ? heldOk === held : null,
+    held ? `${heldOk}/${held} held entries balance with the new account` : 'no held transactions',
+  );
+  // 5. history untouched: entries already in QuickBooks keep their original account (nothing is rewritten)
+  const posted = rows.filter((d) => d.outcome === 'delivered');
+  const docs = posted.flatMap((d) => ((d.summary as { docNumbers?: string[] }).docNumbers ?? []));
+  const books = docs.length ? await journalEntriesByDocNumber(qbo, docs) : [];
+  list.add(
+    'entries already in QuickBooks are not rewritten',
+    true,
+    `${books.length} existing entries keep the account they were posted with; verification uses each transaction's own mapping`,
+  );
+  // 6. rollback
+  list.add('rollback target available', before[spec.code]?.qboId === spec.from.qboId, `rolling back restores ${spec.from.name} (${spec.from.qboId}) for ${spec.code}`);
+  return { before: `${rt.artifact.id}#map:${spec.code}=${spec.from.qboId}`, after: `${rt.artifact.id}#map:${spec.code}=${spec.to.qboId}` };
+}
+
+export async function accountsById(qbo: QuickBooksAccess, ids: string[]) {
+  const r = await qbo.query<{ Account?: { Id: string; Name: string; Active: boolean; AccountType: string }[] }>(
+    `select * from Account where Id in (${ids.map((i) => `'${i.replace(/'/g, "\\'")}'`).join(', ')})`,
+  );
+  return r.Account ?? [];
+}
+export async function allAccounts(qbo: QuickBooksAccess) {
+  const r = await qbo.query<{ Account?: { Id: string; Name: string; Active: boolean; AccountType: string }[] }>(
+    'select * from Account where Active in (true, false) maxresults 1000',
+  );
+  return r.Account ?? [];
 }

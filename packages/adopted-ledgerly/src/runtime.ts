@@ -36,6 +36,7 @@ import {
   recordInputContractBreak,
 } from './maintenance.ts';
 import { ledgerlyOnboarding } from './onboarding.ts';
+import { recordDestinationMismatch, recordTargetContractChange } from './target.ts';
 import { AuthorizationLost, loadConnection, QuickBooksAccess, stripeFor } from './providers.ts';
 import {
   recoverLedgerlyItem,
@@ -77,6 +78,14 @@ export function createStripeQuickbooksRuntime(deps: LedgerlyRuntimeDeps): Integr
           r.lost ?? 'quickbooks',
           r.message ?? 'authorization lost',
         );
+        await services.enqueueMaintenance(inc.id);
+      }
+      if (r.outcome === 'held' && r.targetFault) {
+        const inc = await recordTargetContractChange({ db, cipher, endpoints }, deliveryId, r.targetFault);
+        await services.enqueueMaintenance(inc.id);
+      }
+      if (r.outcome === 'delivered' && r.destinationMismatch) {
+        const inc = await recordDestinationMismatch(db, deliveryId, r.destinationMismatch);
         await services.enqueueMaintenance(inc.id);
       }
       if (r.outcome === 'held' && r.missingField) {

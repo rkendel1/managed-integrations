@@ -233,6 +233,10 @@ export const INCIDENT_KINDS = [
   'input_contract_change',
   /** The pinned code declares a provider contract the provider retired (slice 6). */
   'dependency_contract_change',
+  /** The target stopped accepting what the integration writes (slice 7). */
+  'target_contract_change',
+  /** The target holds data that differs from what was written/verified, despite a successful write (slice 7). */
+  'destination_mismatch',
 ] as const;
 export type IncidentKind = (typeof INCIDENT_KINDS)[number];
 

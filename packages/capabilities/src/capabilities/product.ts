@@ -13,7 +13,8 @@ import { defineCapability, type CapabilityDefinition } from '@appport/core';
 import { errors } from '@appport/protocol';
 import { s } from '@appport/schema';
 import { and, desc, eq, inArray, ne } from 'drizzle-orm';
-import { incidentEvents, incidents, integrations, reconciliationRuns, tenants, type Db } from '@mi/database';
+import { adaptations, incidentEvents, incidents, integrations, reconciliationRuns, tenants, type Db } from '@mi/database';
+import { correctionsOf, decide, AdaptationError } from '@mi/managed';
 import { descriptorFor } from '@mi/integrations';
 import { AppPortPermissions, tenantIdOf } from '../identity.ts';
 import {
@@ -25,6 +26,7 @@ import {
   STATUS_CODES,
   STATUS_DEFINITIONS,
   type CustomerEvent,
+  type PendingDecision,
   type StatusAssessment,
 } from '../product.ts';
 
@@ -91,6 +93,13 @@ const eventSchema = s.object({
     basis: s.string(),
   }),
   customerAction: s.object({ required: s.boolean('customer action required'), text: s.nullable(s.string()) }),
+  decision: s.nullable(
+    s.object({
+      id: s.string(),
+      question: s.string(),
+      options: s.array(s.object({ id: s.string(), label: s.string(), detail: s.optional(s.string()) })),
+    }),
+  ),
   timeline: s.array(
     s.object({
       at: s.string(),
@@ -272,7 +281,19 @@ async function loadEvent(db: Db, eventId: string) {
   const [inc] = await db.select().from(incidents).where(eq(incidents.id, eventId));
   if (!inc?.integrationId) throw errors.notFound('Maintenance event not found');
   const events = await db.select().from(incidentEvents).where(eq(incidentEvents.incidentId, inc.id));
-  return { inc, events };
+  return { inc, events, decision: await pendingCustomerDecision(db, inc.id) };
+}
+
+/** The customer's open question for an event, if any (slice 7). */
+async function pendingCustomerDecision(db: Db, eventId: string): Promise<PendingDecision | null> {
+  const rows = await db
+    .select()
+    .from(adaptations)
+    .where(and(eq(adaptations.maintenanceEventId, eventId), eq(adaptations.kind, 'decision'), eq(adaptations.status, 'proposed')));
+  const d = rows.find((r) => (r.spec as { authority?: string }).authority === 'customer');
+  if (!d) return null;
+  const spec = d.spec as { question: string; options: PendingDecision['options'] };
+  return { id: d.id, question: spec.question, options: spec.options };
 }
 
 export function createMaintenanceEventGetCapability(
@@ -288,8 +309,8 @@ export function createMaintenanceEventGetCapability(
     input: s.object({ eventId: s.string({ pattern: UUID }) }),
     output: eventSchema,
     async handler(input) {
-      const { inc, events } = await loadEvent(db, input.eventId);
-      return presentEvent(inc, events, await wordsForIntegration(db, inc.integrationId!));
+      const { inc, events, decision } = await loadEvent(db, input.eventId);
+      return presentEvent(inc, events, await wordsForIntegration(db, inc.integrationId!), decision);
     },
   });
 }
@@ -307,6 +328,9 @@ export function createMaintenanceEvidenceCapability(
     input: s.object({ eventId: s.string({ pattern: UUID }) }),
     output: s.object({
       event: eventSchema,
+      boundary: s.nullable(s.string()),
+      impactAssessment: s.unknown(),
+      corrections: s.unknown(),
       kind: s.string(),
       status: s.string(),
       finding: s.unknown(),
@@ -320,7 +344,7 @@ export function createMaintenanceEvidenceCapability(
       timeline: s.unknown(),
     }),
     async handler(input) {
-      const { inc, events } = await loadEvent(db, input.eventId);
+      const { inc, events, decision } = await loadEvent(db, input.eventId);
       const progress =
         (inc.evidence as { maintenance?: { reconcileRunId?: string; verifyRunId?: string } }).maintenance ??
         null;
@@ -329,7 +353,20 @@ export function createMaintenanceEvidenceCapability(
         ? await db.select().from(reconciliationRuns).where(inArray(reconciliationRuns.id, runIds))
         : [];
       return {
-        event: presentEvent(inc, events, await wordsForIntegration(db, inc.integrationId!)),
+        event: presentEvent(inc, events, await wordsForIntegration(db, inc.integrationId!), decision),
+        boundary: inc.boundary,
+        impactAssessment: inc.impactAssessment,
+        corrections: (await correctionsOf(db, inc.id)).map((c) => ({
+          id: c.id,
+          kind: c.kind,
+          boundary: c.boundary,
+          status: c.status,
+          rationale: c.rationale,
+          spec: c.spec,
+          impact: c.impact,
+          validation: c.validation,
+          history: c.history,
+        })),
         kind: inc.kind,
         status: inc.status,
         finding: inc.finding,
@@ -360,6 +397,54 @@ export function createMaintenanceEvidenceCapability(
             customerVisible: e.customerVisible,
           })),
       };
+    },
+  });
+}
+
+export type EnqueueMaintenance = (incidentId: string) => Promise<void>;
+
+/**
+ * maintenance.decide@1 (slice 7): the answer to a question only a person may answer — e.g. which QuickBooks
+ * account replaces one that was made inactive, or which NetSuite subsidiary orders belong to. Customers answer
+ * customer questions for their own events; operators answer operator questions. The choice must be one of
+ * the evidence-backed options offered; maintenance continues from it (the correction it implies is still
+ * validated before anything is switched on).
+ */
+export function createMaintenanceDecideCapability(
+  db: Db,
+  enqueue: EnqueueMaintenance | undefined,
+): CapabilityDefinition<{ eventId: string; decisionId: string; optionId: string }, { decisionId: string; status: string }> {
+  return defineCapability({
+    name: 'maintenance.decide',
+    version: 1,
+    description:
+      'Answers a decision a maintenance event is waiting for, choosing one of the offered options. Customers decide business questions for their own integrations; operators decide operator questions.',
+    effect: 'consequential',
+    authorization: [AppPortPermissions.operate],
+    input: s.object({
+      eventId: s.string({ pattern: UUID }),
+      decisionId: s.string({ pattern: UUID }),
+      optionId: s.string({ minLength: 1, maxLength: 200 }),
+    }),
+    output: s.object({ decisionId: s.string(), status: s.string() }),
+    async handler(input, context) {
+      const [row] = await db.select().from(adaptations).where(eq(adaptations.id, input.decisionId));
+      if (!row || row.maintenanceEventId !== input.eventId) throw errors.notFound('Decision not found');
+      const tenantId = tenantIdOf(context.principal);
+      try {
+        const r = await decide(db, row.id, {
+          optionId: input.optionId,
+          actor: context.principal?.id ?? 'unknown',
+          role: tenantId ? 'customer' : 'operator',
+          tenantId,
+        });
+        if (enqueue) await enqueue(input.eventId);
+        return { decisionId: r.id, status: r.status };
+      } catch (err) {
+        if (err instanceof AdaptationError)
+          throw err.code === 'NOT_FOUND' ? errors.notFound(err.message) : err.code === 'CONFLICT' ? errors.forbidden(err.message) : errors.invalidInput(err.message);
+        throw err;
+      }
     },
   });
 }

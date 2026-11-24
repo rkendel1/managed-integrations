@@ -362,6 +362,8 @@ export function ledgerlyActivationSteps(deps: LedgerlyOnboardingDeps): Activatio
       // Entries their own deployment wrote (signature verified) become delivered history with provenance.
       async run(ctx) {
         const runId = String(ctx.records['baseline']!['runId']);
+        const [integNow] = await ctx.db.select().from(integrations).where(eq(integrations.id, ctx.integrationId));
+        const accountMapNow = LedgerlyConfigSchema.parse(integNow!.config).accountMap;
         const items = await ctx.db
           .select()
           .from(reconciliationItems)
@@ -388,6 +390,8 @@ export function ledgerlyActivationSteps(deps: LedgerlyOnboardingDeps): Activatio
               destinationId: it.destinationIds?.[0] ?? null,
               outcome: 'delivered',
               attempts: 0,
+              // Posted by their deployment with the mapping discovery read from their books.
+              summary: { accounts: Object.fromEntries(Object.entries(accountMapNow).map(([k, v]) => [k, v.qboId])) },
               validation: {
                 origin: 'baseline',
                 note: 'Written by the customer’s existing deployment before we took over',

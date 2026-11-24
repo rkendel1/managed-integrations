@@ -177,6 +177,29 @@ export async function scanLedgerlyReconciliation(p: {
       limit: 100,
     }))
       events.push(e as unknown as StripeEventLite);
+    // Local evidence (and the account mapping each transaction was posted with).
+    const dels = events.length
+      ? await db
+          .select()
+          .from(deliveries)
+          .where(
+            and(
+              eq(deliveries.integrationId, integ!.id),
+              inArray(
+                deliveries.sourceId,
+                events.map((e) => e.id),
+              ),
+            ),
+          )
+      : [];
+    // Each transaction is verified against the mapping it was posted with (a later mapping change never makes
+    // a correct historical entry look wrong); not-yet-posted transactions against the current mapping.
+    const current = config.accountMap as QboAccountMap;
+    const mapFor = (eventId: string): QboAccountMap => {
+      const used = (dels.find((d) => d.sourceId === eventId)?.summary as { accounts?: Record<string, string> } | undefined)?.accounts;
+      if (!used) return current;
+      return Object.fromEntries(Object.entries(current).map(([code, v]) => [code, used[code] ? { qboId: used[code]!, name: v.name } : v]));
+    };
     // 2. Expected entries per event, from Stripe's current data (running artifact).
     const expected = new Map<
       string,
@@ -199,7 +222,7 @@ export async function scanLedgerlyReconciliation(p: {
           });
         else
           expected.set(e.id, {
-            payloads: r.entries.map((x) => m.toQbo(x, config.accountMap as QboAccountMap)),
+            payloads: r.entries.map((x) => m.toQbo(x, mapFor(e.id))),
             excluded: null,
             error: null,
           });
@@ -215,21 +238,6 @@ export async function scanLedgerlyReconciliation(p: {
     const qbo = new QuickBooksAccess(db, p.cipher, p.endpoints, integ!.tenantId);
     const docs = [...expected.values()].flatMap((x) => x.payloads.map((q) => q.DocNumber!));
     const books = docs.length ? await journalEntriesByDocNumber(qbo, docs) : [];
-    // 4. Local evidence.
-    const dels = events.length
-      ? await db
-          .select()
-          .from(deliveries)
-          .where(
-            and(
-              eq(deliveries.integrationId, integ!.id),
-              inArray(
-                deliveries.sourceId,
-                events.map((e) => e.id),
-              ),
-            ),
-          )
-      : [];
     const missing: string[] = [];
     const duplicates: string[] = [];
     const unresolved: string[] = [];

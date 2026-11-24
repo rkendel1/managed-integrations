@@ -224,6 +224,8 @@ export interface CustomerEvent {
   } | null;
   claim: { zeroLoss: boolean; statement: string | null; basis: string };
   customerAction: { required: boolean; text: string | null };
+  /** A question only the customer may answer (slice 7): offered options, in business terms. */
+  decision: { id: string; question: string; options: { id: string; label: string; detail?: string }[] } | null;
   timeline: TimelineItem[];
 }
 
@@ -433,6 +435,26 @@ function findingFacts(inc: IncidentRow, w: Words): { label: string; value: strin
       },
     ];
   }
+  if (Array.isArray(f['inactiveAccounts'])) {
+    const names = (f['inactiveAccounts'] as { name: string }[]).map((a) => a.name).join(', ');
+    return [
+      { label: 'Change detected', value: `An account in ${w.destination} that your entries post to (${names}) was made inactive, so ${w.destination} stopped accepting them.` },
+      { label: 'Why it mattered', value: `Those ${w.many} could not be recorded. We held them safely instead of losing them.` },
+    ];
+  }
+  if (Array.isArray(f['journalEntryIds'])) {
+    return [
+      { label: 'Change detected', value: `${w.destination} accepted entries we wrote, but now keeps different accounts or amounts for them.` },
+      { label: 'Why it mattered', value: `Your books may not match ${w.source} for these ${w.many}. We have not changed anything in ${w.destination}.` },
+    ];
+  }
+  if (f['provider'] === 'netsuite' && f['requiredField']) {
+    return [
+      { label: 'Change detected', value: `${w.destination} now requires a ${String(f['requiredField']).toLowerCase()} on every ${w.record}, which your integration did not send.` },
+      { label: 'Why it mattered', value: `${w.destination} refused those ${w.many}. We held them safely instead of losing them.` },
+    ];
+  }
+  if (!('observed' in f && 'expected' in f)) return [{ label: 'What happened', value: inc.customerSummary ?? inc.title }];
   const finding = f as unknown as Finding;
   const what = finding.observed.violations.map((v) => labelOf(v.path)).join(' and ');
   const version =
@@ -459,7 +481,18 @@ function findingFacts(inc: IncidentRow, w: Words): { label: string; value: strin
 }
 
 /** A maintenance event as the customer sees it — derived entirely from persisted facts. */
-export function presentEvent(inc: IncidentRow, events: EventRow[], w: Words = SHOPIFY_WORDS): CustomerEvent {
+export interface PendingDecision {
+  id: string;
+  question: string;
+  options: { id: string; label: string; detail?: string }[];
+}
+
+export function presentEvent(
+  inc: IncidentRow,
+  events: EventRow[],
+  w: Words = SHOPIFY_WORDS,
+  pendingDecision: PendingDecision | null = null,
+): CustomerEvent {
   const finding = (inc.finding as Record<string, unknown> | null) ?? null;
   const shopifyFinding =
     finding && 'observed' in finding && 'expected' in finding ? (finding as unknown as Finding) : null;
@@ -591,6 +624,7 @@ export function presentEvent(inc: IncidentRow, events: EventRow[], w: Words = SH
           : 'Not claimed: transaction accounting is not complete.',
     },
     customerAction: { required: needsYou, text: needsYou ? (inc.customerAction ?? null) : null },
+    decision: !resolved ? pendingDecision : null,
     timeline: events
       .filter((e) => e.customerVisible)
       .sort((x, y) => x.createdAt.getTime() - y.createdAt.getTime())

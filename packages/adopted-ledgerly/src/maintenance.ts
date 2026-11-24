@@ -55,6 +55,7 @@ import {
 import { upstreamDir } from './artifact.ts';
 import { LEDGERLY_FLOW_TYPE } from './contract.ts';
 import { STRIPE_QUICKBOOKS } from './descriptor.ts';
+import { advanceDestinationMismatch, advanceTargetContract } from './target.ts';
 import { QuickBooksAccess, loadConnection, stripeFor } from './providers.ts';
 import { LedgerlyReconciliationBusy, recoverLedgerlyItem, startLedgerlyReconciliation } from './reconcile.ts';
 
@@ -62,7 +63,7 @@ export type LedgerlyAdvance = {
   state: 'continue' | 'wait' | 'escalated' | 'resolved' | 'noop';
   detail: string;
 };
-interface Progress {
+export interface Progress {
   phase?: 'release' | 'await_release' | 'reconcile' | 'await_reconcile' | 'verify' | 'await_verify';
   released?: string[];
   reconcileRunId?: string;
@@ -250,7 +251,7 @@ async function accountFor(
 
 /* ================================================================== shared tail: release → reconcile → recover → verify → account */
 
-async function recoverAndVerify(
+export async function recoverAndVerify(
   deps: MaintainDeps,
   inc: IncidentRow,
   prog: Progress,
@@ -713,6 +714,8 @@ export async function advanceLedgerlyMaintenance(
   if (inc.kind === 'connection_auth') return advanceReauthorization(deps, inc, prog);
   if (inc.kind === 'dependency_contract_change') return advanceDependency(deps, inc, prog);
   if (inc.kind === 'input_contract_change') return advanceInputContract(deps, inc);
+  if (inc.kind === 'target_contract_change') return advanceTargetContract(deps, inc, prog);
+  if (inc.kind === 'destination_mismatch') return advanceDestinationMismatch(deps, inc);
   return { state: 'noop', detail: `no driver for ${inc.kind}` };
 }
 

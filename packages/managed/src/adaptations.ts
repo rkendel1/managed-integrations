@@ -14,7 +14,14 @@
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { adaptations, auditLog, integrations, type Db } from '@mi/database';
 
-export const ADAPTATION_KINDS = ['adapter', 'patch', 'unsupported'] as const;
+/**
+ * adapter       — bounded translation at an integration edge (source input or target request), adopted code unchanged;
+ * patch         — reviewed change to adopted code (content-addressed copy; operator activation);
+ * configuration — controlled change of an explicitly supported runtime setting (e.g. account mapping, subsidiary);
+ * decision      — a choice only a person may make (business meaning, financial treatment, legal entity);
+ * unsupported   — no correction; affected work stays held, the reason is recorded.
+ */
+export const ADAPTATION_KINDS = ['adapter', 'patch', 'configuration', 'decision', 'unsupported'] as const;
 export type AdaptationKind = (typeof ADAPTATION_KINDS)[number];
 export const ADAPTATION_STATUSES = [
   'proposed',
@@ -82,6 +89,10 @@ export interface AdaptationRecordInput {
   integrationId: string;
   maintenanceEventId?: string | null;
   kind: AdaptationKind;
+  /** The component whose change this answers (slice 7). Defaults to source. */
+  boundary?: 'source' | 'integration' | 'target' | 'combined';
+  /** Affected operations / transactions. */
+  impact?: Record<string, unknown>;
   /** The adopted artifact it applies to (repository, commit, package). */
   artifact: Record<string, unknown>;
   dependency: Record<string, unknown>;
@@ -106,6 +117,8 @@ export async function recordAdaptation(db: Db, p: AdaptationRecordInput): Promis
       maintenanceEventId: p.maintenanceEventId ?? null,
       kind: p.kind,
       status,
+      boundary: p.boundary ?? 'source',
+      impact: p.impact ?? {},
       artifact: p.artifact,
       dependency: p.dependency,
       codePath: p.codePath,
@@ -238,6 +251,10 @@ export interface RuntimeHooks {
   scopeKey(row: AdaptationRow): string;
   /** Builds the runtime a set of active corrections produces; must throw if it cannot load. */
   loadRuntime(rows: AdaptationRow[]): Promise<unknown>;
+  /** Configuration corrections: make the setting take effect (before the row becomes active). */
+  apply?(row: AdaptationRow): Promise<void>;
+  /** Configuration corrections: restore the previous setting (before the row is rolled back). */
+  revert?(row: AdaptationRow): Promise<void>;
 }
 
 export async function activateAdaptation(
@@ -267,9 +284,20 @@ export async function activateAdaptation(
     );
   // The runtime it produces must load before anything switches.
   await hooks.loadRuntime([...active, row]);
-  return transitionAdaptation(db, adaptationId, ['validated'], 'active', actor, note, {
-    activatedAt: new Date(),
-  });
+  // A configuration correction changes a setting: it takes effect first; if the row cannot become active the
+  // setting is restored, so the setting and the correction's status never disagree.
+  if (row.kind === 'configuration') {
+    if (!hooks.apply) throw new AdaptationError('CONFLICT', 'This integration cannot apply configuration corrections');
+    await hooks.apply(row);
+  }
+  try {
+    return await transitionAdaptation(db, adaptationId, ['validated'], 'active', actor, note, {
+      activatedAt: new Date(),
+    });
+  } catch (err) {
+    if (row.kind === 'configuration') await hooks.revert?.(row);
+    throw err;
+  }
 }
 
 export async function rollbackAdaptation(
@@ -277,7 +305,7 @@ export async function rollbackAdaptation(
   adaptationId: string,
   actor: string,
   reason: string,
-  hooks: Pick<RuntimeHooks, 'loadRuntime'>,
+  hooks: Pick<RuntimeHooks, 'loadRuntime' | 'revert'>,
 ): Promise<AdaptationRow> {
   const [row] = await db.select().from(adaptations).where(eq(adaptations.id, adaptationId));
   if (!row) throw new AdaptationError('NOT_FOUND', 'Adaptation not found');
@@ -295,6 +323,10 @@ export async function rollbackAdaptation(
       'CONFLICT',
       `Rollback refused: the previous runtime does not load (${err instanceof Error ? err.message : String(err)}); the correction stays active`,
     );
+  }
+  if (row.kind === 'configuration') {
+    if (!hooks.revert) throw new AdaptationError('CONFLICT', 'This integration cannot revert configuration corrections');
+    await hooks.revert(row);
   }
   return transitionAdaptation(db, adaptationId, ['active'], 'rolled_back', actor, reason, {
     rolledBackAt: new Date(),
@@ -327,4 +359,85 @@ export async function recordPostActivation(
       updatedAt: new Date(),
     })
     .where(eq(adaptations.id, adaptationId));
+}
+
+/* ================================================================== decisions (slice 7) */
+
+export interface DecisionOption {
+  id: string;
+  label: string;
+  detail?: string;
+}
+export interface DecisionSpec {
+  question: string;
+  options: DecisionOption[];
+  /** Who may decide: the customer (business meaning, financial treatment) or an operator. */
+  authority: 'customer' | 'operator';
+  choice?: string;
+  decidedBy?: string;
+  decidedAt?: string;
+}
+
+/** Records a question only a person may answer, as a correction of kind `decision` (proposed until decided). */
+export async function requestDecision(
+  db: Db,
+  p: Omit<AdaptationRecordInput, 'kind' | 'spec' | 'artifact' | 'codePath' | 'dependency'> & {
+    dependency?: Record<string, unknown>;
+    question: string;
+    options: DecisionOption[];
+    authority: 'customer' | 'operator';
+    artifact?: Record<string, unknown>;
+  },
+) {
+  return recordAdaptation(db, {
+    ...p,
+    kind: 'decision',
+    dependency: p.dependency ?? {},
+    artifact: p.artifact ?? {},
+    codePath: {},
+    spec: { question: p.question, options: p.options, authority: p.authority } satisfies DecisionSpec,
+  });
+}
+
+/**
+ * Records the decision. Customers may decide only what is theirs to decide; operators may decide operator
+ * questions (and are refused customer ones — they are not the customer). The choice must be one of the
+ * offered options. History keeps who decided, when, and what.
+ */
+export async function decide(
+  db: Db,
+  adaptationId: string,
+  p: { optionId: string; actor: string; role: 'customer' | 'operator'; tenantId?: string | null },
+) {
+  const [row] = await db.select().from(adaptations).where(eq(adaptations.id, adaptationId));
+  if (!row || row.kind !== 'decision') throw new AdaptationError('NOT_FOUND', 'Decision not found');
+  if (p.role === 'customer' && row.tenantId !== p.tenantId) throw new AdaptationError('NOT_FOUND', 'Decision not found');
+  const spec = row.spec as unknown as DecisionSpec;
+  if (spec.authority !== p.role)
+    throw new AdaptationError('CONFLICT', `This decision belongs to the ${spec.authority}`);
+  const option = spec.options.find((o) => o.id === p.optionId);
+  if (!option) throw new AdaptationError('INVALID', 'Not one of the offered options');
+  const decided: DecisionSpec = { ...spec, choice: option.id, decidedBy: p.actor, decidedAt: new Date().toISOString() };
+  // A decision is "validated" by being one of the offered, evidence-backed options; it becomes active when made.
+  return transitionAdaptation(db, adaptationId, ['proposed'], 'active', p.actor, `Decided: ${option.label}`, {
+    spec: decided as unknown as Record<string, unknown>,
+    validation: {
+      passed: true,
+      requiresDecision: false,
+      checks: [{ name: 'decided by the authorized party', status: 'passed', detail: `${p.role} chose "${option.label}"` }],
+      postActivation: null,
+      artifact: { before: '', after: '' },
+      validatedAt: new Date().toISOString(),
+    },
+    activatedAt: new Date(),
+  });
+}
+
+/** Corrections of one maintenance event (a window can need several, each independently reviewable). */
+export async function correctionsOf(db: Db, maintenanceEventId: string) {
+  return db
+    .select()
+    .from(adaptations)
+    .where(eq(adaptations.maintenanceEventId, maintenanceEventId))
+    .orderBy(asc(adaptations.createdAt));
 }

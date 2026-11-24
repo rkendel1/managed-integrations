@@ -137,6 +137,7 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
   /* ------------------------------ AppPort: capabilities + MCP ------------------------------ */
   const appPort = createApiAppPortRuntime({
     registry,
+    enqueueMaintenance: services.enqueueMaintenance,
     db: deps.db,
     logger: pinoToAppPortLogger({
       debug: (obj, msg) => app.log.debug(obj, msg),

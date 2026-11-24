@@ -28,6 +28,7 @@ import type { IntegrationRegistry } from '@mi/managed';
 import {
   createMaintenanceEventGetCapability,
   createMaintenanceEvidenceCapability,
+  createMaintenanceDecideCapability,
   createPortfolioIntegrationCapability,
   createPortfolioListCapability,
 } from './capabilities/product.ts';
@@ -70,6 +71,8 @@ export interface IntegrationsApplicationOptions {
   enqueueAdaptationValidation?: EnqueueAdaptationValidation;
   /** The managed integrations and their runtimes, by flow type (host-provided; slice 6). */
   registry?: IntegrationRegistry;
+  /** Queues a maintenance event to continue (host-provided; slice 7 decisions). */
+  enqueueMaintenance?: (incidentId: string) => Promise<void>;
   /** How often the worker reconciles (stated to customers as a responsibility). */
   reconcileIntervalMinutes?: number;
   /** Receives one record per capability invocation (persisted as invocation evidence). */
@@ -104,6 +107,7 @@ export function createIntegrationsApplication(options: IntegrationsApplicationOp
       createAdaptationRollbackCapability(options.registry),
       createAdaptationRejectCapability(options.registry),
       createMonitoringCapability(options.db),
+      createMaintenanceDecideCapability(options.db, options.enqueueMaintenance),
     ],
     authorizer: combineAuthorizers([integrationsAuthorizer(), resourceTenantAuthorizer(options.db)]),
     ...(options.telemetry ? { telemetry: options.telemetry } : {}),

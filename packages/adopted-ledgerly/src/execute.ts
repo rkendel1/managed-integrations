@@ -21,7 +21,7 @@ import {
   type Db,
 } from '@mi/database';
 import type { CredentialCipher, ProviderEndpointConfig } from '@mi/integration-shopify-netsuite';
-import { claimDelivery, type ExecutionTrigger } from '@mi/managed';
+import { claimDelivery, observeContract, type ExecutionTrigger } from '@mi/managed';
 import { describeError, redact } from '@mi/observability';
 import { runtimeFor } from './adaptation.ts';
 import type { LedgerlyEntry, QboAccountMap } from './artifact.ts';
@@ -47,6 +47,10 @@ export type LedgerlyExecuteResult =
       journalEntryIds: string[];
       lost?: 'stripe' | 'quickbooks';
       missingField?: string;
+      /** QuickBooks refused the write for a reason in the target's contract (e.g. an inactive account). */
+      targetFault?: { code: string; detail: string; accountIds: string[] };
+      /** The write succeeded, but the record QuickBooks keeps differs from what was sent. */
+      destinationMismatch?: { journalEntryIds: string[]; detail: string };
     };
 
 const silent = { info() {}, warn() {}, error() {}, debug() {} };
@@ -90,8 +94,29 @@ export async function executeLedgerlyDelivery(p: {
   let found: string[] = [];
   let lost: 'stripe' | 'quickbooks' | undefined;
   let missingField: string | undefined;
+  let targetFault: { code: string; detail: string; accountIds: string[] } | undefined;
+  let destinationMismatch: { journalEntryIds: string[]; detail: string } | undefined;
+  const accountMap = config.accountMap as QboAccountMap;
   try {
     const { event } = await payloadOfReceipt(db, p.cipher, claimed.receiptId!);
+    // Source boundary: what this event type looks like as received (fields, not values).
+    await observeContract(db, {
+      integrationId: integ!.id,
+      boundary: 'source',
+      contract: `stripe.event.${event.type}`,
+      version: (event as { api_version?: string }).api_version ?? null,
+      shape: Object.keys(event.data.object).sort(),
+      sample: { eventId: event.id },
+    });
+    // Integration boundary: which immutable artifact (and corrections) executed it.
+    await observeContract(db, {
+      integrationId: integ!.id,
+      boundary: 'integration',
+      contract: 'ledgerly.artifact',
+      version: runtime.artifact.id,
+      shape: runtime.artifact.id,
+      sample: { adaptations: runtime.adaptationIds },
+    });
     const stripe = await stripeFor(db, p.cipher, p.endpoints, integ!.tenantId);
     // ---- upstream: expand, then map ----
     const expanded = await m.expandEvent(stripe.sdk, event);
@@ -137,12 +162,40 @@ export async function executeLedgerlyDelivery(p: {
           fetch: ((url: string, init: RequestInit) => qbo.fetch(url, init)) as typeof fetch,
           log: silent,
         });
-        for (const [i, entry] of toPost.entries())
-          await dispatch({ id: `${claimed.id}:${i}`, entry, subscriptionId: null });
+        try {
+          for (const [i, entry] of toPost.entries())
+            await dispatch({ id: `${claimed.id}:${i}`, entry, subscriptionId: null });
+        } catch (err) {
+          const fault = targetFaultOf(describeError(err).message);
+          if (fault) {
+            targetFault = { ...fault, accountIds: [...new Set(toPost.flatMap((e) => e.lines.map((l) => accountMap[l.accountCode]?.qboId ?? '')))] };
+            throw Object.assign(err as Error, { mi: 'target_contract' });
+          }
+          throw err;
+        }
+        // Independent of the successful response: read back what QuickBooks KEEPS and compare with what was sent.
         const after = await journalEntriesByDocNumber(qbo, docNumbersOf(toPost));
         posted = after.map((e) => e.Id);
+        const sent = toPost.map((e) => m.toQbo(e, accountMap));
+        const differ = sent.filter((q) => {
+          const kept = after.find((a) => a.DocNumber === q.DocNumber);
+          return !kept || lineKey(kept.Line) !== lineKey(q.Line);
+        });
+        if (differ.length)
+          destinationMismatch = {
+            journalEntryIds: after.filter((a) => differ.some((d) => d.DocNumber === a.DocNumber)).map((a) => a.Id),
+            detail: `${differ.length} entr${differ.length === 1 ? 'y' : 'ies'} accepted, but QuickBooks keeps different accounts or amounts than were sent`,
+          };
       }
       outcome = 'delivered';
+      await observeContract(db, {
+        integrationId: integ!.id,
+        boundary: 'target',
+        contract: 'quickbooks.journalentry.write',
+        version: 'v3',
+        shape: destinationMismatch ? 'accepted-altered' : 'accepted',
+        sample: { deliveryId: claimed.id },
+      });
     }
   } catch (err) {
     const tag = (err as { mi?: string }).mi;
@@ -154,6 +207,18 @@ export async function executeLedgerlyDelivery(p: {
     } else if (tag === 'input_contract') {
       outcome = 'held';
       errorClass = 'input_contract';
+    } else if (tag === 'target_contract') {
+      // Not a fault of this transaction: the target no longer accepts what it accepted before. Held, not lost.
+      outcome = 'held';
+      errorClass = 'target_contract';
+      await observeContract(db, {
+        integrationId: integ!.id,
+        boundary: 'target',
+        contract: 'quickbooks.journalentry.write',
+        version: 'v3',
+        shape: `refused:${targetFault!.code}`,
+        sample: { deliveryId: claimed.id, detail: targetFault!.detail },
+      });
     } else if (tag === 'refused_by_upstream' || /QBO API returned 400/.test(message)) {
       outcome = 'rejected';
       errorClass = 'invalid_data';
@@ -189,7 +254,11 @@ export async function executeLedgerlyDelivery(p: {
           debitMinor: debit,
           currency: entries[0]?.currency ?? null,
           docNumbers: docNumbersOf(entries),
+          // The account mapping this transaction was posted with: verification checks it against THIS mapping, so
+          // a later mapping change never makes correct historical entries look wrong.
+          accounts: Object.fromEntries(Object.entries(accountMap).map(([k, v]) => [k, v.qboId])),
         },
+        ...(destinationMismatch ? { validation: { destinationMismatch } } : {}),
         ...(outcome === 'delivered' ? { deliveredAt: finishedAt } : {}),
         updatedAt: finishedAt,
       })
@@ -212,6 +281,8 @@ export async function executeLedgerlyDelivery(p: {
         entries: entries.length,
         journalEntries: { alreadyPresent: found, posted },
         ...(missingField ? { missingField } : {}),
+        ...(targetFault ? { targetFault } : {}),
+        ...(destinationMismatch ? { destinationMismatch } : {}),
       },
       startedAt,
       finishedAt,
@@ -243,5 +314,25 @@ export async function executeLedgerlyDelivery(p: {
     journalEntryIds: destination,
     ...(lost ? { lost } : {}),
     ...(missingField ? { missingField } : {}),
+    ...(targetFault ? { targetFault } : {}),
+    ...(destinationMismatch ? { destinationMismatch } : {}),
   };
+}
+
+const lineKey = (lines: { Amount: number; JournalEntryLineDetail: { PostingType: string; AccountRef: { value: string } } }[]) =>
+  JSON.stringify(lines.map((l) => [l.JournalEntryLineDetail.PostingType, l.JournalEntryLineDetail.AccountRef.value, Math.round(l.Amount * 100)]).sort());
+
+/**
+ * Target-contract refusals (the target's rules changed, not this transaction's data), from the QuickBooks fault
+ * upstream's dispatcher reports: 610 "Object Not Found" for an entity that was made inactive.
+ */
+export function targetFaultOf(message: string): { code: string; detail: string } | null {
+  const json = message.slice(message.indexOf('{'));
+  try {
+    const f = (JSON.parse(json.replace(/\.\.\.$/, '')) as { Fault?: { Error?: { code?: string; Detail?: string }[] } }).Fault?.Error?.[0];
+    if (f?.code === '610') return { code: '610', detail: f.Detail ?? 'made inactive' };
+  } catch {
+    if (/"code":"610"/.test(message)) return { code: '610', detail: 'made inactive' };
+  }
+  return null;
 }
