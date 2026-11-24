@@ -74,6 +74,8 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
       ['103', 'SKU-GREEN'],
     ]),
     subsidiaries: new Set<string>(['1']),
+    /** Subsidiary names (OneWorld), for SuiteQL `SELECT id, name FROM subsidiary` (slice 7). */
+    subsidiaryNames: new Map<string, string>([['1', 'Bluewave Holdings']]),
     oneWorld: opts.oneWorld ?? true,
     mandatoryBodyFields: [] as string[],
     concurrencyLimit: opts.concurrencyLimit ?? 5,
@@ -357,6 +359,7 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
   /** Lookups by business key with inline, quote-escaped literals. */
   const SUITEQL_CUSTOMER_BY_CODE = /^SELECT id, entityid FROM customer WHERE entityid IN \((.+)\)$/;
   const SUITEQL_ITEM_BY_CODE = /^SELECT id, itemid FROM item WHERE itemid IN \((.+)\)$/;
+  const SUITEQL_SUBSIDIARIES = /^SELECT id, name FROM subsidiary WHERE isinactive = 'F' ORDER BY id$/;
   const parseLiterals = (list: string): string[] =>
     [...list.matchAll(/'((?:[^']|'')*)'/g)].map((m) => m[1]!.replace(/''/g, "'"));
   const SUITEQL_PREFIX =
@@ -410,6 +413,8 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
         rows = [...state.customerCodes]
           .filter(([, code]) => codes.has(code))
           .map(([id, entityid]) => ({ id, entityid }));
+      } else if (SUITEQL_SUBSIDIARIES.test(s)) {
+        rows = [...state.subsidiaries].map((id) => ({ id, name: state.subsidiaryNames.get(id) ?? `Subsidiary ${id}` }));
       } else if ((m = s.match(SUITEQL_ITEM_BY_CODE))) {
         const codes = new Set(parseLiterals(m[1]!));
         rows = [...state.itemCodes]

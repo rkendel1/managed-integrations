@@ -12,6 +12,7 @@ import {
   executeRecovery,
   ingestShopifyWebhook,
   recordInputContractFinding,
+  recordTargetRequirement,
   scanReconciliation,
   type ExecutionTrigger,
 } from '@mi/adopted-order-sync';
@@ -56,12 +57,16 @@ export function maintenanceKit(h: Harness, a: Adopted, clients: Clients) {
       deliveryId: r.deliveryId!,
       trigger: { kind: 'webhook' },
     });
-    // What the worker does with a held result.
+    // What the worker does with a held result (slice 7: a NetSuite requirement is a target change).
+    const target =
+      exec.executed && exec.outcome === 'held' && exec.errorClass === 'target_contract'
+        ? await recordTargetRequirement(db, r.deliveryId!, exec.requiredField ?? 'a field', exec.message ?? '')
+        : null;
     const finding =
-      exec.executed && exec.outcome === 'held'
+      exec.executed && exec.outcome === 'held' && !target
         ? await recordInputContractFinding(db, testCipher, r.deliveryId!)
         : null;
-    return { deliveryId: r.deliveryId!, exec, finding };
+    return { deliveryId: r.deliveryId!, exec, finding, target };
   }
   /** Plays the worker: advances the event and runs whatever it enqueued, until it settles. */
   async function drive(incidentId: string) {

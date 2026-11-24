@@ -64,6 +64,8 @@ export type ExecuteResult =
       upstream: UpstreamSyncResult | null;
       errorClass: string | null;
       message: string | null;
+      /** slice 7: the field NetSuite now requires (target contract change), when that held the order. */
+      requiredField?: string | null;
     };
 
 export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> {
@@ -79,6 +81,7 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
   let outcome: 'delivered' | 'rejected' | 'failed' | 'held';
   let errorClass: string | null = null;
   let message: string | null = null;
+  let requiredField: string | null = null;
   let violations: ContractViolation[] | undefined;
   let compatApplied: { target: string; source: string; count: number }[] = [];
   let apiVersion: string | null = null;
@@ -133,11 +136,21 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
       throw Object.assign(new Error(describeError(err).message), { mi: 'invalid_data' });
     }
     const m = runtime.artifact.modules;
-    upstream = await m.syncOrder(m.createNetSuiteAdapter({ baseUrl: conn.baseUrl, accessToken }), order);
+    upstream = await m.syncOrder(
+      m.createNetSuiteAdapter({ baseUrl: conn.baseUrl, accessToken, ...(config.subsidiaryId ? { subsidiaryId: config.subsidiaryId } : {}) }),
+      order,
+    );
     // ---- end upstream ----
 
     if (upstream.status === 'created' || upstream.status === 'duplicate') {
       outcome = 'delivered';
+    } else if (upstream.status === 'rejected' && /Please enter value\(s\) for: /.test(upstream.message ?? '')) {
+      // slice 7: NetSuite now requires a field the adopted code does not send (a target contract change, not
+      // bad data): nothing was created; the order is held for maintenance instead of being rejected.
+      outcome = 'held';
+      errorClass = 'target_contract';
+      message = upstream.message;
+      requiredField = /Please enter value\(s\) for: ([^.]+)/.exec(upstream.message!)?.[1]?.trim() ?? null;
     } else if (upstream.status === 'rejected') {
       outcome = 'rejected';
       errorClass = 'invalid_data';
@@ -173,6 +186,7 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
         }
       : null,
     ...(compatApplied.length ? { inputCompatApplied: compatApplied } : {}),
+    ...(requiredField ? { targetRequirement: { provider: 'netsuite', requiredField, message } } : {}),
     ...(violations ? { contractViolations: violations } : {}),
   };
   await db.transaction(async (tx) => {
@@ -228,6 +242,7 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
     errorClass,
     message,
     ...(violations ? { violations } : {}),
+    ...(requiredField ? { requiredField } : {}),
   };
 }
 

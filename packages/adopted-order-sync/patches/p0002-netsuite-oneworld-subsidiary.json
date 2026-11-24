@@ -1,0 +1,38 @@
+{
+  "id": "p0002-netsuite-oneworld-subsidiary",
+  "title": "Send the subsidiary NetSuite OneWorld requires on every sales order",
+  "artifact": {
+    "repository": "https://github.com/Milo-ai-HQ/shopify-erp-order-sync",
+    "commit": "d01b51d95993598580cdcffda6537a6f20a10a3a"
+  },
+  "file": "src/adapters/netsuite.js",
+  "baseSha256": "871866d6ea5fe946d2c57006589a47ba847251f2c21fbb98b2a83ebb55a1eaed",
+  "resultSha256": "07461965080134ae8873d5e139fc6b2e9e71eaaf4c1516ae7a31de0ac4ccacef",
+  "find": "export function createNetSuiteAdapter({ baseUrl, accessToken }) {\n  const call = (path, opts = {}) =>\n    requestJson(`${baseUrl}${path}`, {\n      ...opts,\n      headers: { Authorization: `Bearer ${accessToken}`, Prefer: 'transient' },\n      erp: 'netsuite',\n      extractError,\n    });\n\n  const suiteql = async (q) => (await call('/services/rest/query/v1/suiteql', { method: 'POST', body: { q } })).data.items;\n  const inList = (values) => values.map((v) => `'${String(v).replace(/'/g, \"''\")}'`).join(', ');\n\n  return {\n    name: 'netsuite',\n\n    async findExisting() {\n      return null; // handled by the external-id upsert\n    },\n\n    async create(order) {\n      const [customer] = await suiteql(`SELECT id, entityid FROM customer WHERE entityid IN (${inList([order.customerCode])})`);\n      const items = await suiteql(`SELECT id, itemid FROM item WHERE itemid IN (${inList(order.lines.map((l) => l.sku))})`);\n      const itemId = Object.fromEntries(items.map((i) => [i.itemid, i.id]));\n      const missing = order.lines.filter((l) => !itemId[l.sku]).map((l) => l.sku);\n      if (!customer) throw notFound(`Customer ${order.customerCode} not found in NetSuite`);\n      if (missing.length) throw notFound(`Items not found in NetSuite: ${missing.join(', ')}`);\n\n      const { headers } = await call(`/services/rest/record/v1/salesOrder/eid:${order.externalId}`, {\n        method: 'PUT',\n        body: {\n          entity: { id: customer.id },",
+  "replace": "// p0002 (Managed Integrations, reviewed): NetSuite OneWorld requires a subsidiary on every sales order.\n// The subsidiary is a business choice of the account owner, passed in as an option; without it the\n// request is exactly the original one.\nexport function createNetSuiteAdapter({ baseUrl, accessToken, subsidiaryId }) {\n  const call = (path, opts = {}) =>\n    requestJson(`${baseUrl}${path}`, {\n      ...opts,\n      headers: { Authorization: `Bearer ${accessToken}`, Prefer: 'transient' },\n      erp: 'netsuite',\n      extractError,\n    });\n\n  const suiteql = async (q) => (await call('/services/rest/query/v1/suiteql', { method: 'POST', body: { q } })).data.items;\n  const inList = (values) => values.map((v) => `'${String(v).replace(/'/g, \"''\")}'`).join(', ');\n\n  return {\n    name: 'netsuite',\n\n    async findExisting() {\n      return null; // handled by the external-id upsert\n    },\n\n    async create(order) {\n      const [customer] = await suiteql(`SELECT id, entityid FROM customer WHERE entityid IN (${inList([order.customerCode])})`);\n      const items = await suiteql(`SELECT id, itemid FROM item WHERE itemid IN (${inList(order.lines.map((l) => l.sku))})`);\n      const itemId = Object.fromEntries(items.map((i) => [i.itemid, i.id]));\n      const missing = order.lines.filter((l) => !itemId[l.sku]).map((l) => l.sku);\n      if (!customer) throw notFound(`Customer ${order.customerCode} not found in NetSuite`);\n      if (missing.length) throw notFound(`Items not found in NetSuite: ${missing.join(', ')}`);\n\n      const { headers } = await call(`/services/rest/record/v1/salesOrder/eid:${order.externalId}`, {\n        method: 'PUT',\n        body: {\n          entity: { id: customer.id },\n          ...(subsidiaryId ? { subsidiary: { id: String(subsidiaryId) } } : {}),",
+  "addresses": {
+    "provider": "netsuite",
+    "contract": "salesOrder write: required fields",
+    "requiredField": "Subsidiary"
+  },
+  "precision": {},
+  "reason": "In a NetSuite OneWorld account every transaction belongs to a subsidiary, and NetSuite refuses a sales order without one (USER_ERROR \"Please enter value(s) for: Subsidiary\"). The adopted adapter sends entity, date, reference, memo and items, and has no way to send a subsidiary: every order is refused once the account is OneWorld.",
+  "originalBehavior": "PUT /record/v1/salesOrder/eid:\u2026 with entity, tranDate, otherRefNum, memo, item.items \u2014 no subsidiary",
+  "replacementBehavior": "the same body plus subsidiary: { id } when the adapter is given subsidiaryId (the customer's choice, from the integration configuration); without the option the request is byte-for-byte the original",
+  "providerEvidence": [
+    "https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_N261452.html (OneWorld: subsidiaries on transactions)",
+    "https://system.netsuite.com/help/helpcenter/en_US/APIs/REST_API_Browser/record/v1/2024.2/index.html#/definitions/salesOrder (subsidiary field)",
+    "NetSuite USER_ERROR \"Please enter value(s) for: Subsidiary\" observed on the customer's own refused orders"
+  ],
+  "assumptions": [
+    "One subsidiary for all orders of this store (the customer's decision); per-order subsidiaries are not supported.",
+    "The subsidiary is active and accepts the order's customer and items (checked in validation and verified after)."
+  ],
+  "validation": [
+    "every held order produces a request whose body equals the unpatched body plus exactly the chosen subsidiary",
+    "with no subsidiary configured the patched adapter sends the original request",
+    "the chosen subsidiary is an active NetSuite subsidiary",
+    "the previous artifact still loads (rollback target)"
+  ],
+  "rollback": "Roll back the correction: the original adapter runs again; orders already created keep their subsidiary."
+}

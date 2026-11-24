@@ -329,6 +329,7 @@ export function createMaintenanceEvidenceCapability(
     output: s.object({
       event: eventSchema,
       boundary: s.nullable(s.string()),
+      provider: s.nullable(s.string()),
       impactAssessment: s.unknown(),
       corrections: s.unknown(),
       kind: s.string(),
@@ -355,11 +356,13 @@ export function createMaintenanceEvidenceCapability(
       return {
         event: presentEvent(inc, events, await wordsForIntegration(db, inc.integrationId!), decision),
         boundary: inc.boundary,
+        provider: inc.provider ?? null,
         impactAssessment: inc.impactAssessment,
         corrections: (await correctionsOf(db, inc.id)).map((c) => ({
           id: c.id,
           kind: c.kind,
           boundary: c.boundary,
+          provider: c.provider ?? null,
           status: c.status,
           rationale: c.rationale,
           spec: c.spec,

@@ -129,7 +129,7 @@ describe('field-moved adapter (pure)', () => {
 describe('artifacts: what code runs', () => {
   it('the original artifact is the pinned upstream package; a patched artifact is a separate, content-addressed copy', async () => {
     const original = await loadArtifact([]);
-    const patched = await loadArtifact(patchCatalog());
+    const patched = await loadArtifact(patchCatalog().filter((p) => p.id === 'p0001-preserve-price-precision'));
     expect(original.id).toBe(`adopted:${ADOPTED.commit.slice(0, 12)}`);
     expect(patched.id).toBe(`adopted:${ADOPTED.commit.slice(0, 12)}+p0001`);
     expect(original.files).toEqual(ADOPTED.fileSha256 as unknown as Record<string, string>);

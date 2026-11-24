@@ -11,3 +11,4 @@ export * from './adaptation.ts';
 export * from './onboarding.ts';
 export * from './descriptor.ts';
 export * from './runtime.ts';
+export * from './target.ts';

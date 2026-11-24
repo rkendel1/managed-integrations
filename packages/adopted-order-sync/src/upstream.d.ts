@@ -26,7 +26,7 @@ declare module 'shopify-sync/src/webhook.js' {
 }
 declare module 'shopify-sync/src/adapters/netsuite.js' {
   import type { UpstreamAdapter } from 'shopify-sync/types';
-  export function createNetSuiteAdapter(options: { baseUrl: string; accessToken: string }): UpstreamAdapter;
+  export function createNetSuiteAdapter(options: { baseUrl: string; accessToken: string; subsidiaryId?: string }): UpstreamAdapter;
 }
 declare module 'shopify-sync/src/errors.js' {
   export class ErpError extends Error {

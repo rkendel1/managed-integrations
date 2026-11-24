@@ -17,7 +17,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { and, asc, desc, eq, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, lt, sql } from 'drizzle-orm';
 import { adaptations, deliveries, integrations, webhookReceipts, type Db } from '@mi/database';
 import {
   activateAdaptation as activateGeneric,
@@ -160,9 +160,43 @@ export function evaluateInput(payload: unknown, rt: Pick<RuntimeSelection, 'arti
 /** Which corrections may not be active together, and the runtime a set of them produces. */
 export const RUNTIME_HOOKS: RuntimeHooks = {
   scopeKey: (r: AdaptationRow) =>
-    r.kind === 'adapter' ? `a:${(r.spec as { target: string }).target}` : `p:${patchOf(r).file}`,
-  loadRuntime: (rows: AdaptationRow[]) => selectRuntime(rows),
+    r.kind === 'adapter'
+      ? `a:${(r.spec as { target: string }).target}`
+      : r.kind === 'patch'
+        ? `p:${patchOf(r).file}`
+        : `${r.kind}:${(r.spec as { type?: string }).type ?? r.id}`,
+  loadRuntime: (rows: AdaptationRow[]) => selectRuntime(rows.filter((r) => r.kind === 'adapter' || r.kind === 'patch')),
 };
+
+/** slice 7: a configuration correction — the NetSuite subsidiary orders are created in (customer decision). */
+export interface SubsidiaryConfigSpec {
+  type: 'subsidiary';
+  from: string | null;
+  to: string;
+  name: string;
+  decisionId: string;
+}
+
+/** Hooks bound to the database: configuration corrections change the integration's (versioned) configuration. */
+export function runtimeHooks(db: Db): RuntimeHooks {
+  const set = async (row: AdaptationRow, dir: 'apply' | 'revert') => {
+    const spec = row.spec as unknown as SubsidiaryConfigSpec;
+    await db.transaction(async (tx) => {
+      const [integ] = await tx.select().from(integrations).where(eq(integrations.id, row.integrationId)).for('update');
+      const config = integ!.config as { subsidiaryId?: string };
+      const expected = dir === 'apply' ? spec.from : spec.to;
+      // Never silently overwrite: the setting must still be what this correction was validated against.
+      if ((config.subsidiaryId ?? null) !== expected)
+        throw new AdaptationError('CONFLICT', `Subsidiary setting changed since validation (now ${config.subsidiaryId ?? 'none'})`);
+      const next = { ...config } as Record<string, unknown>;
+      const value = dir === 'apply' ? spec.to : spec.from;
+      if (value) next['subsidiaryId'] = value;
+      else delete next['subsidiaryId'];
+      await tx.update(integrations).set({ config: next, configVersion: sql`${integrations.configVersion} + 1`, updatedAt: new Date() }).where(eq(integrations.id, row.integrationId));
+    });
+  };
+  return { ...RUNTIME_HOOKS, apply: (r) => set(r, 'apply'), revert: (r) => set(r, 'revert') };
+}
 
 export interface ProposalInput {
   integrationId: string;
@@ -379,11 +413,11 @@ export async function activateAdaptation(
   note: string,
   opts: { acceptLimitations?: boolean } = {},
 ): Promise<AdaptationRow> {
-  return activateGeneric(db, adaptationId, actor, note, RUNTIME_HOOKS, opts);
+  return activateGeneric(db, adaptationId, actor, note, runtimeHooks(db), opts);
 }
 
 export async function rollbackAdaptation(db: Db, adaptationId: string, actor: string, reason: string) {
-  return rollbackGeneric(db, adaptationId, actor, reason, RUNTIME_HOOKS);
+  return rollbackGeneric(db, adaptationId, actor, reason, runtimeHooks(db));
 }
 
 export async function rejectAdaptation(db: Db, adaptationId: string, actor: string, reason: string) {

@@ -20,6 +20,8 @@ export const AdoptedConfigSchema = z.object({
   reconcileFrom: z.string().datetime({ offset: true }).optional(),
   /** Orders newer than this are not reconciled yet (their webhook may still be in flight). */
   reconcileGraceMinutes: z.number().int().min(0).max(1440).default(10),
+  /** slice 7: the NetSuite subsidiary orders are created in (OneWorld), chosen by the customer. */
+  subsidiaryId: z.string().min(1).optional(),
 });
 export type AdoptedConfig = z.infer<typeof AdoptedConfigSchema>;
 

@@ -4,7 +4,7 @@
  * AppPort capabilities (portfolio.list, portfolio.integration, maintenance.events.get) — the same ones MCP
  * exposes. Operators see the same event view plus the evidence behind it (maintenance.events.evidence).
  */
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { Card, CardBody, CardHeader, Empty, ErrorNote, StatusBadge, Table, Td } from '@/components/ui';
@@ -62,6 +62,48 @@ interface CustomerEvent extends Omit<EventSummary, 'zeroLoss'> {
   claim: { zeroLoss: boolean; statement: string | null; basis: string };
   customerAction: { required: boolean; text: string | null };
   timeline: TimelineItem[];
+  /** slice 7: a business question only the customer can answer, with the options found in their systems. */
+  decision?: { id: string; question: string; options: { id: string; label: string; detail?: string }[] } | null;
+}
+
+/** The customer answers the question the maintenance event is waiting for (maintenance.decide). */
+function DecisionPanel({ eventId, d }: { eventId: string; d: NonNullable<CustomerEvent['decision']> }) {
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const choose = async (optionId: string) => {
+    setBusy(optionId);
+    setError(null);
+    try {
+      await callCapability('maintenance.decide', { eventId, decisionId: d.id, optionId });
+      await qc.invalidateQueries({ queryKey: ['appport', 'maintenance.events.get'] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <div className="rounded-xl bg-amber-500/10 p-4 ring-1 ring-amber-500/20" data-testid="decision">
+      <p className="text-sm font-medium">{d.question}</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {d.options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void choose(o.id)}
+            data-option={o.label}
+            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50 dark:bg-white/10"
+          >
+            {busy === o.id ? 'Saving…' : o.label}
+            {o.detail ? <span className="ml-1 opacity-70">({o.detail})</span> : null}
+          </button>
+        ))}
+      </div>
+      {error ? <p className="mt-2 text-sm text-rose-600">{error}</p> : null}
+    </div>
+  );
 }
 
 const useCapability = <T,>(name: string, input: unknown, key: unknown[]) =>
@@ -528,6 +570,7 @@ export function EventView({ e }: { e: CustomerEvent }) {
             {e.headline}
           </h1>
           <p className={cn('mt-2 text-sm', soft)}>{e.summary}</p>
+          {e.decision ? <div className="mt-4"><DecisionPanel eventId={e.id} d={e.decision} /></div> : null}
         </div>
         <div className="border-t border-slate-100 pt-3 dark:border-white/5">
           <Prop label="Status">
@@ -682,6 +725,11 @@ interface Evidence {
   event: CustomerEvent;
   kind: string;
   status: string;
+  /** slice 7 */
+  boundary?: string | null;
+  provider?: string | null;
+  impactAssessment?: Record<string, unknown> | null;
+  corrections?: { id: string; kind: string; status: string; boundary: string; provider?: string | null; rationale: string; validation?: { passed?: boolean; checks?: { name: string; status: string; detail: string }[] } | null; spec?: Record<string, unknown> }[];
   finding: {
     expected: {
       contract: { path: string; expected: string; upstreamExpression: string; effect: string }[];
@@ -766,6 +814,53 @@ export function OpsMaintenanceEvent() {
         <StatusBadge value={d.status} />
       </p>
       <EventView e={d.event} />
+      <Card data-testid="evidence-boundary">
+        <CardHeader
+          title="What changed, and every correction"
+          description={`Boundary: ${d.boundary ?? '—'}${d.provider ? ` · provider: ${d.provider}` : ''} · ${d.kind}`}
+        />
+        <CardBody className="space-y-3 text-sm">
+          {d.impactAssessment ? (
+            <pre className="max-h-64 overflow-auto rounded bg-slate-50 p-2 font-mono text-xs dark:bg-white/5" data-testid="impact">
+              {JSON.stringify(d.impactAssessment, null, 2)}
+            </pre>
+          ) : (
+            <p className="text-slate-500">Impact not assessed yet.</p>
+          )}
+          {d.corrections?.length ? (
+            <Table head={['Kind', 'Boundary', 'Status', 'Why', 'Validation']}>
+              {d.corrections.map((c) => (
+                <tr key={c.id} data-correction={c.kind} data-status={c.status}>
+                  <td className="py-2 pr-3">{c.kind}</td>
+                  <td className="py-2 pr-3">{c.boundary}{c.provider ? ` (${c.provider})` : ''}</td>
+                  <td className="py-2 pr-3"><StatusBadge value={c.status} /></td>
+                  <td className="py-2 pr-3">{c.rationale}</td>
+                  <td className="py-2 pr-3 text-xs">
+                    {(c.validation?.checks ?? []).map((k) => (
+                      <div key={k.name}>
+                        {k.status === 'passed' ? '✓' : k.status === 'failed' ? '✗' : '–'} {k.name}: {k.detail}
+                      </div>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </Table>
+          ) : (
+            <p className="text-slate-500">No corrections recorded.</p>
+          )}
+        </CardBody>
+      </Card>
+      {d.finding && !Array.isArray((d.finding as { observed?: { violations?: unknown } }).observed?.violations) ? (
+        <Card data-testid="evidence-finding">
+          <CardHeader title="Detection" description="The finding, as recorded when the change was detected" />
+          <CardBody>
+            <pre className="max-h-80 overflow-auto rounded bg-slate-50 p-2 font-mono text-xs dark:bg-white/5">
+              {JSON.stringify(d.finding, null, 2)}
+            </pre>
+          </CardBody>
+        </Card>
+      ) : null}
+      {d.finding && !Array.isArray((d.finding as { observed?: { violations?: unknown } }).observed?.violations) ? null : (
       <Card data-testid="evidence-finding">
         <CardHeader title="Detection" description={d.finding?.relevance ?? '—'} />
         <CardBody className="space-y-2 text-sm">
@@ -804,6 +899,7 @@ export function OpsMaintenanceEvent() {
           )}
         </CardBody>
       </Card>
+      )}
       <Card data-testid="evidence-investigation">
         <CardHeader title="Investigation" description={d.investigation?.risk ?? 'Not yet investigated.'} />
         <CardBody className="space-y-2 text-sm">

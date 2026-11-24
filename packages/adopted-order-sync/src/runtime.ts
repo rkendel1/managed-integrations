@@ -3,6 +3,7 @@
  * onboarding, monitoring and operator tooling reach this integration only through these hooks.
  * The bodies are this integration's own behaviour (moved, not rewritten, from the slice 2–5 worker).
  */
+import { advanceTargetChange, recordTargetRequirement, TARGET_KIND } from './target.ts';
 import { and, eq, gt, lt } from 'drizzle-orm';
 import {
   adaptations,
@@ -99,7 +100,11 @@ export function createShopifyNetsuiteRuntime(deps: ShopifyRuntimeDeps): Integrat
 
     async execute(deliveryId, trigger) {
       const result = await executeDelivery({ db, cipher, endpoints, deliveryId, trigger });
-      if (result.executed && result.outcome === 'held') {
+      if (result.executed && result.outcome === 'held' && result.errorClass === 'target_contract') {
+        // NetSuite now requires something the adopted code does not send: nothing was created.
+        const inc = await recordTargetRequirement(db, deliveryId, result.requiredField ?? 'a field', result.message ?? '');
+        await services.enqueueMaintenance(inc.id);
+      } else if (result.executed && result.outcome === 'held') {
         // The input no longer satisfies the adopted contract: nothing was written; maintenance takes over.
         const f = await recordInputContractFinding(db, cipher, deliveryId);
         if (f) await services.enqueueMaintenance(f.incidentId);
@@ -168,6 +173,17 @@ export function createShopifyNetsuiteRuntime(deps: ShopifyRuntimeDeps): Integrat
     async maintain(incidentId) {
       const [inc] = await db.select().from(incidents).where(eq(incidents.id, incidentId));
       if (!inc?.integrationId) return { state: 'noop', detail: 'unknown event' };
+      if (inc.kind === TARGET_KIND)
+        return advanceTargetChange(
+          {
+            db,
+            cipher,
+            clients: await clientsFor(inc.integrationId),
+            enqueueExecution: (id, t) => services.enqueueExecution(id, t),
+            enqueueMaintenance: services.enqueueMaintenance,
+          },
+          incidentId,
+        );
       return advanceMaintenance({
         db,
         cipher,

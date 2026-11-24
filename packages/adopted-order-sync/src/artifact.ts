@@ -30,7 +30,11 @@ import { ADOPTED } from './provenance.ts';
 /** A reviewed patch for this integration: the generic fields plus the input-contract violation it addresses. */
 export const PatchDefinitionSchema = ReviewedPatchSchema.extend({
   /** The input-contract violation this patch addresses, and the precision the patched artifact preserves. */
-  addresses: z.object({ path: z.string(), observed: z.enum(['precision']) }),
+  addresses: z.union([
+    z.object({ path: z.string(), observed: z.enum(['precision']) }),
+    // slice 7: a target (NetSuite) requirement the adopted code cannot meet
+    z.object({ provider: z.string(), contract: z.string(), requiredField: z.string() }),
+  ]),
   precision: z.record(z.string(), z.number().int().min(0).max(8)).default({}),
 });
 export type PatchDefinition = z.infer<typeof PatchDefinitionSchema>;
@@ -71,7 +75,7 @@ export interface UpstreamModules {
     [k: string]: unknown;
   };
   syncOrder: (adapter: unknown, order: unknown) => Promise<UpstreamSyncResult>;
-  createNetSuiteAdapter: (o: { baseUrl: string; accessToken: string }) => unknown;
+  createNetSuiteAdapter: (o: { baseUrl: string; accessToken: string; subsidiaryId?: string }) => unknown;
 }
 
 export interface ExecutorArtifact {

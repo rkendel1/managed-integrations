@@ -41,6 +41,7 @@ import {
 import { describeError } from '@mi/observability';
 import {
   accountTransactions,
+  blockingEvents,
   escalate,
   MAINTENANCE_ACTOR,
   note,
@@ -248,6 +249,11 @@ export async function recordInputContractFinding(
       'Input contract violated; affected orders are held (nothing written) and maintenance has started.',
     evidence: { detector: 'adopted input contract (execute.ts)', firstReceiptId: receipt.id },
   });
+  // slice 7: the component that changed — Shopify, the pipeline's source provider.
+  await db
+    .update(incidents)
+    .set({ boundary: sql`coalesce(${incidents.boundary}, 'source')`, provider: sql`coalesce(${incidents.provider}, 'shopify')` })
+    .where(eq(incidents.id, inc.id));
   if (created) {
     // The generic open writes technical transition notes; they are for operators. The customer gets one plain note.
     await db
@@ -481,6 +487,7 @@ export async function deriveCorrection(
   if (v.observed === 'precision') {
     const patch = patchCatalog().find(
       (p) =>
+        'path' in p.addresses &&
         p.addresses.path === v.path &&
         p.addresses.observed === 'precision' &&
         p.artifact.commit === ADOPTED.commit &&
@@ -938,6 +945,10 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
   if (inc.status === 'recovery') {
     const phase = prog.phase ?? 'release';
     if (phase === 'release') {
+      // slice 7: whole path or nothing — another change of this integration still awaiting its correction
+      // (e.g. NetSuite now requires a field) blocks release; orders are released once, when all are corrected.
+      const blocking = await blockingEvents(db, inc.integrationId!, inc.id);
+      if (blocking.length) return { state: 'wait', detail: `waiting for ${blocking.map((b) => b.kind).join(', ')}` };
       const held = await db
         .update(deliveries)
         .set({ outcome: 'pending', updatedAt: new Date() })
