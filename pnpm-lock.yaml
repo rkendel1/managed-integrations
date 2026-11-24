@@ -582,7 +582,19 @@ importers:
       '@appport/schema':
         specifier: 1.2.2
         version: 1.2.2
+      '@mi/database':
+        specifier: workspace:*
+        version: link:../database
+      '@mi/managed':
+        specifier: workspace:*
+        version: link:../managed
+      drizzle-orm:
+        specifier: ^0.45.4
+        version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
     devDependencies:
+      '@mi/adopted-qbo-tools':
+        specifier: workspace:*
+        version: link:../adopted-qbo-tools
       '@mi/test-fixtures':
         specifier: workspace:*
         version: link:../test-fixtures

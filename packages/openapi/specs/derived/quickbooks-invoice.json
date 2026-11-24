@@ -1,0 +1,88 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "QuickBooks Online Accounting API — operations used by quickbooks-mcp create_invoice (DERIVED)",
+    "version": "v3-minor75",
+    "description": "Authored by Managed Integrations from Intuit's public documentation, because Intuit publishes no OpenAPI document (community specs measured unusable: docs/evidence/runs/openapi-qbo-community-spec.json). Sources: https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/invoice , https://developer.intuit.com/app/developer/qbo/docs/learn/explore-the-quickbooks-online-api/data-queries , https://developer.intuit.com/app/developer/qbo/docs/learn/explore-the-quickbooks-online-api/minor-versions . Only the fields the adopted application sends or reads are described; it is NOT a complete or verified description of QuickBooks."
+  },
+  "servers": [{ "url": "https://quickbooks.api.intuit.com" }],
+  "security": [{ "oauth2": ["com.intuit.quickbooks.accounting"] }],
+  "paths": {
+    "/v3/company/{realmId}/query": {
+      "get": {
+        "operationId": "QueryEntities",
+        "parameters": [
+          { "name": "realmId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "query", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "minorversion", "in": "query", "schema": { "type": "integer" } },
+          { "name": "format", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/QueryResult" } } } } }
+      }
+    },
+    "/v3/company/{realmId}/invoice": {
+      "post": {
+        "operationId": "CreateInvoice",
+        "parameters": [
+          { "name": "realmId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "minorversion", "in": "query", "schema": { "type": "integer" } },
+          { "name": "requestid", "in": "query", "schema": { "type": "string" } },
+          { "name": "format", "in": "query", "schema": { "type": "string" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InvoiceCreate" } } } },
+        "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InvoiceResponse" } } } } }
+      }
+    },
+    "/v3/company/{realmId}/invoice/{invoiceId}": {
+      "get": {
+        "operationId": "ReadInvoice",
+        "parameters": [
+          { "name": "realmId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "invoiceId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "minorversion", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InvoiceResponse" } } } } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": { "oauth2": { "type": "oauth2", "flows": { "authorizationCode": { "authorizationUrl": "https://appcenter.intuit.com/connect/oauth2", "tokenUrl": "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer", "scopes": { "com.intuit.quickbooks.accounting": "Accounting" } } } } },
+    "schemas": {
+      "Ref": { "type": "object", "required": ["value"], "properties": { "value": { "type": "string" }, "name": { "type": "string" } } },
+      "SalesLine": {
+        "type": "object",
+        "required": ["Amount", "DetailType"],
+        "properties": {
+          "Id": { "type": "string" }, "LineNum": { "type": "integer" }, "Amount": { "type": "number" }, "Description": { "type": "string" },
+          "DetailType": { "type": "string", "enum": ["SalesItemLineDetail", "SubTotalLineDetail", "DiscountLineDetail", "GroupLineDetail", "DescriptionOnly"] },
+          "SalesItemLineDetail": { "type": "object", "properties": { "ItemRef": { "$ref": "#/components/schemas/Ref" }, "Qty": { "type": "number" }, "UnitPrice": { "type": "number" } } },
+          "SubTotalLineDetail": { "type": "object" }
+        }
+      },
+      "InvoiceCreate": {
+        "type": "object",
+        "required": ["CustomerRef", "Line"],
+        "properties": {
+          "CustomerRef": { "$ref": "#/components/schemas/Ref" }, "Line": { "type": "array", "items": { "$ref": "#/components/schemas/SalesLine" } },
+          "TxnDate": { "type": "string" }, "DueDate": { "type": "string" }, "DocNumber": { "type": "string", "maxLength": 21 }, "PrivateNote": { "type": "string" },
+          "CustomerMemo": { "type": "object", "properties": { "value": { "type": "string" } } }, "BillEmail": { "type": "object", "properties": { "Address": { "type": "string" } } },
+          "DepartmentRef": { "$ref": "#/components/schemas/Ref" }, "SalesTermRef": { "$ref": "#/components/schemas/Ref" },
+          "AllowOnlineCreditCardPayment": { "type": "boolean" }, "AllowOnlineACHPayment": { "type": "boolean" }
+        }
+      },
+      "Invoice": {
+        "allOf": [{ "$ref": "#/components/schemas/InvoiceCreate" }],
+        "type": "object",
+        "required": ["Id", "SyncToken", "TotalAmt"],
+        "properties": {
+          "Id": { "type": "string" }, "SyncToken": { "type": "string" }, "TotalAmt": { "type": "number" }, "Balance": { "type": "number" },
+          "CustomerRef": { "$ref": "#/components/schemas/Ref" }, "Line": { "type": "array", "items": { "$ref": "#/components/schemas/SalesLine" } },
+          "TxnDate": { "type": "string" }, "DocNumber": { "type": "string" }, "PrivateNote": { "type": "string" },
+          "MetaData": { "type": "object", "properties": { "CreateTime": { "type": "string" }, "LastUpdatedTime": { "type": "string" } } }
+        }
+      },
+      "InvoiceResponse": { "type": "object", "properties": { "Invoice": { "$ref": "#/components/schemas/Invoice" }, "time": { "type": "string" } } },
+      "QueryResult": { "type": "object", "properties": { "QueryResponse": { "type": "object", "properties": { "Customer": { "type": "array", "items": { "type": "object" } }, "Item": { "type": "array", "items": { "type": "object" } }, "Invoice": { "type": "array", "items": { "$ref": "#/components/schemas/Invoice" } }, "startPosition": { "type": "integer" }, "maxResults": { "type": "integer" } } }, "time": { "type": "string" } } }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "format": "mi.openapi.overlay/1",
+  "application": "quickbooks-mcp@ce1317e51d43fb669d73f6f874935fb7827e5ebd",
+  "provider": "quickbooks",
+  "contract": { "version": "v3-minor75", "sha256": "derived" },
+  "operations": {
+    "POST /v3/company/{realmId}/invoice": {
+      "expose": true,
+      "effect": { "status": "known", "value": "creates one invoice (a receivable)", "source": "quickbooks-mcp@ce1317e:src/tools/handlers/invoice.ts (createInvoice)" },
+      "idempotency": { "status": "known", "value": "the adopted client sends no requestid: creation is NOT idempotent at QuickBooks; Managed Integrations deduplicates by the caller's request id and never re-sends after QuickBooks may have processed it", "source": "node-quickbooks@2.0.48 index.js module.request (requestid only if entity.requestId)" },
+      "identity": { "status": "known", "value": "Invoice.Id from the response; DocNumber when the caller gives one", "source": "https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/invoice" },
+      "verify": { "operation": "GET /v3/company/{realmId}/invoice/{invoiceId}", "by": "Id", "status": "known" }
+    },
+    "GET /v3/company/{realmId}/query": {
+      "expose": true,
+      "effect": { "status": "known", "value": "read", "source": "quickbooks-mcp@ce1317e:src/client/cache.ts (resolveCustomer, resolveItem)" },
+      "idempotency": { "status": "known", "value": "a read", "source": "https://developer.intuit.com/app/developer/qbo/docs/learn/explore-the-quickbooks-online-api/data-queries" },
+      "identity": { "status": "known", "value": "active entities by exact name, then id, then LIKE", "source": "quickbooks-mcp@ce1317e:src/client/cache.ts" }
+    },
+    "GET /v3/company/{realmId}/invoice/{invoiceId}": {
+      "expose": true,
+      "effect": { "status": "known", "value": "read (verification)", "source": "packages/adopted-qbo-tools/src/invoke.ts (readInvoice)" },
+      "idempotency": { "status": "known", "value": "a read", "source": "https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/invoice" },
+      "identity": { "status": "known", "value": "Invoice.Id", "source": "https://developer.intuit.com/app/developer/qbo/docs/api/accounting/all-entities/invoice" }
+    }
+  },
+  "invariants": [
+    { "id": "invoice-as-requested", "status": "known", "value": "the invoice read back has the requested customer, items, line amounts, total and number", "source": "packages/adopted-qbo-tools/src/invoke.ts (verifyInvoice)" },
+    { "id": "no-resend", "status": "known", "value": "a request QuickBooks may have processed is never sent again automatically", "source": "packages/adopted-qbo-tools/src/invoke.ts" },
+    { "id": "sales-tax", "status": "unsupported", "value": "with automated sales tax QuickBooks adds tax to TotalAmt; not handled" },
+    { "id": "contract-authority", "status": "unverified", "value": "the contract is derived from Intuit's documentation, not published by Intuit; conformance is checked against the adopted client's traffic to the fixture only" }
+  ]
+}

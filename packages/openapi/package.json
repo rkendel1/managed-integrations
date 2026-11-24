@@ -4,16 +4,21 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./maintain": "./src/maintain.ts"
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "13.1.0",
     "@appport/core": "1.13.0",
     "@appport/schema": "1.2.2",
-    "@appport/protocol": "1.8.0"
+    "@appport/protocol": "1.8.0",
+    "@mi/database": "workspace:*",
+    "@mi/managed": "workspace:*",
+    "drizzle-orm": "^0.45.4"
   },
   "devDependencies": {
     "openapi-typescript": "7.13.0",
-    "@mi/test-fixtures": "workspace:*"
+    "@mi/test-fixtures": "workspace:*",
+    "@mi/adopted-qbo-tools": "workspace:*"
   }
 }

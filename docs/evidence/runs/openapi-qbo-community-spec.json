@@ -1,0 +1,7 @@
+{
+  "measuredWith": "@mi/openapi normalize (swagger-parser 13.1.0)",
+  "source": { "repository": "https://github.com/saireddy12/quickbooks_openapi_file", "commit": "342c7ae33374a0ae03becab0cc9ef3cff4e6611c", "path": "QuickBooks_openapi_3_0_0.json", "license": "MIT", "authority": "community", "sha256": "26410d16c0f1fc5432049982354e6a74b784af9b7cd7ff8d182467cfaa07b434" },
+  "result": { "openapi": "3.0.0", "operations": 167, "duplicatePaths": 82, "writesWithEmptyRequestSchema": "112/113", "operationsWithTypedResponse": "0/167", "security": ["oauth2"] },
+  "alsoInspected": { "repository": "https://github.com/will-fezz/quickbooks-spec", "commit": "f62855b87cbed289eed92e004872ff74f6140161", "license": "none stated (not usable)", "operations": 14 },
+  "verdict": "Not usable as a contract: converted from a Postman collection; request and response bodies are not described. Intuit publishes no OpenAPI document. A derived contract, cited to Intuit's documentation, is used instead (packages/openapi/specs/derived/quickbooks-invoice.json)."
+}

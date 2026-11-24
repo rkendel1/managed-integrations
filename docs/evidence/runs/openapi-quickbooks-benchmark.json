@@ -1,0 +1,43 @@
+{
+  "contract": {
+    "authority": "derived",
+    "sha256": "0300409144ce75659af40c796b8819b526a491c189e2aa92670552079d05331a",
+    "operations": [
+      "GET /v3/company/{realmId}/query",
+      "POST /v3/company/{realmId}/invoice",
+      "GET /v3/company/{realmId}/invoice/{invoiceId}"
+    ]
+  },
+  "adoptedClientTraffic": [
+    {
+      "method": "GET",
+      "path": "/v3/company/9341450000000001/query",
+      "bodyKeys": [],
+      "minor": 75
+    },
+    {
+      "method": "GET",
+      "path": "/v3/company/9341450000000001/query",
+      "bodyKeys": [],
+      "minor": 75
+    },
+    {
+      "method": "GET",
+      "path": "/v3/company/9341450000000001/query",
+      "bodyKeys": [],
+      "minor": 75
+    },
+    {
+      "method": "POST",
+      "path": "/v3/company/9341450000000001/invoice",
+      "bodyKeys": [
+        "CustomerRef",
+        "DocNumber",
+        "Line",
+        "TxnDate"
+      ],
+      "minor": 75
+    }
+  ],
+  "violations": []
+}

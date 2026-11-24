@@ -150,7 +150,12 @@ export async function normalize(document: Doc, source: SpecSource): Promise<Norm
         parameters: [...(item.parameters ?? []), ...(op.parameters ?? [])]
           .map((p: any) => ({ name: String(p.name), in: String(p.in), required: p.required === true, type: typeOf(p.schema, doc) }))
           .sort((a, b) => `${a.in}:${a.name}`.localeCompare(`${b.in}:${b.name}`)),
-        request: { contentType, fields: contentType ? flatten(content[contentType].schema, doc) : {} },
+        request: {
+          contentType,
+          fields: contentType
+            ? flatten(content[contentType].schema?.$ref ? doc['components']?.schemas?.[refName(content[contentType].schema.$ref)] : content[contentType].schema, doc)
+            : {},
+        },
         responses,
         security: ((op.security ?? security) as Record<string, unknown>[]).flatMap((s) => Object.keys(s)).sort(),
         effect: { value: method === 'get' || method === 'head' || method === 'options' ? 'read' : method === 'delete' ? 'destructive' : 'write', status: 'inferred' },

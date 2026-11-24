@@ -120,6 +120,8 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
       requestId: string | null;
       userAgent?: string | null;
       query?: string | null;
+      /** Top-level JSON body keys (slice 8: contract conformance of a client's requests). */
+      bodyKeys?: string[];
     }[],
     faults: new FaultQueue(),
   };
@@ -280,6 +282,12 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
       return fault(reply, 'Service unavailable', 'Fixture outage', 503);
     if (f?.type === 'http429') return fault(reply, 'ThrottleExceeded', 'Too many requests', 429);
     if (!authorized(req)) return fault(reply, 'AuthenticationFailed', 'Token expired or invalid', 401);
+  });
+
+  app.addHook('preHandler', async (req) => {
+    if (!req.url.startsWith('/v3/') || req.method !== 'POST' || !req.body || typeof req.body !== 'object') return;
+    const last = [...state.requestLog].reverse().find((r) => r.method === 'POST' && req.url.split('?')[0] === r.path);
+    if (last) last.bodyKeys = Object.keys(req.body as object).sort();
   });
 
   app.post('/v3/company/:realm/journalentry', async (req, reply) => {
