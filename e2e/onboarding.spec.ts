@@ -74,6 +74,7 @@ test('operator sees what adopted code runs, what it depends on, and the correcti
   await expect(page.getByRole('button', { name: /Propose p0001/ })).toBeVisible();
   // slice 6: the integration's maintenance contract (same panel for every integration)
   const contract = page.getByTestId('monitoring');
-  await expect(contract).toContainText('Shopify → NetSuite');
+  // slice 7: providers with their roles (provider-centric), not a fixed source → destination pair
+  await expect(contract).toContainText('Shopify (source) · NetSuite (target)');
   await expect(contract).toContainText('field_moved');
 });

@@ -37,7 +37,7 @@ import {
   type DecisionSpec,
   type PopulationItem,
 } from '@mi/managed';
-import { resolutionBlockers, transitionIncident, type IncidentRow } from '@mi/reliability';
+import { resolutionBlockers, transitionIncident } from '@mi/reliability';
 import { activateAdaptation, evaluateInput, payloadOf, runtimeFor, type SubsidiaryConfigSpec } from './adaptation.ts';
 import { loadArtifact, patchCatalog } from './artifact.ts';
 import { AdoptedConfigSchema } from './contract.ts';

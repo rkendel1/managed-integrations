@@ -354,3 +354,67 @@ Fresh-stack verification at `2c72053` (`make build`, `make reset`, then `demo-ma
 - Playwright: 19/19 (`runs/playwright-slice6-docker.log`).
 - Vitest: 24 files, 208 tests (`runs/vitest-slice6.log`).
 - Typecheck and lint clean.
+
+## Slice 7 — three-sided change resilience, provider-centric adoption (2026-11-24)
+
+Records: `docs/architecture/THREE-SIDED.md`, `docs/adoption/PROVIDER-APPLICATIONS.md`, `docs/evidence/SLICE7-REPORT.md`.
+Fixture-backed throughout.
+
+| Requirement                                                                 | Status             | Where                                                                                     |
+| --------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------- |
+| Source-only change                                                          | VERIFIED (fixture) | slice-4 maintenance suites (event boundary `source`)                                      |
+| Target-only change (QuickBooks inactive account; NetSuite OneWorld)         | VERIFIED (fixture) | `stripe-quickbooks.test.ts`; `adopted-order-sync/test/three-sided.test.ts`                |
+| Integration code / dependency change, rollback, immutability                | VERIFIED (fixture) | `provider-applications.test.ts` (p0001, d0001); OneWorld p0002                            |
+| Combined source + target, no partial activation                             | VERIFIED (fixture) | `three-sided.test.ts` combined                                                            |
+| Validation failure, unsupported, replay/recovery, duplicates, partial population, wrong data despite 200 | VERIFIED (fixture) | THREE-SIDED.md §4                                                     |
+| Provider-centric: Stripe-dependent and QuickBooks-dependent applications     | VERIFIED (fixture) | `provider-applications.test.ts`; `demo-applications`                                      |
+| SaaSKit hosted under management with both-sided changes                     | NOT DONE           | inspection + baseline only (`docs/adoption/SAASKIT.md`)                                   |
+| Fresh Docker demos and browser tests                                        | VERIFIED (fixture) | closed in slice 8 (below)                                                                 |
+
+## Slice 8 — adoption economics and OpenAPI (2026-11-24)
+
+Records: `docs/architecture/ADOPTION-ECONOMICS.md` (audit, AppPort audit, OpenAPI decision, benchmarks, MCP,
+Resolver), `docs/evidence/KNOWN-LIMITATIONS.md` (Slice 8).
+
+| Requirement                                                   | Status                  | Where                                                                                       |
+| ------------------------------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------- |
+| Slice 7 verification closed                                   | VERIFIED                | below                                                                                       |
+| Economics audit (measured LOC, repeated work)                 | DONE                    | ADOPTION-ECONOMICS.md §1                                                                    |
+| AppPort audit (installed APIs)                                | DONE                    | §2                                                                                          |
+| OpenAPI decision                                              | DONE                    | §3 (adopt swagger-parser + openapi-typescript; build normalization/attribution/binding)      |
+| Pipeline: contract tests (valid, invalid, unresolvable, circular, external, determinism, hash, discovery, security, pagination, webhooks) | VERIFIED | `packages/openapi/test/openapi.test.ts` |
+| Generation and binding (reproducible, provenance, AppPort provider capabilities, no implicit destructive exposure) | VERIFIED | same |
+| Compatibility (classified changes; attribution to applications) | VERIFIED (real contracts) | same; `runs/openapi-saaskit-benchmark.json`                                               |
+| SaaSKit benchmark (its own suite unchanged, traffic vs contract) | VERIFIED (simulator)  | 33/33; 70 exchanges, 0 request violations; `runs/saaskit-stripe-exchanges.jsonl`            |
+| Second provider (QuickBooks, derived contract)                | VERIFIED (fixture)      | `packages/openapi/test/quickbooks.test.ts`; `runs/openapi-quickbooks-benchmark.json`        |
+| Contract change → reviewable event, attribution, both contracts kept, nothing implied | VERIFIED | `packages/openapi/test/maintain.test.ts`                                         |
+| Target-specific code measurably decreased                     | PARTIAL                 | contract authoring and drift code replaced; maintenance drivers unchanged (§1, §5)          |
+| SaaSKit hosted maintenance, recovery, combined change         | NOT DONE                | limitations                                                                                 |
+
+Found and fixed during slice 8:
+
+- The two-application demo waited for state `resolved`; the customer view presents a resolved event as
+  `completed` (the event had resolved). Fixed in the demo.
+- The fetch recorder broke AuthBoundry calls made with a `URL` object (2 of SaaSKit's tests failed under it). The
+  recorder now handles every input form and never throws; SaaSKit 33/33 under it.
+- Conformance treated scalar-array form keys (`payment_method_types[0]`) as unknown fields. Fixed.
+- Normalization ignored request bodies given by `$ref` (found only by the QuickBooks contract). Fixed.
+- Impact attribution was operation-level (every change in a used operation counted). It now counts request
+  changes that bind the caller or touch fields it sends (observed), and response changes to fields it reads.
+- The Shopify → NetSuite maintenance contract still stated that OneWorld accounts reject its orders; it now states
+  the slice-7 correction. A browser test still expected the pre-slice-7 monitoring header.
+- ESLint linted vendored upstream code and materialized artifacts; they are now ignored as third-party code.
+
+Fresh-stack verification at `70bd164` (`make build`, `make reset`, then demo-applications → demo-maintenance →
+demo-onboarding → demo-stripe → demo-reconcile → demo-adopted → demo-failure --auto-approve → Playwright):
+
+- All seven demos passed (`runs/*-slice8-docker.log`), including `demo-applications` end to end.
+- Playwright: 19/19 (`runs/playwright-slice8-docker.log`). A first run on this image was 18/19 (the stale
+  header expectation, fixed); a second run on the same stack failed a slice-1 test that cannot repeat on used
+  state (the SKU mapping from the first run persists); a run straight after reset failed before the API was
+  ready and without demo data. The recorded result follows the established procedure on a fresh stack.
+- Vitest: 29 files, 230 tests (`runs/vitest-slice8.log`). SaaSKit's own suite: 33/33.
+- Typecheck clean; lint 0 errors (39 warnings).
+- Changed after the image was built (not in the Docker run): the Shopify → NetSuite contract wording, the
+  browser-test expectation (verified by the run above against the running stack), a test comment, the ESLint
+  ignore list and one unused import.

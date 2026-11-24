@@ -183,3 +183,27 @@ See `docs/product/MAINTENANCE.md` §10. In short:
   event.
 - **Not adopted:** `rkendel1/saaskit` (the account's own Stripe application) was found after selection; it is the
   natural next application on the same mechanisms.
+
+## Slice 8 — adoption economics and OpenAPI
+
+- **OpenAPI removes contract authoring, not maintenance code.** Measured: maintenance drivers are 39–52% of each
+  adoption and are not reduced by the pipeline. Consolidating their repeated sequencing (phase machine,
+  escalation, accounting, resolution) into the shared lifecycle is the next economic lever; not done here.
+- **SaaSKit is adopted at the contract level only**: its own suite runs unchanged against the pinned Stripe
+  contract with its traffic checked; it is not hosted under management (no execution, recovery or maintenance
+  driver for SaaSKit), and no SaaSKit-side or Stripe-side mutation scenario was run.
+- **Two providers, two kinds of contract.** Stripe: official. QuickBooks: no official contract; the derived
+  contract covers 3 operations, is cited to documentation and checked only against the adopted client's traffic
+  to our fixture. NetSuite and Shopify were not run through the pipeline (no static OpenAPI; Shopify Admin is
+  GraphQL).
+- **Bindings validate with contract conformance, not JSON Schema.** OpenAPI schemas are not passed through
+  AppPort's `fromJSONSchema`; the external-call recorder used in tests is in-memory (no durable recorder in
+  Managed Integrations yet); `verify` for unknown outcomes is not implemented.
+- **Normalization limits.** Swagger 2.0 is refused (not converted). Fields are flattened to depth 3; inline
+  `anyOf` branches are merged; event payloads are inferred from resource schemas for Stripe (it declares no
+  webhooks). Breaking/compatible classification is mechanical; only the attribution to an application's usage
+  decides whether it is affected.
+- **Usage manifests are authored** (operations and reads cited to code); sent fields are observed from recorded
+  traffic and are only as complete as that traffic (SaaSKit's own suite, 70 exchanges).
+- **No upstream watcher**: a new contract version is compared when it is supplied; nothing polls stripe/openapi.
+- **MCP**: investigated only (Stripe hosted server, Intuit's MCP server); not used at run time.

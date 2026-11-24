@@ -44,7 +44,7 @@ let base: string;
 
 async function setup() {
   h = await createHarness();
-  // The adopted code sends no subsidiary, so OneWorld accounts reject its orders (documented gap since slice 2).
+  // The pinned adopted code sends no subsidiary: OneWorld refuses its orders unless the customer chooses one and patch p0002 is active (slice 7). This test runs without OneWorld.
   h.netsuite.state.oneWorld = false;
   shop = createShopifyFixture({ shopDomain: SHOP, firstOrderId: 8_000_000_001n });
   await shop.app.listen({ port: 0, host: '127.0.0.1' });

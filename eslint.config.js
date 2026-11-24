@@ -11,6 +11,9 @@ export default tseslint.config(
       '.maintenance/**',
       'playwright-report/**',
       'test-results/**',
+      // Third-party code adopted byte-for-byte (sha-pinned) and its materialized artifacts: not ours to restyle.
+      'packages/*/upstream/**',
+      'packages/*/.artifacts/**',
     ],
   },
   js.configs.recommended,

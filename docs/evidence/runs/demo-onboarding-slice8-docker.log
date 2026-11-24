@@ -1,0 +1,29 @@
+docker compose --env-file .env --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-onboarding.ts
+[  0.8s]   0. Before: Northwind's own deployment of shopify-erp-order-sync wrote 6 orders to NetSuite (the pinned upstream code, run as their server would)
+[  0.9s]  A1. New customer signed up: Connect the systems your integration uses.
+[  0.9s]  A2. Shopify connected through OAuth (scope read_orders) → back to /app/welcome?connected=shopify
+[  1.1s]  A3. NetSuite connected (machine-to-machine certificate) → verified
+[  1.2s]  A4. Discovered: 6 of your last 6 Shopify orders are in NetSuite, written the way the shopify-erp-order-sync integration writes them. (confidence: established)
+          We will maintain: 4 responsibilities · access: Shopify: read your orders, and register a new-order notification for our service. | NetSuite: create sales orders; read customers, items and sales orders.
+[  1.2s]  A5. Customer confirmed; Setting up protection: routing new orders to us and checking every recent one.
+[ 11.6s]  A6. Under management. Baseline: 6 recent orders checked, 6 in NetSuite (6 written by their earlier deployment), 0 missing
+[ 11.6s]  A7. Customer overview: Protected — On 2026-11-24 07:48 UTC we checked 6 order(s) from Shopify against NetSuite: all accounted for.
+[ 13.6s]  A8. A new order (#NCE7A-NEW) reached us through the notification we registered and is in NetSuite exactly once
+          Customer actions in onboarding (7): sign up → connect Shopify (shop name) → approve in Shopify → connect NetSuite (account domain, client id, certificate id) → upload the certificate in NetSuite → verify NetSuite → confirm: maintain this integration
+          Decisions that are genuinely the customer’s: authorize Shopify, authorize NetSuite, confirm management
+[ 13.6s]  B1. FIXTURE: Shopify switches its order webhooks to format 2027-01 (unit price moved); #NCE7A-CHG arrives in the new format
+[ 30.0s]  B2. Operator: running adopted:d01b51d95993; upstream files match the pin: true; price is read at src/mapping.js:11
+[ 30.0s]  B3. Adapter line_items[].price ← line_items[].price_set.shop_money.amount: proposed → validating → validated → active
+          Validation: applies to the adopted artifact passed; original adopted code unchanged passed; regression: stored orders unchanged passed; affected orders handled passed; business data preserved (Shopify Admin API) passed; no conflicting data accepted passed; rollback target available passed
+          After activation: {"verified":2,"zeroLoss":true,"recovered":1,"duplicates":0,"population":2,"unresolved":0,"verifiedAt":"2026-11-24T07:48:43.149Z","verificationRunId":"604ddbec-5169-4338-aacc-69609986b440","maintenanceEventId":"07bc183e-f13c-47f3-8d80-246db62f2963"}
+[ 30.0s]  B4. #NCE7A-CHG is in NetSuite with Shopify's price (7.25), written by the adopted code with the adapter applied
+[ 30.1s]  B5. Customer sees: "We resolved a compatibility issue" — We detected a change that threatened order processing. We resolved it and verified all 2 orders from the affected period against NetSuite. Zero transactions lost.
+          • Change detected: Shopify changed the order data it sends (format 2026-10 → 2027-01): the unit price of each order line is no longer where your integration reads it.
+          • Why it mattered: Orders could have been created in NetSuite without the unit price of each order line. We held them instead of writing them.
+          • Action taken: We updated how your integration reads the unit price of each order line to match Shopify’s new format. Before switching it on, we confirmed it changes nothing for 1 earlier order and gives the same values as Shopify’s own records for 1 affected order.
+          • Transactions affected: 1 order: 1 held safely and delivered after the fix.
+          • Transactions recovered: 1 of 1.
+          • Final outcome: All 2 orders created in the affected period are in NetSuite exactly once, with the items, quantities and prices Shopify has for them.
+          • Customer action: None required.
+[ 30.2s]  C1. Another tenant sees only its own onboarding (status connect, integration its own)
+DONE in 30s — evidence: /data/artifacts/evidence/demo-onboarding-1795506524075.json

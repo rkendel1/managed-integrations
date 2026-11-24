@@ -60,7 +60,7 @@ export const ADOPTED_CONTRACT: IntegrationContractDefinition = {
     excluded: [
       'Order updates and cancellations (only orders/create is handled by the adopted code)',
       'Historical backfill and polling (webhook-driven only)',
-      'Subsidiary (not sent by the adopted code — OneWorld accounts reject these orders)',
+      'Subsidiary (sent only with reviewed patch p0002 and the customer’s chosen subsidiary; otherwise OneWorld accounts refuse the order and it is held)',
       'Refunds, fulfillment, inventory, catalog',
     ],
   },
@@ -103,7 +103,7 @@ export const ADOPTED_CONTRACT: IntegrationContractDefinition = {
   },
   limitations: [
     'Unverified against real Shopify and NetSuite (fixtures only).',
-    'The adopted code sends no subsidiary; NetSuite OneWorld accounts reject every order until upstream supports it.',
+    'The pinned code sends no subsidiary; on NetSuite OneWorld orders are held until the customer chooses a subsidiary and patch p0002 is activated.',
   ],
 };
 

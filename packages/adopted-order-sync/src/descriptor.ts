@@ -118,6 +118,7 @@ export const SHOPIFY_NETSUITE: IntegrationDescriptor & { responsibilities: Respo
         note: 'adapter: copy a documented replacement field into the field the adopted code reads',
       },
       { pattern: 'precision', status: 'implemented', note: 'reviewed patch p0001 (operator activation)' },
+      { pattern: 'destination_contract', status: 'implemented', note: 'NetSuite OneWorld: customer decision (subsidiary), configuration, reviewed patch p0002 (operator activation)' },
       {
         pattern: 'reauthorization',
         status: 'not_supported',
@@ -132,7 +133,7 @@ export const SHOPIFY_NETSUITE: IntegrationDescriptor & { responsibilities: Respo
     ],
   },
   limitations: [
-    'NetSuite OneWorld: the adopted code sends no subsidiary; OneWorld accounts reject its orders.',
+    'NetSuite OneWorld: the pinned code sends no subsidiary; orders are held until the customer chooses one and reviewed patch p0002 is activated by an operator (one subsidiary for all orders of a store).',
     'orders/create only: order edits and cancellations after creation are not synchronized.',
     'Shopify does not expose other apps’ webhook subscriptions; discovery relies on NetSuite records.',
   ],

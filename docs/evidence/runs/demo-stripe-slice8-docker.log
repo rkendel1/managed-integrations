@@ -1,0 +1,30 @@
+docker compose --env-file .env --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-stripe.ts
+[  0.1s]  B1. Adopted https://github.com/jakethehoffer/ledgerly @ 3101182eadc9 (Apache-2.0); 35 executed files hash-pinned; installed copy matches: true
+[  0.3s]  B0. Before: Lumen Studio's own ledgerly deployment booked 5 Stripe transactions in QuickBooks (the pinned upstream code, with their own QuickBooks authorization)
+[  0.4s]  B3. Stripe connected with a restricted key → verified (acct_1FixtureStripe)
+          QuickBooks connected through OAuth → back to /app/welcome?connected=quickbooks
+[  0.6s]  B4. Discovered: 5 of your last 5 Stripe transactions are in QuickBooks, written the way the ledgerly integration writes them. (confidence: established)
+          We will maintain: 4 responsibilities · access: Stripe: read payments, invoices, refunds and payouts, and register a notification endpoint for our service. | QuickBooks: create journal entries; read accounts and journal entries.
+[ 10.9s]  B5. Baseline: 5 recent Stripe transactions checked, 5 in QuickBooks (5 written by their earlier deployment), 0 missing
+[ 10.9s]  B6. Under management. Customer actions (5): sign up → connect Stripe (restricted key) → connect QuickBooks → approve in QuickBooks → confirm: maintain this integration
+[ 13.0s]  B7. New payment evt_Lm000000000000000049 booked once by the adopted code: debits 88.00 = credits 88.00 (net 85.15 + fee 2.85 = 88.00)
+[ 15.1s]  B8. Independent check (Stripe Events API vs QuickBooks entries: once, balanced, amounts equal Stripe): consistent
+[ 17.2s]  P1. Detected: the running code (ledgerly:3101182eadc9) requests QuickBooks minorversion 70 at src/server/dispatchers/qbo.ts:25; Intuit serves 75 since 2025-08-01
+          Validation: applies to the adopted artifact passed; original adopted code unchanged passed; patch reproduces the reviewed change exactly passed; regression: stored transactions unchanged passed; destination request changes only as reviewed passed; business data preserved (QuickBooks) passed; rollback target available passed
+[ 28.7s]  P2. Operator switched the patch on (MCP adaptations_activate): proposed → validating → validated → active; now running ledgerly:3101182eadc9+p0001
+[ 28.7s]  P3. QuickBooks request now declares minorversion 75 (served 75); after activation: {"verified":4,"zeroLoss":true,"duplicates":0,"population":6,"unresolved":0,"verifiedAt":"2026-11-24T07:49:15.133Z","verificationRunId":"156c1a56-29da-4f1a-a20f-d0e48e270233","maintenanceEventId":"de06541c-38c4-4849-b585-db5dfad7c3fa"}
+[ 30.7s]  B9. FIXTURE: Intuit revokes the QuickBooks authorization. Customer sees "Reconnect QuickBooks."; evt_Lm000000000000000057 is held (not lost); a further notification is lost in transit (evt_Lm000000000000000061)
+          In QuickBooks while access is down: 0 entries for the held payment
+          Customer reconnects QuickBooks → /app/welcome?connected=quickbooks
+[ 45.2s] B10. "Your connection was restored" — We detected a change that threatened transaction processing. We resolved it and verified all 6 transactions from the affected period against QuickBooks.
+          • Change detected: Our access to QuickBooks stopped working (revoked).
+          • Why it mattered: Transactions could not reach QuickBooks. We held them safely instead of losing them.
+          • Action taken: You reconnected QuickBooks. Before sending anything, we confirmed the new connection works and renews itself.
+          • Transactions affected: 2 transactions: 1 held safely and delivered after the fix; 1 never reached us and was found by checking Stripe directly.
+          • Transactions recovered: 2 of 2.
+          • Final outcome: All 6 transactions created in the affected period are in QuickBooks exactly once, with the accounts, amounts, fees and net Stripe has for them.
+          • Customer action: None required.
+          Both transactions are in QuickBooks exactly once. Claim: Zero transactions lost.
+[ 45.2s] B11. Operator monitoring (durable facts): health healthy; source_available=ok, destination_available=ok, credentials=ok, activity=ok, processing=ok, delayed=ok, missing=ok, duplicated=ok, rejected=ok, contract_change=ok, destination_verification=ok, commitment_boundary=ok
+
+DONE in 45s — evidence: /data/artifacts/evidence/demo-stripe-1795506571951.json

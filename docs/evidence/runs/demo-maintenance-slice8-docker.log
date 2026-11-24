@@ -1,0 +1,33 @@
+docker compose --env-file .env --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-maintenance.ts
+[  6.5s]  1. Customer sees "Shopify → NetSuite orders" — Protected: On 2026-11-24 07:47 UTC we checked 2 order(s) from Shopify against NetSuite: all accounted for.
+         (Protected means: No open issues, and a check completed in the last 24 hours found every transaction accounted for in both systems.)
+[  6.6s]  2. FIXTURE: Shopify switches its order webhooks to format 2027-01 (unit price moved). 2 new orders arrive (200/2027-01, 200/2027-01); a 3rd order's notification is lost.
+[  8.7s]  3. Detected: order webhook format 2026-10 → 2027-01; removed line_items[].price (read by the adopted code)
+[  8.7s]  4. Affected integration identified (Shopify → NetSuite orders); scope: orders arriving in the new format are held, not written
+[  8.7s]  5. Maintenance event created — customer sees: "We are handling a change in how Shopify sends orders" (in_progress)
+[ 29.1s]  6. Investigated: src/mapping.js:11 `.map((l) => ({ sku: l.sku, qty: Number(l.quantity), unitPrice: round2(Number(l.price)) }));` (pinned: true). Without the guard, upstream would send 1 line(s) with a null rate to NetSuite (rejected, or priced by NetSuite instead of Shopify).
+[ 29.1s]  7. Corrected at the adoption boundary: line_items[].price ← line_items[].price_set.shop_money.amount (configuration vundefined; upstream modified: false)
+[ 29.1s]  8. Validated before activation: applies to the adopted artifact ✓ (line_items[].price is read at src/mapping.js:11 in d01b51d95993); original adopted code unchanged ✓ (7 files match d01b51d95993); regression: stored orders unchanged ✓ (2/2 stored orders map identically); affected orders handled ✓ (2/2 held orders satisfy the contract and map without error); business data preserved (Shopify Admin API) ✓ (2/2 orders: quantities and unit prices equal Shopify's order record); no conflicting data accepted ✓ (no conflicts); rollback target available ✓ (rolling back selects adopted:d01b51d95993 (0 adapter(s)))
+         #P42B9-3: attempt 1 held (webhook) → attempt 2 delivered (maintenance_recovery)
+         #P42B9-4: attempt 1 held (webhook) → attempt 2 delivered (maintenance_recovery)
+[ 29.1s]  9. Recovered 3 order(s): #P42B9-3 (delayed), #P42B9-4 (delayed), #P42B9-5 (discovered)
+[ 29.1s] 10. Verified independently (verification run: consistent, recovery run: discrepancies): every order in the affected period is in NetSuite with Shopify's items, quantities and prices
+[ 29.1s] 11. Zero duplicates: NetSuite holds 35 sales orders, 35 distinct externalIds; accounting duplicates = 0
+[ 29.2s] 12. Customer sees the completed event and status "Verified" — no intervention was asked for
+         
+           We resolved a compatibility issue
+           Shopify → NetSuite orders
+           We detected a change that threatened order processing. We resolved it and verified all 4 orders from the affected period against NetSuite.
+           • Change detected: Shopify changed the order data it sends (format 2026-10 → 2027-01): the unit price of each order line is no longer where your integration reads it.
+           • Why it mattered: Orders could have been created in NetSuite without the unit price of each order line. We held them instead of writing them.
+           • Action taken: We updated how your integration reads the unit price of each order line to match Shopify’s new format. Before switching it on, we confirmed it changes nothing for 2 earlier orders and gives the same values as Shopify’s own records for 2 affected orders.
+           • Transactions affected: 3 orders: 2 held safely and delivered after the fix; 1 never reached us and was found by checking Shopify directly.
+           • Transactions recovered: 3 of 3.
+           • Final outcome: All 4 orders created in the affected period are in NetSuite exactly once, with the items, quantities and prices Shopify has for them.
+           • Customer action: None required.
+           Zero transactions lost.
+         
+         Operator evidence (maintenance_events_evidence) embeds the identical customer projection.
+         Another tenant is refused: FORBIDDEN: The resource belongs to another tenant
+         A new order in the 2027-01 format (#P42B9-6) now flows normally.
+DONE in 30s — evidence: /data/artifacts/evidence/demo-maintenance-1795506491179.json

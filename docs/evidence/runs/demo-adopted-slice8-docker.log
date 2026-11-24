@@ -1,0 +1,14 @@
+docker compose --env-file .env --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-adopted.ts
+[  0.3s]  1. Tenant identified via AppPort: Bluewave Supply
+[  0.4s]  2. Adopted implementation attached: https://github.com/Milo-ai-HQ/shopify-erp-order-sync @ d01b51d95993 (MIT)
+[  0.4s]  3. Configured with the adopted code’s own model: { erp: netsuite, customerByEmail, defaultCustomer: WEB }
+[  0.4s]  4. Signed Shopify orders/create webhook received → 200 {"received":true,"disposition":"accepted"}
+[  1.4s]  5. Upstream code performed the work: NetSuite sales order 9047
+[  1.4s]  6. Outcome durably recorded (deliveries + delivery_attempts, executor commit + upstream result per attempt)
+[  3.5s]  7. Failure represented accurately: rejected — "Items not found in NetSuite: SKU-PURPLE"
+[  3.6s]  8. Other tenant's MCP client is refused: FORBIDDEN: The resource belongs to another tenant
+[  3.6s]  9. FIXTURE stand-in for the customer’s fix: item SKU-PURPLE created in NetSuite
+[  3.7s] 10. Recovery requested via MCP deliveries_retry → {"deliveryId":"424a60ae-c40b-4a52-b5cc-109991718797","status":"queued","previousOutcome":"rejected"}; duplicate request → refused (CONFLICT)
+[  5.7s] 11. Recovery succeeded: NetSuite sales order 9048
+[  5.8s] 12. Evidence: 10 durable webhook receipts · 1 recorded human intervention · 235 AppPort invocation records
+DONE in 6s — evidence: /data/artifacts/evidence/demo-adopted-1795506589723.json
