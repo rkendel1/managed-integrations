@@ -1,88 +1,88 @@
 {
   "scenario": "onboarding",
   "system": "B",
-  "startedAt": "2026-11-24T11:56:24.031Z",
-  "ms": 3299,
+  "startedAt": "2026-11-24T11:59:23.456Z",
+  "ms": 3180,
   "steps": [
     {
       "n": "0",
       "text": "Before: Northwind's own deployment of shopify-erp-order-sync wrote 6 orders to NetSuite",
-      "ms": 223
+      "ms": 144
     },
     {
       "n": "A1",
       "text": "New company signed up: Connect shopify and netsuite",
-      "ms": 292
+      "ms": 214
     },
     {
       "n": "A2",
       "text": "Shopify connected through OAuth (scope read_orders)",
-      "ms": 307
+      "ms": 231
     },
     {
       "n": "A3",
       "text": "NetSuite connected (machine-to-machine certificate) → verified",
-      "ms": 600
+      "ms": 524
     },
     {
       "n": "A4",
       "text": "Discovered: Shopify orders → NetSuite sales orders (shopify-erp-order-sync) (confidence: high) — {\"checked\":6,\"matched\":6,\"convention\":\"NetSuite sales orders with external id shopify-<order id> (the adopted code's upsert key)\",\"windowDays\":7}",
-      "ms": 768
+      "ms": 689
     },
     {
       "n": "A5",
       "text": "Customer confirmed 4 responsibilities (version 1)",
-      "ms": 777
+      "ms": 697
     },
     {
       "n": "A6",
       "text": "Under management. Baseline: 6 recent orders checked, 6 in NetSuite (6 written by their earlier deployment), 0 missing",
-      "ms": 1561
+      "ms": 1489
     },
     {
       "n": "A7",
       "text": "Customer overview: protected",
-      "ms": 1564
+      "ms": 1493
     },
     {
       "n": "A8",
-      "text": "A new order (#N-mwun2mov-NEW) reached us through the subscription we registered and is in NetSuite exactly once",
-      "ms": 1871
+      "text": "A new order (#N-mwun6h4w-NEW) reached us through the subscription we registered and is in NetSuite exactly once",
+      "ms": 1799
     },
     {
       "n": "A9",
       "text": "Customer actions in onboarding (5): sign up → connect Shopify → connect NetSuite → register the certificate in NetSuite → confirm: maintain this integration",
-      "ms": 1872
+      "ms": 1799
     },
     {
       "n": "B1",
-      "text": "Simulator: Shopify switches order webhooks to 2027-01; #N-mwun2mov-CHG arrives in the new format",
-      "ms": 1875
+      "text": "Simulator: Shopify switches order webhooks to 2027-01; #N-mwun6h4w-CHG arrives in the new format",
+      "ms": 1802
     },
     {
       "n": "B2",
       "text": "Operator: running adapter:line-price-from-price-set on github.com/Milo-ai-HQ/shopify-erp-order-sync @ d01b51d95993; price is read at src/mapping.js:11",
-      "ms": 3227
+      "ms": 3113
     },
     {
       "n": "B3",
       "text": "Adapter line-price-from-price-set: proposed → validated → active; applies to every held payload: passed; adopted code unchanged: passed; business data preserved (Shopify Admin API): passed; rollback target available: passed",
-      "ms": 3227
+      "ms": 3114
     },
     {
       "n": "B4",
-      "text": "#N-mwun2mov-CHG is in NetSuite with Shopify's price (7.25), written by the adopted code with the adapter applied",
-      "ms": 3230
+      "text": "#N-mwun6h4w-CHG is in NetSuite with Shopify's price (7.25), written by the adopted code with the adapter applied",
+      "ms": 3115
     },
     {
       "n": "B5",
       "text": "Customer sees: \"Shopify changed the format of new orders. We are adapting your integration; no order will be lost.\" … \"Completed: all 1 affected order(s) are in NetSuite exactly once with Shopify's prices. Nothing was lost and nothing is needed from you.\"",
-      "ms": 3236
+      "ms": 3117
     },
     {
       "n": "C1",
       "text": "Another company sees only its own onboarding (status connect, integration none)",
-      "ms": 3299
+      "ms": 3180
     }
   ]
 }

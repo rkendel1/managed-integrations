@@ -49,7 +49,7 @@ async function readBody(req: IncomingMessage): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-function send(res: ServerResponse, status: number, body: unknown) {
+function send(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(body));
 }
@@ -95,7 +95,7 @@ export default defineComponent(async (ctx) => {
 
   const ledgerlyRoutes = ledgerly.routes(rt, { readBody, send, signState, readState, publicUrl: PUBLIC_URL, qboSecret });
 
-  async function request(req: IncomingMessage, res: ServerResponse) {
+  async function request(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", PUBLIC_URL);
     const parts = url.pathname.split("/").filter(Boolean); // ["rt", ...]
     try {
@@ -136,7 +136,8 @@ export default defineComponent(async (ctx) => {
         auth.searchParams.set("redirect_uri", `${PUBLIC_URL}/rt/oauth/shopify/callback`);
         auth.searchParams.set("state", state);
         res.writeHead(302, { location: auth.toString() });
-        return res.end();
+        res.end();
+        return;
       }
       if (req.method === "GET" && url.pathname === "/rt/oauth/shopify/callback") {
         if (!verifyCallbackHmac(url.searchParams, shopifySecret)) return send(res, 401, { error: "invalid callback signature" });
@@ -149,7 +150,8 @@ export default defineComponent(async (ctx) => {
         const cred: ShopifyCredential = { shop, accessToken: token.accessToken, ...(token.refreshToken ? { refreshToken: token.refreshToken } : {}), ...(token.expiresAt ? { expiresAt: token.expiresAt } : {}) };
         await rt.call(workspace, "runtime:storeConnection", { provider: "shopify", status: "verified", account: url.searchParams.get("shop") ?? "", sealed: rt.seal(workspace, "connection:shopify", cred) });
         res.writeHead(302, { location: `${PUBLIC_URL}/app/connections` });
-        return res.end();
+        res.end();
+        return;
       }
       // NetSuite machine-to-machine: we generate the key pair; the customer registers the public key.
       if (req.method === "POST" && url.pathname === "/rt/connect/netsuite") {

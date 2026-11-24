@@ -5,6 +5,7 @@
  */
 import { createClient, type FeltKitClient } from "@feltdb/feltkit/client";
 import { writeFileSync, mkdirSync } from "node:fs";
+import type { api as Api } from "../feltkit/_generated/api.ts";
 
 export const B = process.env.MI_B_URL ?? "http://127.0.0.1:3100";
 export const FX = {
@@ -46,11 +47,11 @@ export async function wait<T>(what: string, probe: () => Promise<T | null | unde
   }
 }
 
-export async function json(url: string, init: RequestInit & { body?: any } = {}) {
+export async function json(url: string, init: Omit<RequestInit, "body"> & { body?: unknown } = {}) {
   const res = await fetch(url, {
     ...init,
     headers: { "content-type": "application/json", ...(init.headers ?? {}) },
-    ...(init.body !== undefined && typeof init.body !== "string" ? { body: JSON.stringify(init.body) } : {}),
+    body: init.body === undefined ? undefined : typeof init.body === "string" ? init.body : JSON.stringify(init.body),
   });
   const text = await res.text();
   return { status: res.status, body: text ? JSON.parse(text) : null, headers: res.headers };
@@ -71,7 +72,7 @@ export async function company(name: string, email: string) {
 }
 
 /** Connect a Shopify shop through B's OAuth flow (follows the redirects a browser would). */
-export async function connectShopify(c: FeltKitClient, api: any, shop: string) {
+export async function connectShopify(c: FeltKitClient, api: typeof Api, shop: string) {
   const { ticket } = await c.mutation(api.connections.begin, { provider: "shopify" });
   let url = `${B}/rt/connect/shopify?ticket=${ticket}&shop=${encodeURIComponent(shop)}`;
   for (let hops = 0; hops < 5; hops++) {
@@ -87,7 +88,7 @@ export async function connectShopify(c: FeltKitClient, api: any, shop: string) {
 }
 
 /** Connect NetSuite (machine-to-machine): B generates the key pair; the simulator gets the public key. */
-export async function connectNetSuite(c: FeltKitClient, api: any) {
+export async function connectNetSuite(c: FeltKitClient, api: typeof Api) {
   const { ticket } = await c.mutation(api.connections.begin, { provider: "netsuite" });
   const r = await json(`${B}/rt/connect/netsuite`, {
     method: "POST",
@@ -100,7 +101,7 @@ export async function connectNetSuite(c: FeltKitClient, api: any) {
 }
 
 /** A company with the Shopify → NetSuite order sync under management and its webhook subscribed. */
-export async function adoptedCompany(api: any, name: string, shopUrl: string) {
+export async function adoptedCompany(api: typeof Api, name: string, shopUrl: string) {
   const run = Date.now().toString(36);
   await json(`${FX.netsuite}/__fixture/config`, { method: "POST", body: { oneWorld: false } });
   const co = await company(name, `ops-${run}@${name.toLowerCase()}.test`);

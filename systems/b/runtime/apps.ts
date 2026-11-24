@@ -14,7 +14,7 @@ function appStores(): AsyncLocalStorage<AppStore> {
   return (g[slot] ??= new AsyncLocalStorage<AppStore>());
 }
 import Stripe from "stripe";
-import { materialize, type Patch } from "./artifacts.ts";
+import { materialize, type ArtifactSpec, type Patch } from "./artifacts.ts";
 import type { AppStore } from "./prisma-shim.ts";
 import { QBO, type QboGrant, query } from "./quickbooks.ts";
 import { stripeClient } from "./ledgerly.ts";
@@ -66,15 +66,15 @@ export const APP_PATCHES: Record<string, Patch> = {
   },
 };
 
-export const stripeAppArtifact = (patchIds: string[]) =>
-  materialize<{ processStripeEvent(e: unknown): Promise<{ outcome: string }> }>({
-    pkg: "stripe-webhooks-subscriptions-node-ts",
-    from: "vendor",
-    entry: "mi-entry.ts",
-    entrySource: "export { processStripeEvent } from './src/webhooks/stripeEventProcessor.js';\n",
-    patches: patchIds.map((id) => APP_PATCHES[id]!).filter(Boolean),
-    provide: [{ importPattern: "/db/prisma$", file: join(process.cwd(), "runtime", "prisma-shim.ts") }],
-  });
+export const stripeAppSpec = (patchIds: string[]): ArtifactSpec => ({
+  pkg: "stripe-webhooks-subscriptions-node-ts",
+  from: "vendor",
+  entry: "mi-entry.ts",
+  entrySource: "export { processStripeEvent } from './src/webhooks/stripeEventProcessor.js';\n",
+  patches: patchIds.map((id) => APP_PATCHES[id]!).filter(Boolean),
+  provide: [{ importPattern: "/db/prisma$", file: join(process.cwd(), "runtime", "prisma-shim.ts") }],
+});
+export const stripeAppArtifact = (patchIds: string[]) => materialize<{ processStripeEvent(e: unknown): Promise<{ outcome: string }> }>(stripeAppSpec(patchIds));
 
 type Row = Record<string, unknown>;
 /** Run the application's processor for one event against `current` records; returns the writes it made. */
@@ -114,15 +114,16 @@ export function differences(row: Row, truth: Row | null): string[] {
 
 /* ----------------------------------------- QuickBooks tools ----------------------------------------- */
 
-const qbToolsArtifact = (nodeQuickbooks: string) =>
-  materialize<{ handleCreateInvoice(client: unknown, args: unknown): Promise<{ content: { type: string; text: string }[] }>; QuickBooks: any }>({
-    pkg: "quickbooks-mcp",
-    from: "vendor",
-    entry: "mi-entry.ts",
-    entrySource: "export { handleCreateInvoice } from './src/tools/handlers/invoice.js';\nexport { default as QuickBooks } from 'node-quickbooks';\n",
-    patches: [],
-    alias: { "node-quickbooks": `nqb-${nodeQuickbooks}` },
-  });
+export const qbToolsSpec = (nodeQuickbooks: string): ArtifactSpec => ({
+  pkg: "quickbooks-mcp",
+  from: "vendor",
+  entry: "mi-entry.ts",
+  entrySource: "export { handleCreateInvoice } from './src/tools/handlers/invoice.js';\nexport { default as QuickBooks } from 'node-quickbooks';\n",
+  patches: [],
+  alias: { "node-quickbooks": `nqb-${nodeQuickbooks}` },
+});
+export const qbToolsArtifact = (nodeQuickbooks: string) =>
+  materialize<{ handleCreateInvoice(client: unknown, args: unknown): Promise<{ content: { type: string; text: string }[] }>; QuickBooks: any }>(qbToolsSpec(nodeQuickbooks));
 
 export interface InvoiceInput {
   txn_date: string;

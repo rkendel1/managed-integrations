@@ -5,7 +5,7 @@
  * QuickBooks first so an entry the customer's earlier deployment already booked is not booked again.
  */
 import Stripe from "stripe";
-import { materialize, type Patch } from "./artifacts.ts";
+import { materialize, sourceOf, type Patch } from "./artifacts.ts";
 import { QBO, type QboGrant, query } from "./quickbooks.ts";
 
 export const UPSTREAM = { repository: "github.com/jakethehoffer/ledgerly", commit: "3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090", license: "MIT" } as const;
@@ -41,14 +41,13 @@ export interface Ledgerly {
   UnhandledEventError: new (...a: any[]) => Error;
 }
 
-export const artifactFor = (patchIds: string[]) =>
-  materialize<Ledgerly>({ pkg: "ledgerly", entry: "mi-entry.ts", entrySource: ENTRY, patches: patchIds.map((id) => PATCHES[id]!).filter(Boolean) });
+export const artifactSpec = (patchIds: string[]) => ({ pkg: "ledgerly", entry: "mi-entry.ts", entrySource: ENTRY, patches: patchIds.map((id) => PATCHES[id]!).filter(Boolean) });
+export const artifactFor = (patchIds: string[]) => materialize<Ledgerly>(artifactSpec(patchIds));
 
 /** The QuickBooks minor version the artifact's dispatcher declares (read from the code that runs). */
 export async function declaredMinorVersion(patchIds: string[]) {
   const a = await artifactFor(patchIds);
-  const { readFileSync } = await import("node:fs");
-  const src = readFileSync(`${a.dir}/src-tree/src/server/dispatchers/qbo.ts`, "utf8");
+  const src = sourceOf(a, "src/server/dispatchers/qbo.ts");
   const line = src.split("\n").findIndex((l) => /const QBO_MINOR_VERSION = '\d+'/.test(l));
   return { version: Number(/'(\d+)'/.exec(src.split("\n")[line] ?? "")?.[1] ?? NaN), at: `src/server/dispatchers/qbo.ts:${line + 1}`, artifact: a.id };
 }
@@ -109,7 +108,7 @@ export async function executeEvent(
     ? { status: 200, body: {} as any }
     : await query<{ QueryResponse?: { JournalEntry?: { DocNumber: string; PrivateNote: string }[] } }>(qbo, `select * from JournalEntry where DocNumber in (${docs.map((d) => `'${d}'`).join(", ")})`);
   if (existing.status === 401) return { status: "unauthorized", entries: 0, artifact: a.id, requests };
-  const booked = new Set((existing.body.QueryResponse?.JournalEntry ?? []).map((j) => `${j.DocNumber}|${j.PrivateNote}`));
+  const booked = new Set((existing.body.QueryResponse?.JournalEntry ?? []).map((j: { DocNumber: string; PrivateNote: string }) => `${j.DocNumber}|${j.PrivateNote}`));
   const dispatch = L.qboDispatcher({ accessToken: qbo.accessToken, realmId: qbo.realmId, accountMap, apiBase: QBO.apiBase, fetch: capturing(Boolean(options.dryRun), requests), log: silent });
   let sent = 0;
   for (const [i, entry] of mapped.entries.entries()) {

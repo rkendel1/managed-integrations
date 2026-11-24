@@ -42,11 +42,62 @@ export interface Artifact<T> {
   module: T;
 }
 
-const root = process.env.MI_ARTIFACT_DIR ?? join(process.cwd(), ".feltkit", "artifacts");
+// Production writes only under .feltkit/production (the deployment's writable runtime directory).
+const root = process.env.MI_ARTIFACT_DIR ?? join(process.cwd(), ".feltkit", process.env.NODE_ENV === "production" ? "production" : "", "artifacts");
+
+/**
+ * Prebuilt artifacts (scripts/build-artifacts.ts): every reviewed variant, built from the pinned sources and
+ * shipped inside the application bundle, because a deployment carries the build and its dependencies but not
+ * the sources. Keyed by what the artifact is made of; each entry carries its id, manifest, bundle and the
+ * source files maintenance cites.
+ */
+interface Prebuilt { id: string; manifest: Artifact<unknown>["manifest"]; bundle: string; sources: Record<string, string> }
+let prebuiltCache: Record<string, Prebuilt> | null = null;
+async function prebuilt(): Promise<Record<string, Prebuilt>> {
+  if (prebuiltCache) return prebuiltCache;
+  try {
+    prebuiltCache = ((await import("./generated/artifacts.json", { with: { type: "json" } })) as { default: Record<string, Prebuilt> }).default;
+  } catch {
+    prebuiltCache = {};
+  }
+  return prebuiltCache;
+}
+/** What an artifact is made of, independent of where its sources sit (the prebuilt key). */
+export function artifactKey(spec: ArtifactSpec) {
+  return sha(JSON.stringify({ pkg: spec.pkg, from: spec.from ?? "node_modules", entry: spec.entry, entrySource: spec.entrySource ?? null, patches: spec.patches, alias: spec.alias ?? {}, provide: (spec.provide ?? []).map((p) => p.importPattern) })).slice(0, 16);
+}
+const sourcesOf = new Map<string, Record<string, string>>();
+/** A source file of an artifact as it was built (from its tree in development, from the prebuilt entry otherwise). */
+export function sourceOf(a: { id: string; dir: string }, file: string): string {
+  const tree = join(a.dir, "src-tree", file);
+  if (existsSync(tree)) return readFileSync(tree, "utf8");
+  const s = sourcesOf.get(a.id)?.[file];
+  if (s === undefined) throw new Error(`source ${file} of artifact ${a.id} is not available`);
+  return s;
+}
 const loaded = new Map<string, Artifact<any>>();
 const sha = (s: string | Buffer) => createHash("sha256").update(s).digest("hex");
 
 export async function materialize<T>(spec: ArtifactSpec): Promise<Artifact<T>> {
+  if (process.env.MI_ARTIFACTS_FROM_SOURCE !== "1") {
+    const p = (await prebuilt())[artifactKey(spec)];
+    if (p) {
+      const hit = loaded.get(p.id);
+      if (hit) return hit;
+      const dir = join(root, `${spec.pkg}-${p.id}`);
+      const out = join(dir, "artifact.mjs");
+      if (!existsSync(out)) {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(out, p.bundle);
+        writeFileSync(join(dir, "manifest.json"), JSON.stringify(p.manifest, null, 2));
+      }
+      if (p.manifest.bundleSha256 !== sha(readFileSync(out))) throw new Error(`artifact ${p.id} does not match its manifest`);
+      sourcesOf.set(p.id, p.sources);
+      const artifact = { id: p.id, dir, manifest: p.manifest, module: (await import(pathToFileURL(out).href)) as T };
+      loaded.set(p.id, artifact);
+      return artifact;
+    }
+  }
   // The installed or vendored copy (a package's `exports` may hide package.json from require.resolve).
   const pkgDir = join(process.cwd(), spec.from === "vendor" ? "vendor" : "node_modules", spec.pkg);
   if (!existsSync(join(pkgDir, "package.json"))) throw new Error(`${spec.pkg} is not installed`);

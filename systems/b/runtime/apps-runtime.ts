@@ -4,8 +4,8 @@ import type { Runtime } from "./component.ts";
 import { AuthorizationLost } from "./netsuite.ts";
 import { grant, query } from "./quickbooks.ts";
 import { stripeClient } from "./ledgerly.ts";
-import { APP_PATCHES, QBO_TOOLS, STRIPE_APP, createInvoice, differences, findInvoiceByDoc, processWith, stripeAppArtifact, stripeTruth } from "./apps.ts";
-import { materialize } from "./artifacts.ts";
+import { APP_PATCHES, QBO_TOOLS, STRIPE_APP, createInvoice, differences, findInvoiceByDoc, processWith, qbToolsArtifact, stripeAppArtifact, stripeTruth } from "./apps.ts";
+import { sourceOf } from "./artifacts.ts";
 
 type Handler = (item: ComponentWorkItem, ws: string) => Promise<ComponentWorkOutcome>;
 
@@ -43,9 +43,8 @@ export async function processAndVerify(rt: Runtime, ws: string, integrationId: s
 
 /** The lines of the application's processor that read a field (file:line), for the finding. */
 async function readsOf(fields: string[]) {
-  const { readFileSync } = await import("node:fs");
   const a = await stripeAppArtifact([]);
-  const lines = readFileSync(`${a.dir}/src-tree/${STRIPE_APP.processorFile}`, "utf8").split("\n");
+  const lines = sourceOf(a, STRIPE_APP.processorFile).split("\n");
   const source: Record<string, string> = { currentPeriodEnd: "current_period_end", stripeSubscriptionId: "inv.subscription", paid: "inv.paid" };
   return fields.flatMap((f) => lines.flatMap((l, i) => (source[f] && l.includes(source[f]!) ? [`${STRIPE_APP.processorFile}:${i + 1}`] : []))).filter((v, i, x) => x.indexOf(v) === i);
 }
@@ -134,7 +133,7 @@ export function workers(get: () => Runtime, qboSecret: () => string, publicUrl: 
     async "check-app-release"(item, ws) {
       const rt = get();
       const integrationId = String(item.input.integrationId);
-      const a = await materialize({ pkg: "quickbooks-mcp", from: "vendor", entry: "mi-entry.ts", entrySource: "export { handleCreateInvoice } from './src/tools/handlers/invoice.js';\nexport { default as QuickBooks } from 'node-quickbooks';\n", patches: [], alias: { "node-quickbooks": `nqb-${QBO_TOOLS.pinnedDependency.version}` } });
+      const a = await qbToolsArtifact(QBO_TOOLS.pinnedDependency.version);
       for (const rel of RELEASES["quickbooks-mcp"]) {
         const touched = a.manifest.executed.filter((f) => (rel.changedFiles as readonly string[]).includes(f));
         await rt.call(ws, "apps:openReleaseEvent", {
