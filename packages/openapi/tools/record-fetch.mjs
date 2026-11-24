@@ -17,13 +17,13 @@ if (file && typeof globalThis.fetch === 'function') {
     let requestFields = [];
     const body = init.body;
     if (typeof body === 'string') {
-      if (body.trim().startsWith('{')) { try { requestFields = Object.keys(JSON.parse(body)); } catch {} }
+      if (body.trim().startsWith('{')) { try { requestFields = Object.keys(JSON.parse(body)); } catch { /* not JSON: no fields */ } }
       else requestFields = [...new URLSearchParams(body).keys()];
     }
     let response = null;
-    try { response = await res.clone().json(); } catch {}
+    try { response = await res.clone().json(); } catch { /* not JSON: no body recorded */ }
     appendFileSync(file, JSON.stringify({ method: (init.method ?? 'GET').toUpperCase(), path: url.pathname, query: [...url.searchParams.keys()], requestFields, status: res.status, response, idempotencyKey: new Headers(init.headers ?? {}).get('idempotency-key'), stripeVersion: new Headers(init.headers ?? {}).get('stripe-version') }) + '\n');
-    } catch {}
+    } catch { /* recording never changes the call */ }
     return res;
   };
 }
