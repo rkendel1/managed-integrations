@@ -1,0 +1,178 @@
+{
+  "format": "mi.openapi.overlay/1",
+  "application": "saaskit@8ead17dbd97634299bd90b9b169c25e2d5472d96",
+  "provider": "stripe",
+  "contract": {
+    "version": "2024-06-20",
+    "sha256": "89c6bac0ef106b45c548f9a1084c285d509362f3ed2891e8728f0abc4d435d7e"
+  },
+  "operations": {
+    "POST /v1/customers": {
+      "expose": true,
+      "effect": {
+        "status": "known",
+        "value": "creates a Stripe customer for one account",
+        "source": "saaskit@8ead17d:components/stripe/stripe.ts:105"
+      },
+      "idempotency": {
+        "status": "known",
+        "value": "Idempotency-Key customer:<accountId>",
+        "source": "saaskit@8ead17d:components/payments.ts (checkout.create)"
+      },
+      "identity": {
+        "status": "known",
+        "value": "metadata.accountId names the account",
+        "source": "saaskit@8ead17d:components/stripe/stripe.ts:105"
+      }
+    },
+    "POST /v1/checkout/sessions": {
+      "expose": true,
+      "effect": {
+        "status": "known",
+        "value": "creates a hosted checkout; grants nothing by itself",
+        "source": "saaskit@8ead17d:components/stripe/stripe.ts:119"
+      },
+      "idempotency": {
+        "status": "known",
+        "value": "Idempotency-Key checkout:<checkoutId>",
+        "source": "saaskit@8ead17d:components/payments.ts"
+      },
+      "identity": {
+        "status": "known",
+        "value": "metadata.checkoutId / accountId / invoiceId",
+        "source": "saaskit@8ead17d:components/stripe/stripe.ts:111"
+      }
+    },
+    "POST /v1/payment_intents": {
+      "expose": true,
+      "effect": {
+        "status": "known",
+        "value": "off-session charge of a saved card; money moves",
+        "source": "saaskit@8ead17d:components/stripe/stripe.ts:125"
+      },
+      "idempotency": {
+        "status": "known",
+        "value": "Idempotency-Key charge:<invoiceId>:<attempt>",
+        "source": "saaskit@8ead17d:components/payments.ts (invoice.charge)"
+      },
+      "identity": {
+        "status": "known",
+        "value": "metadata.invoiceId names the invoice",
+        "source": "saaskit@8ead17d:components/stripe/stripe.ts:127"
+      },
+      "verify": {
+        "operation": "GET /v1/payment_intents/{intent}",
+        "by": "id",
+        "status": "known"
+      }
+    },
+    "POST /v1/refunds": {
+      "expose": true,
+      "effect": {
+        "status": "known",
+        "value": "refunds part or all of a payment; money moves",
+        "source": "saaskit@8ead17d:components/stripe/stripe.ts:138"
+      },
+      "idempotency": {
+        "status": "known",
+        "value": "Idempotency-Key refund:<refundId>",
+        "source": "saaskit@8ead17d:components/payments.ts (refund.create)"
+      },
+      "identity": {
+        "status": "known",
+        "value": "metadata.refundId",
+        "source": "saaskit@8ead17d:components/stripe/stripe.ts:138"
+      }
+    },
+    "GET /v1/payment_methods/{payment_method}": {
+      "expose": true,
+      "effect": {
+        "status": "known",
+        "value": "read",
+        "source": "saaskit@8ead17d:components/stripe/stripe.ts:144"
+      },
+      "idempotency": {
+        "status": "known",
+        "value": "a read; repeating it changes nothing",
+        "source": "https://docs.stripe.com/api/idempotent_requests (GET and DELETE are idempotent by definition)"
+      },
+      "identity": {
+        "status": "known",
+        "value": "payment method id",
+        "source": "saaskit@8ead17d:components/stripe/stripe.ts:144"
+      }
+    },
+    "GET /v1/payment_intents/{intent}": {
+      "expose": true,
+      "effect": {
+        "status": "known",
+        "value": "read (reconciliation)",
+        "source": "saaskit@8ead17d:components/stripe/stripe.ts:152"
+      },
+      "idempotency": {
+        "status": "known",
+        "value": "a read; repeating it changes nothing",
+        "source": "https://docs.stripe.com/api/idempotent_requests (GET and DELETE are idempotent by definition)"
+      },
+      "identity": {
+        "status": "known",
+        "value": "payment intent id",
+        "source": "saaskit@8ead17d:components/stripe/stripe.ts:152"
+      }
+    }
+  },
+  "invariants": [
+    {
+      "id": "payment-matches-invoice",
+      "status": "known",
+      "value": "a payment applies only to an open invoice, and only when amount and currency equal the invoice; otherwise an anomaly is recorded and nothing is granted",
+      "source": "saaskit@8ead17d:feltkit/payments.ts:66"
+    },
+    {
+      "id": "event-once",
+      "status": "known",
+      "value": "each provider event is applied once, unique on (provider, eventId), in the same transaction as its effects",
+      "source": "saaskit@8ead17d:feltkit/payments.ts:41"
+    },
+    {
+      "id": "second-payment-flagged",
+      "status": "known",
+      "value": "a second payment for a paid invoice is flagged for refund, never applied",
+      "source": "saaskit@8ead17d:feltkit/payments.ts:62"
+    },
+    {
+      "id": "checkout-grants-nothing",
+      "status": "known",
+      "value": "completing checkout grants nothing; the payment event does",
+      "source": "saaskit@8ead17d:feltkit/payments.ts:89"
+    },
+    {
+      "id": "refund-by-event",
+      "status": "known",
+      "value": "refunds settle only by event, for refunds initiated here, once",
+      "source": "saaskit@8ead17d:feltkit/payments.ts:102"
+    },
+    {
+      "id": "reconcile-open-only",
+      "status": "known",
+      "value": "reconciliation applies a succeeded provider payment only to an open invoice with the same amount",
+      "source": "saaskit@8ead17d:feltkit/payments.ts:173"
+    },
+    {
+      "id": "event-order",
+      "status": "known",
+      "value": "events delivered out of order reach the same state",
+      "source": "saaskit@8ead17d:tests/payments.test.ts (out-of-order test)"
+    },
+    {
+      "id": "webhook-payload-contract",
+      "status": "inferred",
+      "value": "webhook event payloads are the resource schemas (Stripe's OpenAPI does not declare webhooks); fields read are checked against those schemas"
+    },
+    {
+      "id": "unknown-charge-outcome",
+      "status": "requires_decision",
+      "value": "a charge whose outcome is unknown is settled by reading the payment intent (verify), or by a person \u2014 never by charging again"
+    }
+  ]
+}

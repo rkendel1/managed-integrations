@@ -1,0 +1,306 @@
+{
+  "application": "saaskit@8ead17dbd97634299bd90b9b169c25e2d5472d96",
+  "operations": [
+    {
+      "key": "POST /v1/customers",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:105"
+    },
+    {
+      "key": "POST /v1/checkout/sessions",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:119"
+    },
+    {
+      "key": "POST /v1/payment_intents",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:125"
+    },
+    {
+      "key": "POST /v1/refunds",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:138"
+    },
+    {
+      "key": "GET /v1/payment_methods/{payment_method}",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:144"
+    },
+    {
+      "key": "GET /v1/payment_intents/{intent}",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:152"
+    }
+  ],
+  "reads": [
+    {
+      "schema": "payment_intent",
+      "field": "id",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:55"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "amount_received",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:55"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "amount",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:55"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "currency",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:55"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "customer",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:55"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "payment_method",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:55"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "last_payment_error",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:57"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "status",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:153"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "metadata",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:154"
+    },
+    {
+      "schema": "checkout.session",
+      "field": "id",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:53"
+    },
+    {
+      "schema": "checkout.session",
+      "field": "customer",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:53"
+    },
+    {
+      "schema": "checkout.session",
+      "field": "mode",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:53"
+    },
+    {
+      "schema": "checkout.session",
+      "field": "payment_intent",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:53"
+    },
+    {
+      "schema": "checkout.session",
+      "field": "client_reference_id",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:53"
+    },
+    {
+      "schema": "checkout.session",
+      "field": "metadata",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:49"
+    },
+    {
+      "schema": "refund",
+      "field": "id",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:60"
+    },
+    {
+      "schema": "refund",
+      "field": "status",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:60"
+    },
+    {
+      "schema": "refund",
+      "field": "payment_intent",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:60"
+    },
+    {
+      "schema": "refund",
+      "field": "amount",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:60"
+    },
+    {
+      "schema": "refund",
+      "field": "currency",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:60"
+    },
+    {
+      "schema": "refund",
+      "field": "failure_reason",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:61"
+    },
+    {
+      "schema": "refund",
+      "field": "metadata",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:49"
+    },
+    {
+      "schema": "setup_intent",
+      "field": "customer",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:65"
+    },
+    {
+      "schema": "setup_intent",
+      "field": "payment_method",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:65"
+    },
+    {
+      "schema": "setup_intent",
+      "field": "metadata",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:49"
+    },
+    {
+      "schema": "payment_method",
+      "field": "id",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:72"
+    },
+    {
+      "schema": "payment_method",
+      "field": "card",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:72"
+    },
+    {
+      "schema": "payment_method",
+      "field": "customer",
+      "usedAt": "saaskit@8ead17d:components/stripe/stripe.ts:65"
+    }
+  ],
+  "sends": [
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "cancel_url"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "client_reference_id"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "customer"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "line_items[].price_data.currency"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "line_items[].price_data.product_data.name"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "line_items[].price_data.unit_amount"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "line_items[].quantity"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "metadata.accountId"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "metadata.checkoutId"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "metadata.invoiceId"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "mode"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "payment_intent_data.metadata.accountId"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "payment_intent_data.metadata.checkoutId"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "payment_intent_data.metadata.invoiceId"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "payment_intent_data.setup_future_usage"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "payment_method_types[]"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "setup_intent_data.metadata.accountId"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "setup_intent_data.metadata.checkoutId"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "success_url"
+    },
+    {
+      "operation": "POST /v1/customers",
+      "field": "metadata.accountId"
+    },
+    {
+      "operation": "POST /v1/customers",
+      "field": "name"
+    },
+    {
+      "operation": "POST /v1/payment_intents",
+      "field": "amount"
+    },
+    {
+      "operation": "POST /v1/payment_intents",
+      "field": "confirm"
+    },
+    {
+      "operation": "POST /v1/payment_intents",
+      "field": "currency"
+    },
+    {
+      "operation": "POST /v1/payment_intents",
+      "field": "customer"
+    },
+    {
+      "operation": "POST /v1/payment_intents",
+      "field": "description"
+    },
+    {
+      "operation": "POST /v1/payment_intents",
+      "field": "metadata.accountId"
+    },
+    {
+      "operation": "POST /v1/payment_intents",
+      "field": "metadata.invoiceId"
+    },
+    {
+      "operation": "POST /v1/payment_intents",
+      "field": "off_session"
+    },
+    {
+      "operation": "POST /v1/payment_intents",
+      "field": "payment_method"
+    },
+    {
+      "operation": "POST /v1/refunds",
+      "field": "amount"
+    },
+    {
+      "operation": "POST /v1/refunds",
+      "field": "metadata.refundId"
+    },
+    {
+      "operation": "POST /v1/refunds",
+      "field": "payment_intent"
+    }
+  ],
+  "sendsSource": "observed: docs/evidence/runs/saaskit-stripe-exchanges.jsonl (SaaSKit's own suite, 70 exchanges)"
+}

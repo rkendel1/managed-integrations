@@ -1,0 +1,140 @@
+{
+  "application": "stripe-webhooks-subscriptions-node-ts@4812d259e7e8e1e57785f2e09be448e5e3ad92b1",
+  "operations": [
+    {
+      "key": "POST /v1/checkout/sessions",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/routes/stripe.ts:38"
+    },
+    {
+      "key": "POST /v1/payment_intents",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/routes/stripe.ts:15"
+    }
+  ],
+  "reads": [
+    {
+      "schema": "subscription",
+      "field": "id",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:18"
+    },
+    {
+      "schema": "subscription",
+      "field": "customer",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:19"
+    },
+    {
+      "schema": "subscription",
+      "field": "status",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:20"
+    },
+    {
+      "schema": "subscription",
+      "field": "current_period_end",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:21"
+    },
+    {
+      "schema": "subscription",
+      "field": "cancel_at_period_end",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:22"
+    },
+    {
+      "schema": "invoice",
+      "field": "id",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:43"
+    },
+    {
+      "schema": "invoice",
+      "field": "customer",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:44"
+    },
+    {
+      "schema": "invoice",
+      "field": "subscription",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:46"
+    },
+    {
+      "schema": "invoice",
+      "field": "status",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:47"
+    },
+    {
+      "schema": "invoice",
+      "field": "currency",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:48"
+    },
+    {
+      "schema": "invoice",
+      "field": "amount_due",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:49"
+    },
+    {
+      "schema": "invoice",
+      "field": "paid",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:50"
+    },
+    {
+      "schema": "invoice",
+      "field": "hosted_invoice_url",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:51"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "id",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:77"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "customer",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:78"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "status",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:79"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "currency",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:80"
+    },
+    {
+      "schema": "payment_intent",
+      "field": "amount",
+      "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:81"
+    }
+  ],
+  "sends": [
+    {
+      "operation": "POST /v1/payment_intents",
+      "field": "amount"
+    },
+    {
+      "operation": "POST /v1/payment_intents",
+      "field": "currency"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "mode"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "customer_email"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "line_items[].price"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "line_items[].quantity"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "success_url"
+    },
+    {
+      "operation": "POST /v1/checkout/sessions",
+      "field": "cancel_url"
+    }
+  ],
+  "sendsSource": "cited: src/routes/stripe.ts:15-18 and :38-44 at 4812d25"
+}

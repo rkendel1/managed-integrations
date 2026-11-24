@@ -1,0 +1,24 @@
+{
+  "stripe-v1267.json.gz": {
+    "authority": "official",
+    "repository": "https://github.com/stripe/openapi",
+    "tag": "v1267",
+    "commit": "5b109bff953a60ed3e50bd797dfeddb3e7dafe92",
+    "path": "openapi/spec3.json",
+    "license": "MIT",
+    "apiVersion": "2024-06-20",
+    "sha256": "89c6bac0ef106b45c548f9a1084c285d509362f3ed2891e8728f0abc4d435d7e",
+    "note": "The last release of API version 2024-06-20 (the version SaaSKit's client pins). Stored gzip-compressed; sha256 is of the uncompressed document."
+  },
+  "stripe-v1618.json.gz": {
+    "authority": "official",
+    "repository": "https://github.com/stripe/openapi",
+    "tag": "v1618",
+    "commit": "9fa5188b0933d46d2ac3c601d2d9c50904fb54de",
+    "path": "openapi/spec3.json",
+    "license": "MIT",
+    "apiVersion": "2025-03-31.basil",
+    "sha256": "38c0bf600b53b308e201df17cb5f8263d78ab0ee52809abcd44738dc6e02c19c",
+    "note": "The first release of API version 2025-03-31.basil."
+  }
+}

@@ -1,0 +1,113 @@
+{
+  "contract": {
+    "tag": "v1267",
+    "version": "2024-06-20",
+    "sha256": "89c6bac0ef106b45c548f9a1084c285d509362f3ed2891e8728f0abc4d435d7e",
+    "contractHash": "0477aeb7e2117de940198be23779d8a8c774c06a848db3aac0a8d914eed12b01"
+  },
+  "exchanges": 70,
+  "requestViolations": [],
+  "simulatorResponseFidelity": {
+    "POST /v1/customers": [
+      "missing_required:created",
+      "missing_required:livemode"
+    ],
+    "POST /v1/checkout/sessions": [
+      "missing_required:automatic_tax",
+      "missing_required:created",
+      "missing_required:custom_fields",
+      "missing_required:custom_text",
+      "missing_required:expires_at",
+      "missing_required:livemode",
+      "missing_required:payment_method_types",
+      "missing_required:shipping_options",
+      "unknown_field:description",
+      "unknown_field:pi_metadata"
+    ],
+    "GET /v1/payment_methods/{payment_method}": [
+      "missing_required:billing_details",
+      "missing_required:created",
+      "missing_required:livemode"
+    ],
+    "POST /v1/payment_intents": [
+      "missing_required:capture_method",
+      "missing_required:confirmation_method",
+      "missing_required:created",
+      "missing_required:livemode",
+      "missing_required:payment_method_types"
+    ],
+    "POST /v1/refunds": [
+      "missing_required:created"
+    ],
+    "GET /v1/payment_intents/{intent}": [
+      "missing_required:capture_method",
+      "missing_required:confirmation_method",
+      "missing_required:created",
+      "missing_required:livemode",
+      "missing_required:payment_method_types"
+    ]
+  },
+  "basil": {
+    "saaskit": {
+      "application": "saaskit@8ead17dbd97634299bd90b9b169c25e2d5472d96",
+      "from": {
+        "version": "2024-06-20",
+        "contractHash": "0477aeb7e2117de940198be23779d8a8c774c06a848db3aac0a8d914eed12b01"
+      },
+      "to": {
+        "version": "2025-03-31.basil",
+        "contractHash": "8963e6f5bacf81c2539abdbf2eb63a2483902ec4483a2fb8bae323f396aa9b49"
+      },
+      "affected": [],
+      "unaffectedBreaking": 484,
+      "verdict": "unaffected"
+    },
+    "subscriptionsApp": {
+      "application": "stripe-webhooks-subscriptions-node-ts@4812d259e7e8e1e57785f2e09be448e5e3ad92b1",
+      "from": {
+        "version": "2024-06-20",
+        "contractHash": "0477aeb7e2117de940198be23779d8a8c774c06a848db3aac0a8d914eed12b01"
+      },
+      "to": {
+        "version": "2025-03-31.basil",
+        "contractHash": "8963e6f5bacf81c2539abdbf2eb63a2483902ec4483a2fb8bae323f396aa9b49"
+      },
+      "affected": [
+        {
+          "change": {
+            "kind": "response.field_removed",
+            "breaking": true,
+            "subject": "schema:invoice",
+            "field": "paid",
+            "before": "boolean"
+          },
+          "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:50"
+        },
+        {
+          "change": {
+            "kind": "response.field_removed",
+            "breaking": true,
+            "subject": "schema:invoice",
+            "field": "subscription",
+            "before": "ref:subscription|string"
+          },
+          "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:46"
+        },
+        {
+          "change": {
+            "kind": "response.field_removed",
+            "breaking": true,
+            "subject": "schema:subscription",
+            "field": "current_period_end",
+            "before": "integer"
+          },
+          "usedAt": "stripe-webhooks-subscriptions-node-ts@4812d25:src/webhooks/stripeEventProcessor.ts:21"
+        }
+      ],
+      "unaffectedBreaking": 481,
+      "verdict": "affected_breaking"
+    },
+    "changesInContract": 1752,
+    "breakingInContract": 484
+  }
+}

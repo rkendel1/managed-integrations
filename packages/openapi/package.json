@@ -1,0 +1,19 @@
+{
+  "name": "@mi/openapi",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@apidevtools/swagger-parser": "13.1.0",
+    "@appport/core": "1.13.0",
+    "@appport/schema": "1.2.2",
+    "@appport/protocol": "1.8.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "7.13.0",
+    "@mi/test-fixtures": "workspace:*"
+  }
+}

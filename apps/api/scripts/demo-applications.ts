@@ -129,7 +129,7 @@ step('S4', `Detected: boundary ${ready.e.boundary}, provider ${ready.e.provider}
 await operator('adaptations_activate', { adaptationId: ready.c.id, reason: 'Reviewed: reads the basil field locations; webhook handler unchanged' });
 const sDone = await wait('the event to resolve', async () => {
   const story = await s.call<Story>('maintenance_events_get', { eventId: evId });
-  return story.state === 'resolved' ? story : undefined;
+  return story.state === 'completed' ? story : undefined;
 });
 step('S5', `Operator switched the patch on (MCP). Customer view: “${sDone.headline}” — ${sDone.facts.map((f) => `${f.label}: ${f.value}`).join(' | ')}`);
 if (/p0001|stripeEventProcessor|sha256/.test(JSON.stringify(sDone))) fail('customer view leaks internals');
@@ -171,7 +171,7 @@ const again = (await post(`${API}/api/customer/connections/quickbooks/authorize`
 await connectQbo(again.url);
 const authDone = await wait('the reauthorization to resolve', async () => {
   const st = await q.call<Story & { claim: { zeroLoss: boolean } }>('maintenance_events_get', { eventId: authEv });
-  return st.state === 'resolved' ? st : undefined;
+  return st.state === 'completed' ? st : undefined;
 });
 step('Q3', `QuickBooks authorization lost → request held (QuickBooks processed nothing) → customer reconnected → ran once. “${authDone.headline}”; zero loss: ${authDone.claim.zeroLoss}; invoices: ${(await invoices()).length}`);
 if ((await invoices()).length !== 2) fail('held request not delivered exactly once');
@@ -190,7 +190,7 @@ step('Q4', `Upstream v${QBO_TOOLS_APP.nextRelease.version}: ${upEv.c.validation?
 await operator('adaptations_activate', { adaptationId: upEv.c.id, reason: 'Reviewed: upstream release, executed files unchanged' });
 await q.call('applications_invoke', { integrationId: qboId, operation: 'create_invoice', requestId: `r3-${tag}`, input: inv(3) });
 const ua = ((await (await fetch(`${QBO}/__fixture/state`)).json()) as { requestLog: { userAgent?: string | null }[] }).requestLog.filter((x) => x.userAgent?.startsWith('node-quickbooks')).at(-1)?.userAgent;
-await wait('the upgrade event to resolve', async () => (await q.call<Story>('maintenance_events_get', { eventId: upEv.id })).state === 'resolved');
+await wait('the upgrade event to resolve', async () => (await q.call<Story>('maintenance_events_get', { eventId: upEv.id })).state === 'completed');
 await operator('adaptations_rollback', { adaptationId: upEv.c.id, reason: 'Rollback drill' });
 step('Q5', `Operator switched it on; next request used “${ua}”; verified on real work and resolved; rolled back to the pinned set (drill)`);
 

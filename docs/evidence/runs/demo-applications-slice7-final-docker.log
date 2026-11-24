@@ -1,0 +1,7 @@
+docker compose --env-file .env --profile demo exec -T api pnpm exec tsx apps/api/scripts/demo-applications.ts
+[  2.5s]  S1. Adopted https://github.com/abdelrahmansapryalwtany/stripe-webhooks-subscriptions-node-ts @ 4812d259e7e8 (MIT), vendored; 7 executed files pinned; match: true
+[  3.8s]  S2. Discovered (one provider: Stripe): A Stripe webhook endpoint on the application’s route (/v1/stripe/webhook) at API version 2025-02-24.acacia, subscribed to 4 of the application’s events.
+[  7.6s]  S3. Hosted and verified: {"eventsReplayed":4,"recordsVerified":4} (the application’s own database rebuilt from Stripe’s events; every record checked against Stripe)
+[ 11.7s]  S4. Detected: boundary provider, provider stripe; impact ["currentPeriodEnd"]; reviewed patch validated by replay: ✓ patch applies to the pinned file and the artifact loads · ✓ events at the earlier contract are processed exactly as before · ✓ events at the changed contract now produce the records Stripe states · ✓ signature check, idempotency and retries are unchanged · ✓ rollback target loads
+FAILED: timed out waiting for the event to resolve
+make: *** [Makefile:59: demo-applications] Error 1
