@@ -1,0 +1,373 @@
+{
+  "steps": [
+    {
+      "n": "B1",
+      "title": "Adopted https://github.com/jakethehoffer/ledgerly @ 3101182eadc9 (Apache-2.0); 35 executed files hash-pinned; installed copy matches: true",
+      "data": {
+        "repository": "https://github.com/jakethehoffer/ledgerly",
+        "commit": "3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090",
+        "license": "Apache-2.0",
+        "entryPoints": [
+          "src/server/expand.ts#expandEvent (fetches the nested Stripe objects the engine needs, invoices at its pinned API version)",
+          "src/engine.ts#mapEvent (Stripe event → balanced journal entries)",
+          "src/exporters/qbo.ts#toQbo (journal entry → QuickBooks JournalEntry)",
+          "src/server/dispatchers/qbo.ts#qboDispatcher (POST /journalentry with requestid idempotency)"
+        ]
+      }
+    },
+    {
+      "n": "B0",
+      "title": "Before: Lumen Studio's own ledgerly deployment booked 5 Stripe transactions in QuickBooks (the pinned upstream code, with their own QuickBooks authorization)",
+      "data": {}
+    },
+    {
+      "n": "B3",
+      "title": "Stripe connected with a restricted key → verified (acct_1FixtureStripe)",
+      "data": {}
+    },
+    {
+      "n": "B4",
+      "title": "Discovered: 5 of your last 5 Stripe transactions are in QuickBooks, written the way the ledgerly integration writes them. (confidence: established)",
+      "data": {
+        "outcome": "found",
+        "window": {
+          "to": "2026-11-24T01:01:00.855Z",
+          "from": "2026-10-25T01:11:00.855Z"
+        },
+        "checked": 5,
+        "candidates": [
+          {
+            "id": "adopted.ledgerly",
+            "kind": "adoptable",
+            "title": "Stripe payments → QuickBooks journal entries",
+            "summary": "5 of your last 5 Stripe transactions are in QuickBooks, written the way the ledgerly integration writes them.",
+            "confidence": "established"
+          }
+        ]
+      }
+    },
+    {
+      "n": "B5",
+      "title": "Baseline: 5 recent Stripe transactions checked, 5 in QuickBooks (5 written by their earlier deployment), 0 missing",
+      "data": {
+        "checked": 5,
+        "missing": 0,
+        "outcome": "consistent",
+        "unresolved": 0,
+        "verifyRunId": "ce0301df-f5c7-4f5b-9897-302fb41455d7",
+        "accountedFor": 5,
+        "previouslyDelivered": 5
+      }
+    },
+    {
+      "n": "B6",
+      "title": "Under management. Customer actions (5): sign up → connect Stripe (restricted key) → connect QuickBooks → approve in QuickBooks → confirm: maintain this integration",
+      "data": {}
+    },
+    {
+      "n": "B7",
+      "title": "New payment evt_Lm000000000000000027 booked once by the adopted code: debits 88.00 = credits 88.00 (net 85.15 + fee 2.85 = 88.00)",
+      "data": {}
+    },
+    {
+      "n": "B8",
+      "title": "Independent check (Stripe Events API vs QuickBooks entries: once, balanced, amounts equal Stripe): consistent",
+      "data": {
+        "id": "1683e9db-8736-416e-bd4d-236e39a69d13",
+        "trigger": "manual",
+        "status": "completed",
+        "outcome": "consistent",
+        "windowFrom": "2026-11-23T01:01:12.085Z",
+        "windowTo": "2026-11-24T01:01:12.085Z",
+        "pagesScanned": 0,
+        "discovered": 1,
+        "counts": {
+          "delivered": 1,
+          "missing_delivery": 0,
+          "pending_delivery": 0,
+          "failed_delivery": 0,
+          "destination_exists_untracked": 0,
+          "ambiguous": 0,
+          "undetermined": 0,
+          "excluded": 0
+        },
+        "recovery": {},
+        "error": null,
+        "requestedBy": "92a44494-6a79-46e5-b898-086a65ea9445",
+        "startedAt": "2026-11-24T01:11:12.086Z",
+        "finishedAt": "2026-11-24T01:11:13.724Z"
+      }
+    },
+    {
+      "n": "P1",
+      "title": "Detected: the running code (ledgerly:3101182eadc9) requests QuickBooks minorversion 70 at src/server/dispatchers/qbo.ts:25; Intuit serves 75 since 2025-08-01",
+      "data": {}
+    },
+    {
+      "n": "P2",
+      "title": "Operator switched the patch on (MCP adaptations_activate): proposed → validating → validated → active; now running ledgerly:3101182eadc9+p0001",
+      "data": {
+        "id": "b3d58a69-cd63-4671-93c8-e8bbd727b77d",
+        "kind": "patch",
+        "status": "active",
+        "maintenanceEventId": "8319f21e-406d-4db8-8d46-c0e224187279",
+        "spec": {
+          "file": "src/server/dispatchers/qbo.ts",
+          "find": "const QBO_MINOR_VERSION = '70';",
+          "patchId": "p0001-qbo-minor-version-75",
+          "replace": "const QBO_MINOR_VERSION = '75';",
+          "baseSha256": "a6702a374ba5bd16a00400e891f43b6599316a060f92ac2be5ebf999ccdabe46",
+          "resultSha256": "25deca5de000d930be5806deddddf5de96ed628e4dfef5879efbc2c34dda4b9b"
+        },
+        "rationale": "The adopted dispatcher asks QuickBooks for minor version 70. Intuit retired minor versions 1-74 on 2025-08-01: a request below 75 is ignored and answered as 75. Every journal entry is therefore already created under version 75 while the code declares 70, so the code no longer describes what runs, and the behaviour depends on Intuit continuing to ignore the retired value instead of rejecting it. — proposed by maintenance: maintenance event 8319f21e-406d-4db8-8d46-c0e224187279",
+        "validation": {
+          "checks": [
+            {
+              "name": "applies to the adopted artifact",
+              "detail": "src/server/dispatchers/qbo.ts at 3101182eadc9; base sha256 a6702a374ba5",
+              "status": "passed"
+            },
+            {
+              "name": "original adopted code unchanged",
+              "detail": "35 files match 3101182eadc9",
+              "status": "passed"
+            },
+            {
+              "name": "patch reproduces the reviewed change exactly",
+              "detail": "src/server/dispatchers/qbo.ts sha256 25deca5de000 (reviewed 25deca5de000); other files unchanged: true",
+              "status": "passed"
+            },
+            {
+              "name": "regression: stored transactions unchanged",
+              "detail": "1/1 stored Stripe events map to identical QuickBooks entries",
+              "status": "passed"
+            },
+            {
+              "name": "destination request changes only as reviewed",
+              "detail": "1/1 QuickBooks requests identical apart from the minorversion parameter",
+              "status": "passed"
+            },
+            {
+              "name": "business data preserved (QuickBooks)",
+              "detail": "1/1 entries in QuickBooks equal what the patched code produces for their Stripe events",
+              "status": "passed"
+            },
+            {
+              "name": "rollback target available",
+              "detail": "rolling back selects ledgerly:3101182eadc9",
+              "status": "passed"
+            }
+          ],
+          "passed": true,
+          "artifact": {
+            "after": "ledgerly:3101182eadc9+p0001",
+            "before": "ledgerly:3101182eadc9"
+          },
+          "validatedAt": "2026-11-24T01:11:29.873Z",
+          "postActivation": {
+            "verified": 2,
+            "zeroLoss": true,
+            "duplicates": 0,
+            "population": 2,
+            "unresolved": 0,
+            "verifiedAt": "2026-11-24T01:11:41.727Z",
+            "verificationRunId": "d84e1051-4b93-4595-b16a-484ab1577b23",
+            "maintenanceEventId": "8319f21e-406d-4db8-8d46-c0e224187279"
+          },
+          "requiresDecision": false
+        },
+        "history": [
+          {
+            "at": "2026-11-24T01:11:29.743Z",
+            "to": "proposed",
+            "from": null,
+            "note": "The adopted dispatcher asks QuickBooks for minor version 70. Intuit retired minor versions 1-74 on 2025-08-01: a request below 75 is ignored and answered as 75. Every journal entry is therefore already created under version 75 while the code declares 70, so the code no longer describes what runs, and the behaviour depends on Intuit continuing to ignore the retired value instead of rejecting it. — proposed by maintenance: maintenance event 8319f21e-406d-4db8-8d46-c0e224187279",
+            "actor": "system:maintenance"
+          },
+          {
+            "at": "2026-11-24T01:11:29.753Z",
+            "to": "validating",
+            "from": "proposed",
+            "note": "Validation started",
+            "actor": "system:validation"
+          },
+          {
+            "at": "2026-11-24T01:11:29.874Z",
+            "to": "validated",
+            "from": "validating",
+            "note": "Validated",
+            "actor": "system:validation"
+          },
+          {
+            "at": "2026-11-24T01:11:30.518Z",
+            "to": "active",
+            "from": "validated",
+            "note": "Reviewed: declare the minor version QuickBooks serves",
+            "actor": "8e88fe9b-872a-4255-95cd-749990513851"
+          }
+        ],
+        "activatedAt": "2026-11-24T01:11:30.514Z",
+        "rolledBackAt": null
+      }
+    },
+    {
+      "n": "P3",
+      "title": "QuickBooks request now declares minorversion 75 (served 75); after activation: {\"verified\":2,\"zeroLoss\":true,\"duplicates\":0,\"population\":2,\"unresolved\":0,\"verifiedAt\":\"2026-11-24T01:11:41.727Z\",\"verificationRunId\":\"d84e1051-4b93-4595-b16a-484ab1577b23\",\"maintenanceEventId\":\"8319f21e-406d-4db8-8d46-c0e224187279\"}",
+      "data": {}
+    },
+    {
+      "n": "B9",
+      "title": "FIXTURE: Intuit revokes the QuickBooks authorization. Customer sees \"Reconnect QuickBooks.\"; evt_Lm000000000000000035 is held (not lost); a further notification is lost in transit (evt_Lm000000000000000039)",
+      "data": {}
+    },
+    {
+      "n": "B10",
+      "title": "\"Your connection was restored\" — We detected a change that threatened transaction processing. We resolved it and verified all 4 transactions from the affected period against QuickBooks.",
+      "data": {
+        "id": "f4f73113-543b-4a5a-afc4-a3eed4944d2f",
+        "integrationId": "67286b48-d6f7-4c96-aad0-2d37820f2413",
+        "category": "Access",
+        "state": "completed",
+        "headline": "Your connection was restored",
+        "summary": "We detected a change that threatened transaction processing. We resolved it and verified all 4 transactions from the affected period against QuickBooks.",
+        "detectedAt": "2026-11-24T01:11:43.733Z",
+        "resolvedAt": "2026-11-24T01:11:57.725Z",
+        "facts": [
+          {
+            "label": "Change detected",
+            "value": "Our access to QuickBooks stopped working (revoked)."
+          },
+          {
+            "label": "Why it mattered",
+            "value": "Transactions could not reach QuickBooks. We held them safely instead of losing them."
+          },
+          {
+            "label": "Action taken",
+            "value": "You reconnected QuickBooks. Before sending anything, we confirmed the new connection works and renews itself."
+          },
+          {
+            "label": "Transactions affected",
+            "value": "2 transactions: 1 held safely and delivered after the fix; 1 never reached us and was found by checking Stripe directly."
+          },
+          {
+            "label": "Transactions recovered",
+            "value": "2 of 2."
+          },
+          {
+            "label": "Final outcome",
+            "value": "All 4 transactions created in the affected period are in QuickBooks exactly once, with the accounts, amounts, fees and net Stripe has for them."
+          },
+          {
+            "label": "Customer action",
+            "value": "None required."
+          }
+        ],
+        "accounting": {
+          "window": {
+            "from": "2026-11-24T00:11:43.732Z",
+            "to": "2026-11-24T01:11:49.713Z"
+          },
+          "ordersInWindow": 4,
+          "deliveredBeforeChange": 2,
+          "delayed": 1,
+          "failedDuringDisruption": 0,
+          "foundByChecking": 1,
+          "recovered": 2,
+          "verified": 4,
+          "excluded": 0,
+          "unresolved": 0,
+          "duplicates": 0
+        },
+        "claim": {
+          "zeroLoss": true,
+          "statement": "Zero transactions lost.",
+          "basis": "Every transaction Stripe has for the affected period (24 Nov 2026, 00:11–01:11 UTC) was checked in QuickBooks after the fix."
+        },
+        "customerAction": {
+          "required": false,
+          "text": null
+        },
+        "timeline": [
+          {
+            "at": "2026-11-24T01:11:43.738Z",
+            "step": "noticed",
+            "title": "Change detected",
+            "text": "Our access to QuickBooks stopped working (revoked). We hold every transaction safely until you reconnect; nothing is lost.",
+            "details": []
+          },
+          {
+            "at": "2026-11-24T01:11:45.724Z",
+            "step": "tested",
+            "title": "Fix tested",
+            "text": "Thank you — your connection works again. We checked it before sending anything.",
+            "details": [
+              {
+                "label": "Reconnected by you",
+                "value": "Passed"
+              },
+              {
+                "label": "Connection renews itself",
+                "value": "Passed"
+              },
+              {
+                "label": "Your books are reachable",
+                "value": "Passed"
+              },
+              {
+                "label": "Stripe is reachable",
+                "value": "Passed"
+              }
+            ]
+          },
+          {
+            "at": "2026-11-24T01:11:45.753Z",
+            "step": "released",
+            "title": "Held transactions released",
+            "text": "We released 1 transaction that were held safely and are posting them to QuickBooks now.",
+            "details": [
+              {
+                "label": "Released",
+                "value": "1"
+              }
+            ]
+          },
+          {
+            "at": "2026-11-24T01:11:53.743Z",
+            "step": "recovered",
+            "title": "Missing transactions recovered",
+            "text": "1 transaction never reached us; we found it by checking Stripe directly and posted it.",
+            "details": [
+              {
+                "label": "Found by checking directly",
+                "value": "1"
+              }
+            ]
+          },
+          {
+            "at": "2026-11-24T01:11:57.724Z",
+            "step": "verified",
+            "title": "Verified",
+            "text": "All 4 transactions from the affected period are in QuickBooks exactly once, balanced, with the amounts Stripe reports.",
+            "details": [
+              {
+                "label": "Transactions verified in QuickBooks",
+                "value": "4"
+              },
+              {
+                "label": "Duplicates",
+                "value": "0"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "n": "B11",
+      "title": "Operator monitoring (durable facts): health healthy; source_available=ok, destination_available=ok, credentials=ok, activity=ok, processing=ok, delayed=ok, missing=ok, duplicated=ok, rejected=ok, contract_change=ok, destination_verification=ok, commitment_boundary=ok",
+      "data": {}
+    }
+  ],
+  "startedAt": "2026-11-24T01:11:00.499Z",
+  "providers": "deterministic fixtures (not Stripe or QuickBooks), modelled on their public documentation"
+}

@@ -1,0 +1,10 @@
+
+ RUN  v5.1.1 /home/user/managed-integrations
+
+
+ Test Files  24 passed (24)
+      Tests  208 passed (208)
+   Start at  01:05:28
+   Duration  238.50s (tests 95%, import 5%)
+
+exit 0

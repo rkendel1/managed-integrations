@@ -298,3 +298,59 @@ Fresh-stack verification (`make build`, `make reset`, then `demo-maintenance` �
 - Playwright: 19/19 (`runs/playwright-slice5-docker.log`).
 - Vitest: 21 files, 187 tests (`runs/vitest-slice5.log`).
 - Typecheck and lint clean.
+
+## Slice 6 — integration portability and repeatable maintenance (2026-11-24)
+
+Records: `docs/architecture/PORTABILITY.md` (inventory, contract, patterns, shared vs specific code),
+`docs/adoption/SECOND-INTEGRATION.md` (selection and provenance). Starting commit `c8e2cce`. Every result is
+**fixture-backed**; nothing was run against live Stripe, QuickBooks, Shopify or NetSuite.
+
+Test files: `apps/api/test/stripe-quickbooks.test.ts` (**sq**, 7 end-to-end scenarios through the API and the
+real worker handlers), `packages/managed/test/managed.test.ts` (**generic**, 12),
+`packages/adopted-ledgerly/test/golden.test.ts` (**golden**), the slice 2–5 suites (**regression**),
+`make demo-stripe` (**demo**, `runs/demo-stripe-slice6-docker.log`, `runs/demo-stripe-docker.json`).
+
+| Requirement                                                                                                                                              | Status             | Where                                                                                                                       |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| A. Shopify → NetSuite regression (onboarding, discovery, activation, delivery, reconciliation, change detection, adapter, patch, verification, rollback) | VERIFIED (fixture) | regression suites; `demo-onboarding`, `demo-maintenance`, `demo-reconcile`, `demo-adopted`, `demo-failure` on a fresh stack |
+| B1–B2 adoption, pinned source and provenance                                                                                                             | VERIFIED           | golden (35 files match the pin; 29/29 upstream golden outputs through our loader); demo B1                                  |
+| B3–B6 connection, discovery, baseline, management                                                                                                        | VERIFIED (fixture) | sq (happy path); demo B3–B6 (5 actions, discovered 5/5 established, baseline 5/5)                                           |
+| B7 transaction execution                                                                                                                                 | VERIFIED (fixture) | sq; demo B7 (one balanced entry)                                                                                            |
+| B8 independent destination verification                                                                                                                  | VERIFIED (fixture) | sq; demo B8 (Stripe Events API vs QuickBooks: once, balanced, amounts)                                                      |
+| B9–B10 failure scenario with evidence-backed recovery                                                                                                    | VERIFIED (fixture) | sq (lost authorization); demo B9–B10 (held + lost transaction recovered; zero loss proven)                                  |
+| B. reviewed patch path (detection → proposal → validation → operator activation → verification → rollback)                                               | VERIFIED (fixture) | sq (dependency); demo P1–P3 (operator via MCP)                                                                              |
+| C. reuse proof (onboarding state, managed lifecycle, events, evidence, adaptation lifecycle, customer status, operator inspection)                       | VERIFIED           | sq (two integrations in one organization; same capabilities); PORTABILITY.md §4                                             |
+| D. cross-tenant isolation                                                                                                                                | VERIFIED           | sq (isolation and authority)                                                                                                |
+| D. duplicate activation                                                                                                                                  | VERIFIED           | sq (second confirm refused); generic (one correction per scope)                                                             |
+| D. repeated events                                                                                                                                       | VERIFIED           | sq (one delivery, one entry; unsigned replay refused)                                                                       |
+| D. partial provider outage                                                                                                                               | VERIFIED           | sq (QuickBooks 503 → failed → retry → one entry)                                                                            |
+| D. expired credentials                                                                                                                                   | VERIFIED (fixture) | sq (invalid_grant → held → reconnect); generic monitoring test                                                              |
+| D. missing and ambiguous transactions                                                                                                                    | VERIFIED           | sq (missing found by reconciliation); onboarding.test (ambiguous discovery)                                                 |
+| D. unsupported provider changes                                                                                                                          | VERIFIED           | sq (no balance transaction → held, unsupported correction, escalated; cross-currency payout refused)                        |
+| D. unsafe adaptations                                                                                                                                    | VERIFIED           | sq (non-catalog patch refused, customers forbidden); generic (runtime must load)                                            |
+| D. failed validation                                                                                                                                     | VERIFIED           | generic (failed check → rejected, not activatable)                                                                          |
+| D. failed rollback                                                                                                                                       | VERIFIED           | generic (previous runtime does not load → refused, stays active)                                                            |
+| D. incomplete evidence                                                                                                                                   | VERIFIED           | generic (empty, partial, uncovered, unverified, duplicate, only-excluded → no zero-loss claim)                              |
+| D. duplicate recovery attempts                                                                                                                           | VERIFIED           | sq (two concurrent recoveries → one delivery, one entry)                                                                    |
+| E. fresh-stack acceptance                                                                                                                                | VERIFIED (fixture) | below                                                                                                                       |
+
+Found and fixed during slice 6:
+
+- **Reconciliation window ended one second early** in the Stripe driver (Stripe timestamps are whole seconds), so a
+  transaction from the same second was outside the population; the zero-loss rule then correctly refused to resolve.
+  Intermittent in tests; fixed, and the test now reports the event's facts and runs when it fails.
+- **A dependency correction could be "verified" on an empty population.** It now waits until a transaction has run
+  through the patched code.
+- **Duplicate Authorization header** (upstream dispatcher + our wrapper merged into one invalid header).
+- **Revoked status rolled back** with the failed refresh transaction; now recorded outside it.
+- **Fixture fidelity:** expanding `charge.balance_transaction` must also expand `charge` (as Stripe does).
+- **GitHub push protection** flagged a key-shaped fixture string in the demo; the demo now reads the fixture key
+  from the fixture instead (no bypass).
+
+Fresh-stack verification at `2c72053` (`make build`, `make reset`, then `demo-maintenance` → `demo-onboarding`
+→ `demo-stripe` → `demo-reconcile` → `demo-adopted` → `demo-failure --auto-approve` → Playwright):
+
+- All six demos passed (`runs/*-slice6-docker.log`).
+- Playwright: 19/19 (`runs/playwright-slice6-docker.log`).
+- Vitest: 24 files, 208 tests (`runs/vitest-slice6.log`).
+- Typecheck and lint clean.
