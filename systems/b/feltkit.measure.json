@@ -1,15 +1,61 @@
 {
   "report": "measure.json",
   "classify": [
-    { "path": "runtime/component.ts", "class": "infrastructure", "reason": "Component plumbing: provider routes, ticket redemption, the durable work loop" },
-    { "path": "runtime/seal.ts", "class": "infrastructure", "reason": "Custody of customer-supplied secrets per workspace (FeltKit has none: FINDINGS F4)" },
-    { "path": "runtime/prisma-shim.ts", "class": "infrastructure", "reason": "Stands in for a hosted application's database client" },
-    { "path": "runtime/artifacts.ts", "class": "infrastructure", "reason": "Adopted-code artifacts: pinned source + reviewed patches, bundled and content-hashed" },
-    { "path": "runtime/upstream.d.ts", "class": "configuration", "reason": "Type declarations for untyped adopted modules" },
-    { "path": "runtime/generated/**", "class": "generated", "reason": "Written by scripts/build-artifacts.ts from the pinned sources (--check verifies)" },
-    { "path": "runtime/**", "class": "domain", "reason": "Integration runtime: provider clients, adopted-code execution, reconciliation, maintenance and onboarding work, run by the component" },
-    { "path": "scripts/**", "class": "infrastructure", "reason": "Reset for scenario runs; build of prebuilt artifacts (FINDINGS F10)" },
-    { "path": "scenarios/**", "class": "tests", "reason": "Scenario drivers for the shared specification (docs/experiment/SCENARIOS.md)" }
+    {
+      "path": "agent-eve/package.json",
+      "class": "configuration",
+      "reason": "The EVE agent's package"
+    },
+    {
+      "path": "agent-eve/agent/**",
+      "class": "domain",
+      "reason": "The repair proposer: an EVE agent definition and its channel (its own package and server)"
+    },
+    {
+      "path": "runtime/component.ts",
+      "class": "infrastructure",
+      "reason": "Component plumbing: provider routes, ticket redemption, the durable work loop"
+    },
+    {
+      "path": "runtime/seal.ts",
+      "class": "infrastructure",
+      "reason": "Custody of customer-supplied secrets per workspace (FeltKit has none: FINDINGS F4)"
+    },
+    {
+      "path": "runtime/prisma-shim.ts",
+      "class": "infrastructure",
+      "reason": "Stands in for a hosted application's database client"
+    },
+    {
+      "path": "runtime/artifacts.ts",
+      "class": "infrastructure",
+      "reason": "Adopted-code artifacts: pinned source + reviewed patches, bundled and content-hashed"
+    },
+    {
+      "path": "runtime/upstream.d.ts",
+      "class": "configuration",
+      "reason": "Type declarations for untyped adopted modules"
+    },
+    {
+      "path": "runtime/generated/**",
+      "class": "generated",
+      "reason": "Written by scripts/build-artifacts.ts from the pinned sources (--check verifies)"
+    },
+    {
+      "path": "runtime/**",
+      "class": "domain",
+      "reason": "Integration runtime: provider clients, adopted-code execution, reconciliation, maintenance and onboarding work, run by the component"
+    },
+    {
+      "path": "scripts/**",
+      "class": "infrastructure",
+      "reason": "Reset for scenario runs; build of prebuilt artifacts (FINDINGS F10)"
+    },
+    {
+      "path": "scenarios/**",
+      "class": "tests",
+      "reason": "Scenario drivers for the shared specification (docs/experiment/SCENARIOS.md)"
+    }
   ],
   "acknowledged": {
     "audit-trail:feltkit/app.ts": "`events` are maintenance events (a lifecycle with corrections and accounting), not an audit log; FeltKit's activity log is the audit trail"

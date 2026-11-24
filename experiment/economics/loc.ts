@@ -53,6 +53,8 @@ const B_RULES: Rule[] = [
   [/^runtime\/generated\/|^feltkit\/_generated\//, "generated", "written by tools (checked)"],
   [/\.(md|png|jpg|svg|lock)$|package-lock\.json|LICENSE/, "excluded", "not code"],
   [/^(e2e|scenarios|tests)\//, "tests", "scenario drivers and browser journeys"],
+  [/^agent-eve\/agent\//, "B", "repair proposer (EVE agent definition, instructions, channel)"],
+  [/^agent-eve\/package\.json$/, "D", "the EVE agent's package"],
   [/^runtime\/seal\.ts$/, "E", "per-workspace secret custody (FINDINGS F4)"],
   [/^scripts\/build-artifacts\.ts$/, "E", "ship build-time artifacts because a deployment carries only the build (F10)"],
   [/^runtime\/component\.ts$/, "C", "component plumbing: routes, tickets, work loop (provider-signed webhooks there: F5)"],
