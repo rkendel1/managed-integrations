@@ -44,6 +44,9 @@
     "@mi/reliability": "workspace:*",
     "@mi/maintenance": "workspace:*",
     "drizzle-orm": "^0.45.4",
-    "@mi/adopted-order-sync": "workspace:*"
+    "@mi/adopted-order-sync": "workspace:*",
+    "@mi/adopted-ledgerly": "workspace:*",
+    "@mi/managed": "workspace:*",
+    "@mi/integrations": "workspace:*"
   }
 }

@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { PgBoss } from 'pg-boss';
 import { createDb, migrate } from '@mi/database';
 import { bootstrapReferenceData, loadServiceConfig } from '@mi/integration-shopify-netsuite';
+import { registerLedgerlyReferenceData } from '@mi/adopted-ledgerly';
 import { registerAdoptedContract } from '@mi/adopted-order-sync';
 import { buildApp } from './app.ts';
 import { ensureQueues } from './queues.ts';
@@ -10,6 +11,7 @@ const config = loadServiceConfig('api'); // fails closed on invalid configuratio
 if (process.env.MIGRATE_ON_START === 'true') await migrate(config.env.DATABASE_URL);
 const dbh = createDb(config.env.DATABASE_URL, { max: 10 });
 await bootstrapReferenceData(dbh.db);
+await registerLedgerlyReferenceData(dbh.db);
 await registerAdoptedContract(dbh.db);
 const boss = new PgBoss({ connectionString: config.env.DATABASE_URL, schema: 'pgboss' });
 await boss.start();

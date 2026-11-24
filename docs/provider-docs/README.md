@@ -9,3 +9,8 @@ Read-only reference material available to the maintenance agent (`read_provider_
 
 The agent has no general internet access in this slice; refreshing these snapshots from official
 sources is an operator task (see docs/operations/RUNBOOK.md).
+
+Slice 6 (Stripe → QuickBooks):
+
+- `stripe/webhooks-events-versions.md`, `quickbooks/oauth-and-journal-entries.md`, `quickbooks/minor-versions.md` —
+  summaries of **official** Stripe and Intuit documentation (URLs inline), captured 2026-11-24.

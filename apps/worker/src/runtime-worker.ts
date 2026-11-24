@@ -543,5 +543,5 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     await boss.schedule(QUEUES.reliabilityTick, '* * * * *');
   }
 
-  return { start, handlers, executeActions, evaluateAndAct };
+  return { start, handlers, executeActions, evaluateAndAct, registry };
 }

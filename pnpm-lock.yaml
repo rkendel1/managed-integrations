@@ -11,6 +11,9 @@ importers:
       '@eslint/js':
         specifier: ^10.0.0
         version: 10.0.1(eslint@10.15.0(jiti@2.7.0))
+      '@mi/adopted-ledgerly':
+        specifier: workspace:*
+        version: link:packages/adopted-ledgerly
       '@mi/adopted-order-sync':
         specifier: workspace:*
         version: link:packages/adopted-order-sync
@@ -23,9 +26,15 @@ importers:
       '@mi/integration-shopify-netsuite':
         specifier: workspace:*
         version: link:packages/integration-shopify-netsuite
+      '@mi/integrations':
+        specifier: workspace:*
+        version: link:packages/integrations
       '@mi/maintenance':
         specifier: workspace:*
         version: link:packages/maintenance
+      '@mi/managed':
+        specifier: workspace:*
+        version: link:packages/managed
       '@mi/observability':
         specifier: workspace:*
         version: link:packages/observability
@@ -80,6 +89,9 @@ importers:
       '@fastify/static':
         specifier: ^10.1.12
         version: 10.1.12
+      '@mi/adopted-ledgerly':
+        specifier: workspace:*
+        version: link:../../packages/adopted-ledgerly
       '@mi/adopted-order-sync':
         specifier: workspace:*
         version: link:../../packages/adopted-order-sync
@@ -232,15 +244,24 @@ importers:
       '@mi/integration-shopify-netsuite':
         specifier: workspace:*
         version: link:../integration-shopify-netsuite
+      '@mi/managed':
+        specifier: workspace:*
+        version: link:../managed
       '@mi/observability':
         specifier: workspace:*
         version: link:../observability
+      '@mi/reliability':
+        specifier: workspace:*
+        version: link:../reliability
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
       ledgerly:
         specifier: github:jakethehoffer/ledgerly#3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090
         version: git+https://git@github.com:jakethehoffer/ledgerly.git#3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090(stripe@16.12.0)
+      stripe:
+        specifier: 16.12.0
+        version: 16.12.0
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -366,6 +387,9 @@ importers:
 
   packages/integrations:
     dependencies:
+      '@mi/adopted-ledgerly':
+        specifier: workspace:*
+        version: link:../adopted-ledgerly
       '@mi/adopted-order-sync':
         specifier: workspace:*
         version: link:../adopted-order-sync

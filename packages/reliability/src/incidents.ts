@@ -148,7 +148,11 @@ export async function findOpenIncident(
  * Applies to incidents that carry maintenance facts (slice 4); other incidents keep the slice-1 rule.
  */
 export function resolutionBlockers(row: IncidentRow, verification: Record<string, unknown>): string[] {
-  const maintained = row.kind === 'input_contract_change' || row.correction != null || row.accounting != null;
+  const maintained =
+    row.kind === 'input_contract_change' ||
+    row.kind === 'dependency_contract_change' ||
+    row.correction != null ||
+    row.accounting != null;
   if (!maintained) return [];
   const out: string[] = [];
   const validation = row.validation as { passed?: boolean } | null;

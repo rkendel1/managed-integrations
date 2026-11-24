@@ -26,6 +26,7 @@ import {
 } from './auth.ts';
 import { registerAdoptedWebhookRoutes } from './adopted-webhook-routes.ts';
 import { registerCustomerRoutes } from './customer-routes.ts';
+import { registerStripeQuickbooksRoutes } from './stripe-quickbooks-routes.ts';
 import { registerOperatorRoutes } from './operator-routes.ts';
 import { registerAppPortRoutes } from './appport-routes.ts';
 import { createApiAppPortRuntime, pinoToAppPortLogger } from './appport-runtime.ts';
@@ -285,6 +286,7 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
 
   await registerAdoptedWebhookRoutes(app, deps);
   await registerCustomerRoutes(app, deps);
+  await registerStripeQuickbooksRoutes(app, deps);
   await registerOperatorRoutes(app, deps);
 
   /* ------------------------------ web UI ------------------------------ */

@@ -5,7 +5,7 @@
  * mapping, the NetSuite lookups, the upsert and its own retries, and returns its own result,
  * which is recorded verbatim as execution evidence.
  */
-import { and, eq, inArray, lt, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, lt } from 'drizzle-orm';
 import type { UpstreamSyncResult } from 'shopify-sync/types';
 import {
   deliveries,
@@ -26,16 +26,15 @@ import { ADOPTED } from './provenance.ts';
 import { type ContractViolation } from './input-contract.ts';
 import { evaluateInput, runtimeFor, type RuntimeSelection } from './adaptation.ts';
 
-/** Deliveries in `running`/`pending` longer than this are considered stuck and may be reclaimed. */
-export const STUCK_AFTER_MS = 10 * 60_000;
-/** Executions per delivery before automatic rescheduling stops (operator/customer retry still possible). */
-export const MAX_AUTOMATIC_EXECUTIONS = 5;
-const RESCHEDULE_DELAYS_S = [60, 300, 1800, 7200];
-
-export function nextAutomaticRetryDelaySeconds(executions: number): number | null {
-  if (executions >= MAX_AUTOMATIC_EXECUTIONS) return null;
-  return RESCHEDULE_DELAYS_S[Math.min(executions - 1, RESCHEDULE_DELAYS_S.length - 1)] ?? null;
-}
+// The shared execution boundary (claim, retry scheduling, retry requests) lives in @mi/managed.
+import { claimDelivery, STUCK_AFTER_MS } from '@mi/managed';
+export {
+  MAX_AUTOMATIC_EXECUTIONS,
+  nextAutomaticRetryDelaySeconds,
+  requestDeliveryRetry,
+  STUCK_AFTER_MS,
+  type RetryRequestResult,
+} from '@mi/managed';
 
 export interface ExecutionTrigger {
   kind: 'webhook' | 'automatic_retry' | 'manual_retry' | 'reconciliation_recovery' | 'maintenance_recovery';
@@ -69,21 +68,8 @@ export type ExecuteResult =
 
 export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> {
   const { db } = p;
-  const stuckBefore = new Date(Date.now() - STUCK_AFTER_MS);
   // Atomic claim: only one executor may run a delivery; stuck executions become claimable again.
-  const [claimed] = await db
-    .update(deliveries)
-    .set({ outcome: 'running', attempts: sql`${deliveries.attempts} + 1`, updatedAt: new Date() })
-    .where(
-      and(
-        eq(deliveries.id, p.deliveryId),
-        or(
-          eq(deliveries.outcome, 'pending'),
-          and(eq(deliveries.outcome, 'running'), lt(deliveries.updatedAt, stuckBefore)),
-        ),
-      ),
-    )
-    .returning();
+  const claimed = await claimDelivery(db, p.deliveryId);
   if (!claimed) return { executed: false, reason: 'not_claimable' };
   const attemptNo = claimed.attempts;
   const startedAt = new Date();
@@ -243,34 +229,6 @@ export async function executeDelivery(p: ExecuteParams): Promise<ExecuteResult> 
     message,
     ...(violations ? { violations } : {}),
   };
-}
-
-export type RetryRequestResult =
-  | { accepted: true; deliveryId: string; previousOutcome: string }
-  | { accepted: false; currentOutcome: string | null };
-
-/**
- * Atomically moves a delivery back to `pending` so it can be executed again. Allowed only for
- * failed or rejected deliveries, or ones stuck in pending/running. A second concurrent request
- * finds the delivery already pending and is refused, so duplicate invocations cannot queue
- * duplicate work.
- */
-export async function requestDeliveryRetry(db: Db, deliveryId: string): Promise<RetryRequestResult> {
-  const stuckBefore = new Date(Date.now() - STUCK_AFTER_MS);
-  return db.transaction(async (tx) => {
-    const [cur] = await tx.select().from(deliveries).where(eq(deliveries.id, deliveryId)).for('update');
-    if (!cur) return { accepted: false, currentOutcome: null };
-    const retryable =
-      cur.receiptId != null &&
-      (['failed', 'rejected'].includes(cur.outcome) ||
-        (['pending', 'running'].includes(cur.outcome) && cur.updatedAt < stuckBefore));
-    if (!retryable) return { accepted: false, currentOutcome: cur.outcome };
-    await tx
-      .update(deliveries)
-      .set({ outcome: 'pending', updatedAt: new Date() })
-      .where(eq(deliveries.id, cur.id));
-    return { accepted: true, deliveryId: cur.id, previousOutcome: cur.outcome };
-  });
 }
 
 /** Deliveries waiting longer than the stuck threshold (for operator visibility). */

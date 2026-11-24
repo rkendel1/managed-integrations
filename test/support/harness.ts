@@ -8,6 +8,7 @@ import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { CONTRACT_V1, FLOW_TYPE, type IntegrationConfig } from '@mi/contracts';
 import { connections, createDb, integrations, migrate, tenants, type DbHandle } from '@mi/database';
+import { registerLedgerlyReferenceData } from '@mi/adopted-ledgerly';
 import {
   bootstrapReferenceData,
   ConnectionCredentials,
@@ -49,6 +50,7 @@ export async function freshDb(): Promise<DbHandle> {
     );
   }
   await bootstrapReferenceData(handle.db);
+  await registerLedgerlyReferenceData(handle.db);
   return handle;
 }
 

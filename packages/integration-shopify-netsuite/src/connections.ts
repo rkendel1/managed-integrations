@@ -17,6 +17,10 @@ export interface ProviderEndpointConfig {
   /** Dev/test only: per-shop fixture URLs (domain → base URL), so several fixture stores can be onboarded. */
   shopifyFixtureShops?: Record<string, string>;
   netsuiteBaseUrlOverride?: string;
+  /** Dev/test only: Stripe fixture (slice 6). */
+  stripeBaseUrlOverride?: string;
+  /** QuickBooks Online app (slice 6); baseUrlOverride is dev/test only (API and OAuth on one fixture host). */
+  quickbooks?: { clientId: string; clientSecret: string; baseUrlOverride?: string };
   production: boolean;
 }
 

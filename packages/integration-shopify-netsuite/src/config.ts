@@ -16,6 +16,12 @@ const EnvSchema = z.object({
   SHOPIFY_CLIENT_SECRET: z.string().default(''),
   SHOPIFY_BASE_URL_OVERRIDE: z.string().url().optional(),
   NETSUITE_BASE_URL_OVERRIDE: z.string().url().optional(),
+  /** QuickBooks Online app credentials (Intuit developer app), for the Stripe → QuickBooks integration. */
+  QBO_CLIENT_ID: z.string().default(''),
+  QBO_CLIENT_SECRET: z.string().default(''),
+  /** Dev/test only: route Stripe / QuickBooks (API and OAuth) calls to fixtures. Refused in production. */
+  STRIPE_BASE_URL_OVERRIDE: z.string().url().optional(),
+  QBO_BASE_URL_OVERRIDE: z.string().url().optional(),
   PUBLIC_BASE_URL: z.string().url().default('http://localhost:3000'),
   SESSION_SECRET: z.string().optional(),
   ARTIFACT_DIR: z.string().default('./var/artifacts'),
@@ -59,7 +65,10 @@ export function loadServiceConfig(role: ServiceRole, source: NodeJS.ProcessEnv =
   if (role !== 'maintenance' && !ring) {
     throw new Error('CREDENTIAL_ENCRYPTION_KEYS is required (format keyId:base64-32-bytes)');
   }
-  if (production && (env.SHOPIFY_BASE_URL_OVERRIDE || env.NETSUITE_BASE_URL_OVERRIDE)) {
+  if (
+    production &&
+    (env.SHOPIFY_BASE_URL_OVERRIDE || env.NETSUITE_BASE_URL_OVERRIDE || env.STRIPE_BASE_URL_OVERRIDE || env.QBO_BASE_URL_OVERRIDE)
+  ) {
     throw new Error('Provider base URL overrides are not permitted in production');
   }
   if (production && role === 'api' && (!env.SESSION_SECRET || env.SESSION_SECRET.length < 32)) {
@@ -77,6 +86,12 @@ export function loadServiceConfig(role: ServiceRole, source: NodeJS.ProcessEnv =
       shopifyClientSecret: env.SHOPIFY_CLIENT_SECRET,
       ...(env.SHOPIFY_BASE_URL_OVERRIDE ? { shopifyBaseUrlOverride: env.SHOPIFY_BASE_URL_OVERRIDE } : {}),
       ...(env.NETSUITE_BASE_URL_OVERRIDE ? { netsuiteBaseUrlOverride: env.NETSUITE_BASE_URL_OVERRIDE } : {}),
+      ...(env.STRIPE_BASE_URL_OVERRIDE ? { stripeBaseUrlOverride: env.STRIPE_BASE_URL_OVERRIDE } : {}),
+      quickbooks: {
+        clientId: env.QBO_CLIENT_ID,
+        clientSecret: env.QBO_CLIENT_SECRET,
+        ...(env.QBO_BASE_URL_OVERRIDE ? { baseUrlOverride: env.QBO_BASE_URL_OVERRIDE } : {}),
+      },
       ...(env.SHOPIFY_FIXTURE_SHOPS
         ? {
             shopifyFixtureShops: Object.fromEntries(

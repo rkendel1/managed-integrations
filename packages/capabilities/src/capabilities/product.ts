@@ -14,12 +14,14 @@ import { errors } from '@appport/protocol';
 import { s } from '@appport/schema';
 import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { incidentEvents, incidents, integrations, reconciliationRuns, tenants, type Db } from '@mi/database';
+import { descriptorFor } from '@mi/integrations';
 import { AppPortPermissions, tenantIdOf } from '../identity.ts';
 import {
   assessStatus,
   checkSentence,
   presentEvent,
   responsibilitiesFor,
+  wordsOf,
   STATUS_CODES,
   STATUS_DEFINITIONS,
   type CustomerEvent,
@@ -27,11 +29,17 @@ import {
 } from '../product.ts';
 
 const UUID = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
-const PROCESS: Record<string, string> = {
-  shopify_orders_to_netsuite_sales_orders: 'Shopify orders become NetSuite sales orders',
-  'adopted.shopify_erp_order_sync.netsuite': 'Shopify orders become NetSuite sales orders',
-};
-const processOf = (flowType: string) => PROCESS[flowType] ?? 'Shopify → NetSuite';
+/** The integration's own words and process, from its descriptor (the registry of managed integrations). */
+const wordsFor = (flowType: string) => wordsOf(descriptorFor(flowType));
+const processOf = (flowType: string) =>
+  descriptorFor(flowType)?.process ?? 'Shopify orders become NetSuite sales orders';
+async function wordsForIntegration(db: Db, integrationId: string) {
+  const [i] = await db
+    .select({ f: integrations.flowType })
+    .from(integrations)
+    .where(eq(integrations.id, integrationId));
+  return wordsFor(i?.f ?? '');
+}
 
 const statusSchema = s.object({
   code: s.enum([...STATUS_CODES]),
@@ -130,14 +138,14 @@ async function assess(db: Db, integ: typeof integrations.$inferSelect): Promise<
     .limit(1);
   return {
     id: integ.id,
-    name: integ.displayName || 'Shopify → NetSuite',
+    name: integ.displayName || descriptorFor(integ.flowType)?.name || 'Shopify → NetSuite',
     process: processOf(integ.flowType),
-    status: assessStatus(open, lastResolved, lastCheck),
+    status: assessStatus(open, lastResolved, lastCheck, new Date(), wordsFor(integ.flowType)),
     lastVerified: lastConsistent?.finishedAt
       ? {
           at: lastConsistent.finishedAt.toISOString(),
           ordersChecked: lastConsistent.expectedCount ?? lastConsistent.sourceCount ?? 0,
-          statement: checkSentence(lastConsistent),
+          statement: checkSentence(lastConsistent, wordsFor(integ.flowType)),
         }
       : null,
     openIssues: open.length,
@@ -236,7 +244,7 @@ export function createPortfolioIntegrationCapability(
         .orderBy(desc(incidents.detectedAt))
         .limit(50);
       const maintenance = rows.map((r) => {
-        const e = presentEvent(r, []);
+        const e = presentEvent(r, [], wordsFor(integ.flowType));
         return {
           id: e.id,
           category: e.category,
@@ -249,7 +257,11 @@ export function createPortfolioIntegrationCapability(
       });
       return {
         ...(await assess(db, integ)),
-        responsibilities: responsibilitiesFor(integ.flowType, reconcileIntervalMinutes),
+        responsibilities: responsibilitiesFor(
+          integ.flowType,
+          reconcileIntervalMinutes,
+          descriptorFor(integ.flowType),
+        ),
         maintenance,
       };
     },
@@ -277,7 +289,7 @@ export function createMaintenanceEventGetCapability(
     output: eventSchema,
     async handler(input) {
       const { inc, events } = await loadEvent(db, input.eventId);
-      return presentEvent(inc, events);
+      return presentEvent(inc, events, await wordsForIntegration(db, inc.integrationId!));
     },
   });
 }
@@ -317,7 +329,7 @@ export function createMaintenanceEvidenceCapability(
         ? await db.select().from(reconciliationRuns).where(inArray(reconciliationRuns.id, runIds))
         : [];
       return {
-        event: presentEvent(inc, events),
+        event: presentEvent(inc, events, await wordsForIntegration(db, inc.integrationId!)),
         kind: inc.kind,
         status: inc.status,
         finding: inc.finding,

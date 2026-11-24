@@ -1,0 +1,38 @@
+{
+  "id": "p0001-qbo-minor-version-75",
+  "title": "Request QuickBooks Online minor version 75 (the version Intuit serves)",
+  "artifact": {
+    "repository": "https://github.com/jakethehoffer/ledgerly",
+    "commit": "3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090"
+  },
+  "file": "src/server/dispatchers/qbo.ts",
+  "baseSha256": "a6702a374ba5bd16a00400e891f43b6599316a060f92ac2be5ebf999ccdabe46",
+  "resultSha256": "25deca5de000d930be5806deddddf5de96ed628e4dfef5879efbc2c34dda4b9b",
+  "find": "const QBO_MINOR_VERSION = '70';",
+  "replace": "const QBO_MINOR_VERSION = '75';",
+  "addresses": {
+    "provider": "quickbooks",
+    "dependency": "Accounting API minor version",
+    "change": "minor versions 1-74 retired on 2025-08-01; requests below 75 are served as 75"
+  },
+  "reason": "The adopted dispatcher asks QuickBooks for minor version 70. Intuit retired minor versions 1-74 on 2025-08-01: a request below 75 is ignored and answered as 75. Every journal entry is therefore already created under version 75 while the code declares 70, so the code no longer describes what runs, and the behaviour depends on Intuit continuing to ignore the retired value instead of rejecting it.",
+  "originalBehavior": "POST /v3/company/{realm}/journalentry?minorversion=70&requestid=\u2026 (served by Intuit as minor version 75)",
+  "replacementBehavior": "POST /v3/company/{realm}/journalentry?minorversion=75&requestid=\u2026 \u2014 the same request body; only the declared minor version changes",
+  "providerEvidence": [
+    "https://developer.intuit.com/app/developer/qbo/docs/learn/explore-the-quickbooks-online-api/minor-versions",
+    "https://blogs.intuit.com/?p=34635 (minor versions 1-74 deprecated from 2025-08-01; earlier values ignored)",
+    "docs/provider-docs/quickbooks/minor-versions.md"
+  ],
+  "assumptions": [
+    "The JournalEntry fields ledgerly sends (TxnDate, DocNumber, PrivateNote, CurrencyRef, Line[].Amount/Description/JournalEntryLineDetail) have the same meaning in minor version 75 \u2014 which is what QuickBooks already serves for minorversion=70.",
+    "requestid idempotency is unaffected by the minor version."
+  ],
+  "validation": [
+    "the patch applies only to the pinned file (base hash) and reproduces the reviewed result (result hash); no other file changes",
+    "stored Stripe events map to identical journal entries and identical QuickBooks payloads before and after",
+    "the only difference in the QuickBooks request is the minorversion query parameter (70 \u2192 75); method, path, requestid and body are identical",
+    "entries already in QuickBooks equal what the patched artifact produces for their Stripe events",
+    "the original artifact still loads (rollback target)"
+  ],
+  "rollback": "Roll back the adaptation: the original artifact (minorversion=70, served as 75 by Intuit) runs again. Entries already written are unaffected; nothing is rewritten."
+}

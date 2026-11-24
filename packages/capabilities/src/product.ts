@@ -11,11 +11,44 @@
  * function of them, so the two cannot disagree about the outcome.
  */
 import { UPSTREAM_INPUT_CONTRACT, type Accounting, type Finding } from '@mi/adopted-order-sync';
+import type { IntegrationDescriptor } from '@mi/managed';
 import type { incidentEvents, incidents, reconciliationRuns } from '@mi/database';
 
 type IncidentRow = typeof incidents.$inferSelect;
 type EventRow = typeof incidentEvents.$inferSelect;
 type RunRow = typeof reconciliationRuns.$inferSelect;
+
+/* ================================================================== words */
+
+/** The integration's own vocabulary (from its descriptor): every customer sentence uses these. */
+export interface Words {
+  source: string;
+  destination: string;
+  one: string;
+  many: string;
+  record: string;
+  businessData: string;
+}
+export const SHOPIFY_WORDS: Words = {
+  source: 'Shopify',
+  destination: 'NetSuite',
+  one: 'order',
+  many: 'orders',
+  record: 'sales order',
+  businessData: 'items, quantities and prices',
+};
+export function wordsOf(d: IntegrationDescriptor | undefined): Words {
+  return d
+    ? {
+        source: d.source.name,
+        destination: d.destination.name,
+        one: d.transactions.one,
+        many: d.transactions.many,
+        record: d.transactions.record,
+        businessData: d.transactions.businessData,
+      }
+    : SHOPIFY_WORDS;
+}
 
 /* ================================================================== status */
 
@@ -40,12 +73,12 @@ export const STATUS_DEFINITIONS: Record<StatusCode, { label: string; definition:
   protected: {
     label: 'Protected',
     definition:
-      'No open issues, and a check completed in the last 24 hours found every order accounted for in both systems.',
+      'No open issues, and a check completed in the last 24 hours found every transaction accounted for in both systems.',
   },
   checking: {
     label: 'Verification pending',
     definition:
-      'No open issues, but there is no completed check from the last 24 hours that accounts for every order. We do not call this protected until there is.',
+      'No open issues, but there is no completed check from the last 24 hours that accounts for every transaction. We do not call this protected until there is.',
   },
 };
 
@@ -68,6 +101,7 @@ export function assessStatus(
   lastResolved: IncidentRow | undefined,
   lastCheck: RunRow | undefined,
   now = new Date(),
+  w: Words = SHOPIFY_WORDS,
 ): StatusAssessment {
   const make = (code: StatusCode, reason: string, basis: StatusAssessment['basis']) => ({
     code,
@@ -78,7 +112,7 @@ export function assessStatus(
   const action = open.find((i) => i.status === 'requires_action');
   if (action)
     return make('customer_action', action.customerAction ?? action.title, { incidentId: action.id });
-  if (open[0]) return make('maintaining', headlineFor(open[0], null), { incidentId: open[0].id });
+  if (open[0]) return make('maintaining', headlineFor(open[0], null, w), { incidentId: open[0].id });
   if (
     lastResolved?.resolvedAt &&
     lastResolved.verification &&
@@ -86,7 +120,7 @@ export function assessStatus(
   ) {
     return make(
       'verified',
-      `${headlineFor(lastResolved, null)} on ${lastResolved.resolvedAt.toISOString().slice(0, 10)}.`,
+      `${headlineFor(lastResolved, null, w)} on ${lastResolved.resolvedAt.toISOString().slice(0, 10)}.`,
       {
         incidentId: lastResolved.id,
       },
@@ -94,10 +128,10 @@ export function assessStatus(
   }
   if (lastCheck?.finishedAt && now.getTime() - lastCheck.finishedAt.getTime() < EVIDENCE_FRESH_MS) {
     if (lastCheck.status === 'completed' && lastCheck.outcome === 'consistent')
-      return make('protected', checkSentence(lastCheck), { reconciliationRunId: lastCheck.id });
+      return make('protected', checkSentence(lastCheck, w), { reconciliationRunId: lastCheck.id });
     return make(
       'checking',
-      'The most recent check did not account for every order yet; we are reviewing it.',
+      `The most recent check did not account for every ${w.one} yet; we are reviewing it.`,
       {
         reconciliationRunId: lastCheck.id,
       },
@@ -106,53 +140,58 @@ export function assessStatus(
   return make('checking', 'No completed check in the last 24 hours.', {});
 }
 
-export function checkSentence(run: RunRow): string {
+export function checkSentence(run: RunRow, w: Words = SHOPIFY_WORDS): string {
   const n = run.expectedCount ?? run.sourceCount ?? 0;
-  return `On ${run.finishedAt!.toISOString().slice(0, 16).replace('T', ' ')} UTC we checked ${n} order(s) from Shopify against NetSuite: all accounted for.`;
+  return `On ${run.finishedAt!.toISOString().slice(0, 16).replace('T', ' ')} UTC we checked ${n} ${w.one}(s) from ${w.source} against ${w.destination}: all accounted for.`;
 }
 
 /* ================================================================== maintenance events */
 
-const KIND_HEADLINES: Record<string, { open: string; done: string; category: string }> = {
+const KIND_HEADLINES = (w: Words): Record<string, { open: string; done: string; category: string }> => ({
   input_contract_change: {
-    open: 'We are handling a change in how Shopify sends orders',
+    open: `We are handling a change in how ${w.source} sends ${w.many}`,
     done: 'We resolved a compatibility issue',
     category: 'Provider change',
   },
+  dependency_contract_change: {
+    open: 'We are updating your integration for a provider change',
+    done: 'We updated your integration for a provider change',
+    category: 'Provider change',
+  },
   schema_drift: {
-    open: 'We are handling a change in Shopify’s order data',
+    open: `We are handling a change in ${w.source}’s ${w.one} data`,
     done: 'We resolved a compatibility issue',
     category: 'Provider change',
   },
   connection_auth: {
-    open: 'A connection needs to be re-authorized',
-    done: 'A connection was restored',
+    open: 'A connection needs to be renewed',
+    done: 'Your connection was restored',
     category: 'Access',
   },
   records_rejected: {
-    open: 'Some orders need information from you',
-    done: 'Orders that needed your input were completed',
+    open: `Some ${w.many} need information from you`,
+    done: `${w.many[0]!.toUpperCase()}${w.many.slice(1)} that needed your input were completed`,
     category: 'Data',
   },
   sync_failure: {
-    open: 'We are restoring order delivery',
-    done: 'We restored order delivery',
+    open: `We are restoring ${w.one} delivery`,
+    done: `We restored ${w.one} delivery`,
     category: 'Availability',
   },
   freshness_breach: {
-    open: 'Orders are arriving later than usual; we are on it',
-    done: 'Order delivery is back on time',
+    open: `${w.many[0]!.toUpperCase()}${w.many.slice(1)} are arriving later than usual; we are on it`,
+    done: `${w.one[0]!.toUpperCase()}${w.one.slice(1)} delivery is back on time`,
     category: 'Availability',
   },
   reconciliation_discrepancy: {
-    open: 'We are correcting orders that did not match',
-    done: 'We corrected orders that did not match',
+    open: `We are correcting ${w.many} that did not match`,
+    done: `We corrected ${w.many} that did not match`,
     category: 'Accuracy',
   },
-};
+});
 
-function headlineFor(inc: IncidentRow, accounting: Accounting | null): string {
-  const h = KIND_HEADLINES[inc.kind] ?? { open: inc.title, done: inc.title, category: 'Other' };
+function headlineFor(inc: IncidentRow, accounting: Accounting | null, w: Words = SHOPIFY_WORDS): string {
+  const h = KIND_HEADLINES(w)[inc.kind] ?? { open: inc.title, done: inc.title, category: 'Other' };
   if (inc.status !== 'resolved') return h.open;
   return accounting && !accounting.zeroLoss ? `${h.done}, with exceptions` : h.done;
 }
@@ -203,6 +242,9 @@ const STEP_TITLES: Record<string, string> = {
   tested: 'Fix tested',
   switched_on: 'Fix switched on',
   delivered: 'Held orders delivered',
+  released: 'Held transactions released',
+  recovered: 'Missing transactions recovered',
+  reviewing: 'Waiting for an engineer',
   checked: 'Every order checked',
   verifying: 'Verifying',
   verified: 'Verified',
@@ -231,6 +273,15 @@ const CHECK_LABELS: Record<string, string> = {
   'regression: baseline orders unchanged': 'Earlier orders unaffected',
   'changed inputs map correctly': 'Held orders read correctly',
   'mapped values match Shopify Admin API': 'Matches Shopify’s own records',
+  // Stripe → QuickBooks (slice 6)
+  'regression: stored transactions unchanged': 'Earlier transactions unaffected',
+  'destination request changes only as reviewed': 'Only the reviewed difference',
+  'business data preserved (QuickBooks)': 'Matches the entries in your books',
+  'QuickBooks authorized again by the customer': 'Reconnected by you',
+  'Stripe authorized again by the customer': 'Reconnected by you',
+  'token refresh works with the new authorization': 'Connection renews itself',
+  'QuickBooks company reachable': 'Your books are reachable',
+  'Stripe reachable': 'Stripe is reachable',
 };
 
 /** Customer-safe details for a timeline step, from that step's persisted evidence and the event's facts. */
@@ -238,6 +289,7 @@ function stepDetails(
   step: string,
   ev: Record<string, unknown>,
   finding: Finding | null,
+  w: Words = SHOPIFY_WORDS,
 ): { label: string; value: string }[] {
   const n = (k: string) => (typeof ev[k] === 'number' ? (ev[k] as number) : null);
   switch (step) {
@@ -246,13 +298,31 @@ function stepDetails(
       const from = finding.expected.baseline?.apiVersion;
       const to = finding.observed.apiVersion;
       return [
-        ...(from && to && from !== to ? [{ label: 'Shopify data format', value: `${from} → ${to}` }] : []),
+        ...(from && to && from !== to
+          ? [{ label: `${w.source} data format`, value: `${from} → ${to}` }]
+          : []),
         { label: 'What moved', value: finding.observed.violations.map((v) => labelOf(v.path)).join(', ') },
-        { label: 'Orders written incorrectly', value: 'None: affected orders were held' },
+        {
+          label: `${w.many[0]!.toUpperCase()}${w.many.slice(1)} written incorrectly`,
+          value: `None: affected ${w.many} were held`,
+        },
       ];
     }
     case 'investigated':
-      return n('heldOrders') != null ? [{ label: 'Orders held safely', value: String(n('heldOrders')) }] : [];
+      return n('heldOrders') != null
+        ? [
+            {
+              label: `${w.many[0]!.toUpperCase()}${w.many.slice(1)} held safely`,
+              value: String(n('heldOrders')),
+            },
+          ]
+        : [];
+    case 'released':
+      return n('released') != null ? [{ label: 'Released', value: String(n('released')) }] : [];
+    case 'recovered':
+      return n('missing') != null
+        ? [{ label: 'Found by checking directly', value: String(n('missing')) }]
+        : [];
     case 'tested':
       return (
         (ev['checks'] as { name: string; passed?: boolean; status?: string; detail: string }[] | undefined) ??
@@ -269,19 +339,25 @@ function stepDetails(
         });
     case 'delivered':
       return n('held') != null
-        ? [{ label: 'Delivered to NetSuite', value: `${n('delivered')} of ${n('held')}` }]
+        ? [{ label: `Delivered to ${w.destination}`, value: `${n('delivered')} of ${n('held')}` }]
         : [];
     case 'checked':
       return n('checked') != null
         ? [
-            { label: 'Orders in the affected period', value: String(n('checked')) },
+            {
+              label: `${w.many[0]!.toUpperCase()}${w.many.slice(1)} in the affected period`,
+              value: String(n('checked')),
+            },
             { label: 'Never reached us (recovered)', value: String(n('missing') ?? 0) },
           ]
         : [];
     case 'verified':
       return n('verified') != null
         ? [
-            { label: 'Orders verified in NetSuite', value: String(n('verified')) },
+            {
+              label: `${w.many[0]!.toUpperCase()}${w.many.slice(1)} verified in ${w.destination}`,
+              value: String(n('verified')),
+            },
             { label: 'Duplicates', value: String(n('duplicates') ?? 0) },
           ]
         : [];
@@ -309,9 +385,84 @@ export function windowText(w: { from: string; to: string }): string {
     : `${day(f)} ${time(f, false)} – ${day(t)} ${time(t, false)} UTC`;
 }
 
+type AuthFinding = { kind: 'authorization_lost'; providers: { provider: string; state: string }[] };
+type DependencyFinding = { provider: string; contract: string; declared: string; served: string };
+type StripeInputFinding = { provider: 'stripe'; field: string };
+
+/** "Change detected" and "Why it mattered", from whichever finding this event persisted. */
+function findingFacts(inc: IncidentRow, w: Words): { label: string; value: string }[] {
+  const f = inc.finding as Record<string, unknown> | null;
+  if (!f) return [{ label: 'What happened', value: inc.title }];
+  if ((f as AuthFinding).kind === 'authorization_lost') {
+    const names = (f as AuthFinding).providers.map((p) =>
+      p.provider === 'quickbooks' ? 'QuickBooks' : p.provider === 'stripe' ? 'Stripe' : p.provider,
+    );
+    return [
+      {
+        label: 'Change detected',
+        value: `Our access to ${names.join(' and ')} stopped working (${(f as AuthFinding).providers.map((p) => p.state).join(', ')}).`,
+      },
+      {
+        label: 'Why it mattered',
+        value: `${w.many[0]!.toUpperCase()}${w.many.slice(1)} could not reach ${w.destination}. We held them safely instead of losing them.`,
+      },
+    ];
+  }
+  if ('declared' in f && 'served' in f) {
+    const d = f as unknown as DependencyFinding;
+    return [
+      {
+        label: 'Change detected',
+        value: `${w.destination} retired the API version your integration asks for (${d.declared}); it answers with version ${d.served}.`,
+      },
+      {
+        label: 'Why it mattered',
+        value: `Nothing was wrong in your books. Left alone, your integration would depend on a version ${w.destination} no longer supports.`,
+      },
+    ];
+  }
+  if ((f as StripeInputFinding).provider === 'stripe' && 'field' in f) {
+    return [
+      {
+        label: 'Change detected',
+        value: `${w.source} sent data without what your integration reads (${(f as StripeInputFinding).field}).`,
+      },
+      {
+        label: 'Why it mattered',
+        value: `Those ${w.many} could have been written incorrectly. We held them instead of writing them.`,
+      },
+    ];
+  }
+  const finding = f as unknown as Finding;
+  const what = finding.observed.violations.map((v) => labelOf(v.path)).join(' and ');
+  const version =
+    finding.observed.apiVersion &&
+    finding.expected.baseline?.apiVersion &&
+    finding.observed.apiVersion !== finding.expected.baseline.apiVersion
+      ? ` (format ${finding.expected.baseline.apiVersion} → ${finding.observed.apiVersion})`
+      : '';
+  const precision = finding.observed.violations.every((v) => v.observed === 'precision');
+  return [
+    {
+      label: 'Change detected',
+      value: precision
+        ? `${w.source} sent ${w.many} where ${what} has more decimal places than your integration keeps.`
+        : `${w.source} changed the ${w.one} data it sends${version}: ${what} is no longer where your integration reads it.`,
+    },
+    {
+      label: 'Why it mattered',
+      value: precision
+        ? `Those ${w.many} would have reached ${w.destination} with rounded amounts. We held them instead of writing them.`
+        : `${w.many[0]!.toUpperCase()}${w.many.slice(1)} could have been created in ${w.destination} without ${what}. We held them instead of writing them.`,
+    },
+  ];
+}
+
 /** A maintenance event as the customer sees it — derived entirely from persisted facts. */
-export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEvent {
-  const finding = inc.finding as Finding | null;
+export function presentEvent(inc: IncidentRow, events: EventRow[], w: Words = SHOPIFY_WORDS): CustomerEvent {
+  const finding = (inc.finding as Record<string, unknown> | null) ?? null;
+  const shopifyFinding =
+    finding && 'observed' in finding && 'expected' in finding ? (finding as unknown as Finding) : null;
   const correction = inc.correction as {
     kind?: string;
     activatedAt?: string;
@@ -325,54 +476,39 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
   const verification = inc.verification as { passed?: boolean } | null;
   const resolved = inc.status === 'resolved';
   const needsYou = inc.status === 'requires_action';
-  const facts: { label: string; value: string }[] = [];
-
-  // Change detected
-  if (finding) {
-    const what = finding.observed.violations.map((v) => labelOf(v.path)).join(' and ');
-    const version =
-      finding.observed.apiVersion &&
-      finding.expected.baseline?.apiVersion &&
-      finding.observed.apiVersion !== finding.expected.baseline.apiVersion
-        ? ` (format ${finding.expected.baseline.apiVersion} → ${finding.observed.apiVersion})`
-        : '';
-    const precision = finding.observed.violations.every((v) => v.observed === 'precision');
-    facts.push({
-      label: 'Change detected',
-      value: precision
-        ? `Shopify sent orders where ${what} has more decimal places than your integration keeps.`
-        : `Shopify changed the order data it sends${version}: ${what} is no longer where your integration reads it.`,
-    });
-    facts.push({
-      label: 'Why it mattered',
-      value: precision
-        ? 'Those orders would have reached NetSuite with rounded amounts. We held them instead of writing them.'
-        : `Orders could have been created in NetSuite without ${what}. We held them instead of writing them.`,
-    });
-  } else {
-    facts.push({ label: 'What happened', value: inc.title });
-  }
+  const facts: { label: string; value: string }[] = [...findingFacts(inc, w)];
+  const plain = (n: number) => plural(n, w.one, w.many);
 
   // Action taken
   if (correction?.activatedAt && validation?.passed) {
-    const rules = correction.rules ?? [];
     const checks = validation.checks ?? [];
-    const regression = checks.find((c) => c.name.startsWith('regression'))?.detail.match(/^(\d+)\//)?.[1];
-    const source = checks.find((c) => c.name.includes('Shopify Admin API'))?.detail.match(/^(\d+)\//)?.[1];
-    const what =
-      correction.kind === 'patch'
-        ? `We corrected how your integration handles ${(finding?.observed.violations ?? []).map((v) => labelOf(v.path)).join(' and ') || 'this data'}, so it keeps exactly what Shopify sends. `
-        : `We updated how your integration reads ${rules.map((r) => labelOf(r.target)).join(' and ')} to match Shopify’s new format. `;
-    facts.push({
-      label: 'Action taken',
-      value:
-        what +
-        `Before switching it on, we confirmed it changes nothing for ${plural(Number(regression ?? 0), 'earlier order')} and gives the same values as Shopify’s own records for ${plural(Number(source ?? 0), 'affected order')}.`,
-    });
+    const count = (pred: (n: string) => boolean) =>
+      checks.find((c) => pred(c.name))?.detail.match(/^(\d+)\//)?.[1];
+    const regression = count((n) => n.startsWith('regression'));
+    let text: string;
+    if (correction.kind === 'reauthorization') {
+      text = `You reconnected ${w.destination}. Before sending anything, we confirmed the new connection works and renews itself.`;
+    } else if (shopifyFinding) {
+      const source = count((n) => n.includes('Shopify Admin API'));
+      const rules = correction.rules ?? [];
+      text =
+        (correction.kind === 'patch'
+          ? `We corrected how your integration handles ${shopifyFinding.observed.violations.map((v) => labelOf(v.path)).join(' and ') || 'this data'}, so it keeps exactly what ${w.source} sends. `
+          : `We updated how your integration reads ${rules.map((r) => labelOf(r.target)).join(' and ')} to match ${w.source}’s new format. `) +
+        `Before switching it on, we confirmed it changes nothing for ${plural(Number(regression ?? 0), `earlier ${w.one}`)} and gives the same values as ${w.source}’s own records for ${plural(Number(source ?? 0), `affected ${w.one}`)}.`;
+    } else {
+      const books = count((n) => n.startsWith('business data preserved'));
+      text =
+        `We updated your integration with a reviewed change. Before switching it on, we confirmed it changes nothing for ${plural(Number(regression ?? 0), `earlier ${w.one}`)}` +
+        (books
+          ? ` and matches the ${plural(Number(books), `${w.record}`)} already in ${w.destination}.`
+          : '.');
+    }
+    facts.push({ label: 'Action taken', value: text });
   } else if (resolved && inc.resolution) {
     facts.push({ label: 'Action taken', value: inc.resolution });
   } else if (!resolved) {
-    facts.push({ label: 'Action taken', value: 'In progress.' });
+    facts.push({ label: 'Action taken', value: needsYou ? 'Waiting for you.' : 'In progress.' });
   }
 
   // Transactions
@@ -383,23 +519,26 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
       accounting.delayed ? `${accounting.delayed} held safely and delivered after the fix` : null,
       accounting.failedDuringDisruption ? `${accounting.failedDuringDisruption} failed` : null,
       accounting.discoveredByReconciliation
-        ? `${accounting.discoveredByReconciliation} never reached us and ${accounting.discoveredByReconciliation === 1 ? 'was' : 'were'} found by checking Shopify directly`
+        ? `${accounting.discoveredByReconciliation} never reached us and ${accounting.discoveredByReconciliation === 1 ? 'was' : 'were'} found by checking ${w.source} directly`
         : null,
     ].filter(Boolean);
     facts.push({
       label: 'Transactions affected',
-      value: affected ? `${plural(affected, 'order')}: ${parts.join('; ')}.` : 'None.',
+      value: affected ? `${plain(affected)}: ${parts.join('; ')}.` : 'None.',
     });
     facts.push({ label: 'Transactions recovered', value: `${accounting.recovered} of ${affected}.` });
     const relevant = accounting.population - accounting.excluded.count;
     facts.push({
       label: 'Final outcome',
       value: accounting.zeroLoss
-        ? `All ${plural(relevant, 'order')} created in the affected period are in NetSuite exactly once, with the items, quantities and prices Shopify has for them.`
-        : `${accounting.verified} of ${plural(relevant, 'order')} confirmed in NetSuite; ${plural(accounting.unresolved, 'order')} not yet confirmed${accounting.duplicates ? `; ${accounting.duplicates} duplicated` : ''}. We are still working on ${accounting.unresolved === 1 ? 'it' : 'them'}.`,
+        ? `All ${plain(relevant)} created in the affected period are in ${w.destination} exactly once, with the ${w.businessData} ${w.source} has for them.`
+        : `${accounting.verified} of ${plain(relevant)} confirmed in ${w.destination}; ${plain(accounting.unresolved)} not yet confirmed${accounting.duplicates ? `; ${accounting.duplicates} duplicated` : ''}. We are still working on ${accounting.unresolved === 1 ? 'it' : 'them'}.`,
     });
   } else if (!resolved) {
-    facts.push({ label: 'Transactions affected', value: 'Being established.' });
+    facts.push({
+      label: 'Transactions affected',
+      value: needsYou ? `Held safely until you act.` : 'Being established.',
+    });
   }
 
   facts.push({
@@ -411,18 +550,18 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
   const relevant = accounting ? accounting.population - accounting.excluded.count : 0;
   const summary = resolved
     ? zeroLoss
-      ? `We detected a change that threatened order processing. We resolved it and verified all ${plural(relevant, 'order')} from the affected period against NetSuite.`
-      : `We resolved this issue.${accounting ? ' Not every order could be confirmed; see the outcome.' : ''}`
+      ? `We detected a change that threatened ${w.one} processing. We resolved it and verified all ${plain(relevant)} from the affected period against ${w.destination}.`
+      : `We resolved this issue.${accounting ? ` Not every ${w.one} could be confirmed; see the outcome.` : ''}`
     : needsYou
       ? 'We need something from you to continue.'
-      : 'We detected this and are handling it. Orders are protected while we work; nothing is needed from you.';
+      : `We detected this and are handling it. ${w.many[0]!.toUpperCase()}${w.many.slice(1)} are protected while we work; nothing is needed from you.`;
 
   return {
     id: inc.id,
     integrationId: inc.integrationId!,
-    category: (KIND_HEADLINES[inc.kind] ?? { category: 'Other' }).category,
+    category: (KIND_HEADLINES(w)[inc.kind] ?? { category: 'Other' }).category,
     state: resolved ? 'completed' : needsYou ? 'needs_you' : 'in_progress',
-    headline: headlineFor(inc, accounting),
+    headline: headlineFor(inc, accounting, w),
     summary,
     detectedAt: inc.detectedAt.toISOString(),
     resolvedAt: inc.resolvedAt?.toISOString() ?? null,
@@ -446,9 +585,9 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
       zeroLoss,
       statement: zeroLoss ? 'Zero transactions lost.' : null,
       basis: zeroLoss
-        ? `Every order Shopify has for the affected period (${windowText(accounting!.window)}) was checked in NetSuite after the fix.`
+        ? `Every ${w.one} ${w.source} has for the affected period (${windowText(accounting!.window)}) was checked in ${w.destination} after the fix.`
         : accounting
-          ? 'Not claimed: not every order in the affected period is confirmed.'
+          ? `Not claimed: not every ${w.one} in the affected period is confirmed.`
           : 'Not claimed: transaction accounting is not complete.',
     },
     customerAction: { required: needsYou, text: needsYou ? (inc.customerAction ?? null) : null },
@@ -463,7 +602,7 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
           step,
           title: STEP_TITLES[step] ?? STATUS_TITLES[e.toStatus] ?? 'Update',
           text: e.note,
-          details: stepDetails(step, ev, finding),
+          details: stepDetails(step, ev, shopifyFinding, w),
         };
       }),
   };
@@ -471,8 +610,18 @@ export function presentEvent(inc: IncidentRow, events: EventRow[]): CustomerEven
 
 /* ================================================================== responsibilities */
 
-/** What Managed Integrations is responsible for, per flow — only mechanisms that exist. */
-export function responsibilitiesFor(flowType: string, reconcileIntervalMinutes: number | null): string[] {
+/** What Managed Integrations is responsible for, per integration — only mechanisms that exist. */
+export function responsibilitiesFor(
+  flowType: string,
+  reconcileIntervalMinutes: number | null,
+  d?: IntegrationDescriptor,
+): string[] {
+  if (d?.responsibilities)
+    return [
+      ...d.responsibilities.maintain,
+      `Check ${d.source.name} against ${d.destination.name}${reconcileIntervalMinutes ? ` every ${reconcileIntervalMinutes} minutes` : ''} so nothing is silently missed.`,
+      `Tell you what happened and what it meant for your ${d.transactions.many}. Ask you only when a decision is yours.`,
+    ];
   const common = [
     'Create each Shopify order in NetSuite exactly once, with the items, quantities and prices from Shopify.',
     `Check Shopify directly${reconcileIntervalMinutes ? ` every ${reconcileIntervalMinutes} minutes` : ''} so an order is never silently missed, and recover any that are.`,

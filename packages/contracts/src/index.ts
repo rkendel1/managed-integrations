@@ -231,6 +231,8 @@ export const INCIDENT_KINDS = [
   'schema_drift',
   /** Adopted flow: a provider input no longer satisfies what the adopted code reads (slice 4). */
   'input_contract_change',
+  /** The pinned code declares a provider contract the provider retired (slice 6). */
+  'dependency_contract_change',
 ] as const;
 export type IncidentKind = (typeof INCIDENT_KINDS)[number];
 

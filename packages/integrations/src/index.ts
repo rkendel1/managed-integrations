@@ -5,6 +5,7 @@
  * monitoring, the correction lifecycle, maintenance events, the customer product or operator tooling.
  */
 import { createShopifyNetsuiteRuntime, SHOPIFY_NETSUITE } from '@mi/adopted-order-sync';
+import { createStripeQuickbooksRuntime, STRIPE_QUICKBOOKS } from '@mi/adopted-ledgerly';
 import { FLOW_TYPE } from '@mi/contracts';
 import type { Db } from '@mi/database';
 import type { CredentialCipher, ProviderEndpointConfig, RetryPolicy } from '@mi/integration-shopify-netsuite';
@@ -69,7 +70,11 @@ export const NATIVE_SHOPIFY_NETSUITE: IntegrationDescriptor = {
   responsibilities: null,
 };
 
-export const DESCRIPTORS: readonly IntegrationDescriptor[] = [SHOPIFY_NETSUITE, NATIVE_SHOPIFY_NETSUITE];
+export const DESCRIPTORS: readonly IntegrationDescriptor[] = [
+  SHOPIFY_NETSUITE,
+  STRIPE_QUICKBOOKS,
+  NATIVE_SHOPIFY_NETSUITE,
+];
 
 export function descriptorFor(flowType: string): IntegrationDescriptor | undefined {
   return DESCRIPTORS.find((d) => d.flowType === flowType);
@@ -89,6 +94,7 @@ export interface RegistryDeps {
 export function createRegistry(deps: RegistryDeps): IntegrationRegistry {
   return new IntegrationRegistry(deps.db, [
     createShopifyNetsuiteRuntime(deps),
+    createStripeQuickbooksRuntime(deps),
     { descriptor: NATIVE_SHOPIFY_NETSUITE },
   ]);
 }

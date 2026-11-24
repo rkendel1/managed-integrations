@@ -24,7 +24,8 @@
     "@mi/adopted-order-sync": "workspace:*",
     "@mi/integrations": "workspace:*",
     "@mi/managed": "workspace:*",
-    "@appport/core": "1.13.0"
+    "@appport/core": "1.13.0",
+    "@mi/adopted-ledgerly": "workspace:*"
   },
   "scripts": {
     "dev": "tsx watch src/main.ts",
