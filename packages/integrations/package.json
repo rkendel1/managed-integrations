@@ -13,6 +13,7 @@
     "@mi/integration-shopify-netsuite": "workspace:*",
     "@mi/managed": "workspace:*",
     "@mi/adopted-ledgerly": "workspace:*",
-    "@mi/adopted-stripe-subscriptions": "workspace:*"
+    "@mi/adopted-stripe-subscriptions": "workspace:*",
+    "@mi/adopted-qbo-tools": "workspace:*"
   }
 }

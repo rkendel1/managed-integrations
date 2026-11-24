@@ -2,6 +2,7 @@
  * The AppPort application: the capability contract and authority boundary shared by every
  * consumer. Transports (HTTP/MCP) and the UI are projections of this object, not alternatives.
  */
+import { createApplicationInvokeCapability } from './capabilities/applications.ts';
 import { createApplication, type AppPortApplication } from '@appport/core';
 import type { Logger } from '@appport/core';
 import type { Db } from '@mi/database';
@@ -108,6 +109,7 @@ export function createIntegrationsApplication(options: IntegrationsApplicationOp
       createAdaptationRejectCapability(options.registry),
       createMonitoringCapability(options.db),
       createMaintenanceDecideCapability(options.db, options.enqueueMaintenance),
+      ...(options.registry ? [createApplicationInvokeCapability(options.db, options.registry)] : []),
     ],
     authorizer: combineAuthorizers([integrationsAuthorizer(), resourceTenantAuthorizer(options.db)]),
     ...(options.telemetry ? { telemetry: options.telemetry } : {}),

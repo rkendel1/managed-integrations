@@ -1,0 +1,29 @@
+{
+  "id": "d0001-node-quickbooks-2.0.50",
+  "title": "Upstream v0.12.0: node-quickbooks 2.0.48 \u2192 2.0.50",
+  "artifact": {
+    "repository": "https://github.com/laf-rge/quickbooks-mcp",
+    "commit": "ce1317e51d43fb669d73f6f874935fb7827e5ebd"
+  },
+  "dependency": "node-quickbooks",
+  "from": "2.0.48",
+  "to": "2.0.50",
+  "reason": "quickbooks-mcp released v0.12.0 (611ca6d, 2026-10-19). Its lockfile moves node-quickbooks from 2.0.48 to 2.0.50. None of the 27 files the adopted create_invoice tool executes changed between ce1317e and 611ca6d (only src/types/node-quickbooks.d.ts, a declaration file, and code outside the tool's import graph: lambda.ts, tools/definitions.ts, tools/index.ts, handlers/vendor.ts). Following upstream keeps the deployment on the client version upstream ships and tests.",
+  "originalBehavior": "node-quickbooks 2.0.48: requests with minorversion=75 and User-Agent 'node-quickbooks: version 2.0.48'",
+  "replacementBehavior": "node-quickbooks 2.0.50: index.js is byte-identical to 2.0.48 (the release adds index.d.ts type declarations); the only runtime-visible difference is the version in the User-Agent header",
+  "evidence": [
+    "upstream: git diff ce1317e 611ca6d -- <the 27 executed files> is empty; package-lock.json node-quickbooks 2.0.48 \u2192 2.0.50",
+    "npm: node-quickbooks@2.0.48 and @2.0.50 tarballs \u2014 index.js identical; 2.0.50 adds index.d.ts and a \"types\" field",
+    "https://github.com/laf-rge/quickbooks-mcp/commit/611ca6d05165e405834bc121762026b285ff5526"
+  ],
+  "assumptions": [
+    "Intuit treats the User-Agent as informational (it does not change how requests are processed).",
+    "Request-Id (a random UUID per request, set by node-quickbooks) differs on every request in either version."
+  ],
+  "validation": [
+    "replay the customer's own create_invoice requests through the artifact before and after against a recording QuickBooks double: identical method, path, query and body; headers identical apart from User-Agent and Request-Id",
+    "the 27 executed files are unchanged (same sha256 in both artifacts)",
+    "the previous artifact still loads (rollback target)"
+  ],
+  "rollback": "Roll back the correction: the artifact links node-quickbooks 2.0.48 again. Invoices created while it was active stay as created."
+}

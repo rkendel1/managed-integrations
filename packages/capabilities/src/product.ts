@@ -435,6 +435,21 @@ function findingFacts(inc: IncidentRow, w: Words): { label: string; value: strin
       },
     ];
   }
+  if (Array.isArray(f['contracts']) && Array.isArray(f['mismatches'])) {
+    // a provider an application depends on changed what it sends (slice 7)
+    const fields = [...new Set((f['mismatches'] as { field: string }[]).map((m) => m.field))];
+    return [
+      { label: 'Change detected', value: `${w.source} now sends some details in a different place (API version ${String((f['observed'] as { apiVersion?: string } | undefined)?.apiVersion ?? 'changed')}).` },
+      { label: 'Why it mattered', value: `Your application kept working but recorded ${fields.length === 1 ? 'one detail' : `${fields.length} details`} incorrectly. Nothing was lost: we correct the records from ${w.source} itself.` },
+    ];
+  }
+  if (f['upstream'] && Array.isArray(f['dependencyChanges'])) {
+    const up = f['upstream'] as { to?: { version?: string } };
+    return [
+      { label: 'What changed', value: `A new version (${up.to?.version ?? 'new'}) of your application was released.` },
+      { label: 'Why it matters', value: 'We check exactly what changed and test it with your own requests before switching. Nothing changes for you until then.' },
+    ];
+  }
   if (Array.isArray(f['inactiveAccounts'])) {
     const names = (f['inactiveAccounts'] as { name: string }[]).map((a) => a.name).join(', ');
     return [
@@ -454,7 +469,7 @@ function findingFacts(inc: IncidentRow, w: Words): { label: string; value: strin
       { label: 'Why it mattered', value: `${w.destination} refused those ${w.many}. We held them safely instead of losing them.` },
     ];
   }
-  if (!('observed' in f && 'expected' in f)) return [{ label: 'What happened', value: inc.customerSummary ?? inc.title }];
+  if (!Array.isArray((f['observed'] as { violations?: unknown } | undefined)?.violations)) return [{ label: 'What happened', value: inc.customerSummary ?? inc.title }];
   const finding = f as unknown as Finding;
   const what = finding.observed.violations.map((v) => labelOf(v.path)).join(' and ');
   const version =
@@ -495,7 +510,9 @@ export function presentEvent(
 ): CustomerEvent {
   const finding = (inc.finding as Record<string, unknown> | null) ?? null;
   const shopifyFinding =
-    finding && 'observed' in finding && 'expected' in finding ? (finding as unknown as Finding) : null;
+    finding && Array.isArray((finding['observed'] as { violations?: unknown } | undefined)?.violations)
+      ? (finding as unknown as Finding)
+      : null;
   const correction = inc.correction as {
     kind?: string;
     activatedAt?: string;
@@ -532,10 +549,10 @@ export function presentEvent(
     } else {
       const books = count((n) => n.startsWith('business data preserved'));
       text =
-        `We updated your integration with a reviewed change. Before switching it on, we confirmed it changes nothing for ${plural(Number(regression ?? 0), `earlier ${w.one}`)}` +
-        (books
-          ? ` and matches the ${plural(Number(books), `${w.record}`)} already in ${w.destination}.`
-          : '.');
+        regression === undefined
+          ? `We updated your ${inc.kind === 'provider_contract_change' || inc.kind === 'application_change' ? 'application' : 'integration'} with a reviewed change, tested with your own data before switching it on.`
+          : `We updated your integration with a reviewed change. Before switching it on, we confirmed it changes nothing for ${plural(Number(regression), `earlier ${w.one}`)}` +
+            (books ? ` and matches the ${plural(Number(books), `${w.record}`)} already in ${w.destination}.` : '.');
     }
     facts.push({ label: 'Action taken', value: text });
   } else if (resolved && inc.resolution) {

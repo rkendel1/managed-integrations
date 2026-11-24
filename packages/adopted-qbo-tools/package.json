@@ -1,0 +1,26 @@
+{
+  "name": "@mi/adopted-qbo-tools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@mi/contracts": "workspace:*",
+    "@mi/database": "workspace:*",
+    "@mi/integration-shopify-netsuite": "workspace:*",
+    "@mi/managed": "workspace:*",
+    "@mi/observability": "workspace:*",
+    "@mi/provider-connections": "workspace:*",
+    "@mi/reliability": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "zod": "^4.6.7",
+    "app-node-quickbooks": "npm:node-quickbooks@2.0.48",
+    "app-node-quickbooks-2.0.50": "npm:node-quickbooks@2.0.50",
+    "app-intuit-oauth": "npm:intuit-oauth@4.2.2",
+    "app-aws-client-secrets-manager": "npm:@aws-sdk/client-secrets-manager@3.1004.0",
+    "app-aws-client-ssm": "npm:@aws-sdk/client-ssm@3.1004.0",
+    "app-tmp": "npm:tmp@0.2.5"
+  }
+}

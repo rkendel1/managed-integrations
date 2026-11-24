@@ -121,7 +121,7 @@ export async function instanceFor(deps: HostDeps, integrationId: string): Promis
       const post = async (path: string, body: string, headers: Record<string, string>) => {
         const res = await fetch(`${base}${path}`, { method: 'POST', headers, body });
         const text = await res.text();
-        let parsed: Record<string, unknown> = {};
+        let parsed: Record<string, unknown>;
         try { parsed = text ? (JSON.parse(text) as Record<string, unknown>) : {}; } catch { parsed = { raw: text.slice(0, 500) }; }
         return { status: res.status, body: parsed };
       };

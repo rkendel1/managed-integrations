@@ -591,7 +591,12 @@ describe(
         ['stripe', true],
         ['quickbooks', true],
       ]);
-      expect(both.integrations.map((x) => [x.flowType, x.status])).toEqual([
+      // (slice 7: applications that depend on one of these providers are offered too; this test is about the pipelines)
+      expect(
+        both.integrations
+          .filter((x) => [SHOPIFY_NETSUITE.flowType, LEDGERLY_FLOW_TYPE].includes(x.flowType))
+          .map((x) => [x.flowType, x.status]),
+      ).toEqual([
         [SHOPIFY_NETSUITE.flowType, 'select'],
         [LEDGERLY_FLOW_TYPE, 'managed'],
       ]);
@@ -605,7 +610,9 @@ describe(
       });
       await jobs.drain(
         async () =>
-          (await c.call<Status>('onboarding.status')).integrations.every((x) => x.status === 'managed'),
+          (await c.call<Status>('onboarding.status')).integrations
+            .filter((x) => [SHOPIFY_NETSUITE.flowType, LEDGERLY_FLOW_TYPE].includes(x.flowType))
+            .every((x) => x.status === 'managed'),
         60_000,
       );
       // one connection per provider, one onboarding record per integration kind
@@ -614,11 +621,9 @@ describe(
           .map((x) => x.providerId)
           .sort(),
       ).toEqual(['netsuite', 'quickbooks', 'shopify', 'stripe']);
-      expect(
-        (await dbh.db.select().from(onboardings).where(eq(onboardings.tenantId, c.tenantId)))
-          .map((x) => x.flowType)
-          .sort(),
-      ).toEqual([SHOPIFY_NETSUITE.flowType, LEDGERLY_FLOW_TYPE].sort());
+      const obs = (await dbh.db.select().from(onboardings).where(eq(onboardings.tenantId, c.tenantId))).map((x) => x.flowType);
+      expect(new Set(obs).size).toBe(obs.length);
+      expect(obs).toEqual(expect.arrayContaining([SHOPIFY_NETSUITE.flowType, LEDGERLY_FLOW_TYPE]));
       // the customer product: two integrations, each described in its own business terms
       const portfolio = await c.call<{ integrations: { name: string; process: string }[] }>('portfolio.list');
       expect(portfolio.integrations.map((x) => [x.name, x.process]).sort()).toEqual([

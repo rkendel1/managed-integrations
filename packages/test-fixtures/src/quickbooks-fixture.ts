@@ -10,6 +10,11 @@
  *    idempotent (same request id → the same entity, no duplicate); unbalanced entries and unknown accounts
  *    are rejected with 400 ValidationFault;
  *  - GET /v3/company/{realm}/query?query=… for JournalEntry (by DocNumber), Account (by Name) and CompanyInfo;
+ *  - slice 7 (a QuickBooks-dependent application): Customer and Item lists and their queries in the form
+ *    node-quickbooks emits (`select * from Item where Name = 'X' and Active = true startposition 1 maxresults
+ *    1000`; inactive entities are listed only when asked for); POST/GET /v3/company/{realm}/invoice with
+ *    `requestid` idempotency, TotalAmt computed by QuickBooks, and Intuit's refusal of inactive references
+ *    (error 610); the client's User-Agent is recorded for every request;
  *  - minor versions: since 2025-08-01 Intuit ignores minorversion values below 75 and answers as 75; the
  *    fixture records the requested and the served minor version for every request.
  */
@@ -91,6 +96,15 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
     /** Simulates something in the customer's company changing an entry after it was saved (fixture-only). */
     mutateOnCreate: null as null | ((e: QboJournalEntryRecord) => void),
     journalEntries: new Map<string, QboJournalEntryRecord>(),
+    customers: new Map<string, { Id: string; DisplayName: string; Active: boolean }>([
+      ['1', { Id: '1', DisplayName: 'Acme Corp', Active: true }],
+      ['2', { Id: '2', DisplayName: 'Globex', Active: true }],
+    ]),
+    items: new Map<string, { Id: string; Name: string; Type: string; UnitPrice: number; Active: boolean }>([
+      ['1', { Id: '1', Name: 'Consulting', Type: 'Service', UnitPrice: 150, Active: true }],
+      ['2', { Id: '2', Name: 'Design', Type: 'Service', UnitPrice: 120, Active: true }],
+    ]),
+    invoices: new Map<string, Record<string, any>>(),
     byRequestId: new Map<string, string>(),
     codes: new Map<string, { redirectUri: string; used: boolean }>(),
     accessTokens: new Map<string, number>(),
@@ -104,6 +118,8 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
       minorRequested: number | null;
       minorServed: number | null;
       requestId: string | null;
+      userAgent?: string | null;
+      query?: string | null;
     }[],
     faults: new FaultQueue(),
   };
@@ -134,6 +150,15 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
       state.accounts[name] = id;
       state.accountTypes[name] = type;
       return id;
+    },
+    /** The customer makes a product/service inactive (kept; new transactions may not use it). */
+    deactivateItem(id: string) {
+      state.items.get(id)!.Active = false;
+    },
+    addItem(name: string, unitPrice: number) {
+      const Id = String(state.items.size + 1);
+      state.items.set(Id, { Id, Name: name, Type: 'Service', UnitPrice: unitPrice, Active: true });
+      return Id;
     },
     /** Every refresh token stops working (the customer disconnected the app, or the token expired). */
     revokeRefreshTokens() {
@@ -247,6 +272,8 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
       // Intuit (2025-08-01): minor versions below 75 are ignored; requests are served as 75.
       minorServed: requested === null || requested < 75 ? 75 : requested,
       requestId: q.get('requestid'),
+      userAgent: (req.headers['user-agent'] as string | undefined) ?? null,
+      query: q.get('query'),
     });
     const f = state.faults.take('api');
     if (f?.type === 'http503' || f?.type === 'http500')
@@ -334,6 +361,30 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
     // Inactive entities are only listed when asked for explicitly (Intuit: "where Active in (true, false)").
     if (/^select \* from Account where Active in \(true, false\)/i.test(query))
       return { QueryResponse: { Account: Object.entries(state.accounts).map(accountRow) }, time: new Date().toISOString() };
+    const g = /^select \* from (Customer|Item|Invoice)(?: where (.*?))?(?: startposition (\d+))?(?: maxresults (\d+))?$/i.exec(query);
+    if (g) {
+      const clauses = (g[2] ?? '').split(/ and /i).filter(Boolean).map((c) => {
+        const mm = /^(\w+) (=|LIKE) (.+)$/i.exec(c.trim());
+        if (!mm) return null;
+        const raw = mm[3]!.trim();
+        const value = raw.startsWith("'") ? raw.slice(1, -1).replace(/\\'/g, "'") : raw === 'true' ? true : raw === 'false' ? false : Number(raw);
+        return { field: mm[1]!, op: mm[2]!.toUpperCase(), value };
+      });
+      if (clauses.some((c) => c === null)) return fault(reply, 'QueryParserError', `Unsupported query in fixture: ${query}`);
+      const entity = g[1]!.toLowerCase() === 'customer' ? 'Customer' : g[1]!.toLowerCase() === 'item' ? 'Item' : 'Invoice';
+      const rows: Record<string, any>[] = [...(entity === 'Customer' ? state.customers : entity === 'Item' ? state.items : state.invoices).values()];
+      const match = (r: Record<string, any>, c: { field: string; op: string; value: unknown }) => {
+        const v = r[c.field];
+        if (c.op === 'LIKE') {
+          const re = new RegExp(`^${String(c.value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/%/g, '.*')}$`, 'i');
+          return re.test(String(v ?? ''));
+        }
+        return String(v) === String(c.value);
+      };
+      const askedActive = clauses.some((c) => c!.field === 'Active');
+      const out = rows.filter((r) => clauses.every((c) => match(r, c!)) && (entity === 'Invoice' || askedActive || r['Active'] !== false));
+      return { QueryResponse: out.length ? { [entity]: out, startPosition: 1, maxResults: out.length } : {}, time: new Date().toISOString() };
+    }
     const m = IN.exec(query);
     if (!m) return fault(reply, 'QueryParserError', `Unsupported query in fixture: ${query}`);
     const values = [...m[3]!.matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((x) => x[1]!.replace(/\\'/g, "'"));
@@ -352,6 +403,58 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
       .map(accountRow);
     return { QueryResponse: rows.length ? { Account: rows } : {}, time: new Date().toISOString() };
   });
+  /* ---------------- slice 7: Customer, Item, Invoice (a QuickBooks-dependent application) */
+  const inactive610 = (reply: FastifyReply) =>
+    reply.code(400).send({
+      Fault: {
+        Error: [{ Message: 'Object Not Found', Detail: "Something you're trying to use has been made inactive. Check the fields with accounts, customers, items, vendors or employees.", code: '610', element: '' }],
+        type: 'ValidationFault',
+      },
+      time: new Date().toISOString(),
+    });
+  app.post('/v3/company/:realm/invoice', async (req, reply) => {
+    if ((req.params as { realm: string }).realm !== realmId) return fault(reply, 'Invalid company', 'realm', 403);
+    const q = new URL(req.url, 'http://x').searchParams;
+    const requestId = q.get('requestid');
+    if (requestId && state.byRequestId.has(`inv:${requestId}`))
+      return { Invoice: state.invoices.get(state.byRequestId.get(`inv:${requestId}`)!), time: new Date().toISOString() };
+    const b = req.body as Record<string, any>;
+    const cust = state.customers.get(String(b.CustomerRef?.value ?? ''));
+    if (!cust) return fault(reply, 'Invalid Reference Id', `Customer ${b.CustomerRef?.value} not found`);
+    const lines = (b.Line ?? []).filter((l: any) => l.DetailType === 'SalesItemLineDetail');
+    if (!lines.length) return fault(reply, 'Required param missing', 'Line');
+    for (const l of lines) {
+      const it = state.items.get(String(l.SalesItemLineDetail?.ItemRef?.value ?? ''));
+      if (!it) return fault(reply, 'Invalid Reference Id', `Item ${l.SalesItemLineDetail?.ItemRef?.value} not found`);
+      if (!it.Active) return inactive610(reply);
+    }
+    if (!cust.Active) return inactive610(reply);
+    if (b.DocNumber && String(b.DocNumber).length > 21)
+      return fault(reply, 'String length is either shorter or longer than supported by specification', 'DocNumber Min:0 Max:21');
+    const Id = String(++seq);
+    const total = Math.round(lines.reduce((a: number, l: any) => a + Number(l.Amount), 0) * 100) / 100;
+    const rec = {
+      ...b,
+      Id,
+      SyncToken: '0',
+      CustomerRef: { value: cust.Id, name: cust.DisplayName },
+      Line: [
+        ...lines.map((l: any, i: number) => ({ ...l, Id: String(i + 1), LineNum: i + 1 })),
+        { Amount: total, DetailType: 'SubTotalLineDetail', SubTotalLineDetail: {} },
+      ],
+      TotalAmt: total,
+      Balance: total,
+      MetaData: { CreateTime: new Date().toISOString() },
+    };
+    state.invoices.set(Id, rec);
+    if (requestId) state.byRequestId.set(`inv:${requestId}`, Id);
+    return { Invoice: rec, time: new Date().toISOString() };
+  });
+  app.get('/v3/company/:realm/invoice/:id', async (req, reply) => {
+    const inv = state.invoices.get((req.params as { id: string }).id);
+    return inv ? { Invoice: inv, time: new Date().toISOString() } : fault(reply, 'Object Not Found', 'Invoice', 400);
+  });
+
   app.get('/v3/company/:realm/companyinfo/:id', async (req, reply) => {
     if ((req.params as { realm: string }).realm !== realmId)
       return fault(reply, 'Invalid company', 'realm', 403);

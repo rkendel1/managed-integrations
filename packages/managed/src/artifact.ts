@@ -64,7 +64,7 @@ export const ReviewedDependencyChangeSchema = z.object({
 export type ReviewedDependencyChange = z.infer<typeof ReviewedDependencyChangeSchema>;
 
 /** Reads a directory of reviewed patch files (authored and reviewed like code; never generated). */
-export function readPatchCatalog<T extends ReviewedPatch>(dir: string, schema: z.ZodType<T>): T[] {
+export function readPatchCatalog<T>(dir: string, schema: z.ZodType<T>): T[] {
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((f) => f.endsWith('.json'))

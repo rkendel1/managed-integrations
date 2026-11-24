@@ -49,6 +49,7 @@
     "@mi/managed": "workspace:*",
     "@mi/integrations": "workspace:*",
     "@mi/adopted-stripe-subscriptions": "workspace:*",
-    "@mi/provider-connections": "workspace:*"
+    "@mi/provider-connections": "workspace:*",
+    "@mi/adopted-qbo-tools": "workspace:*"
   }
 }

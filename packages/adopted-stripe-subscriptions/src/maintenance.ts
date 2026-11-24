@@ -313,7 +313,7 @@ export async function advanceAppMaintenance(deps: AppMaintainDeps, incidentId: s
     const d = rows.find((r) => r.sourceId === e.id);
     const objId = String(e.data.object['id']);
     const kind = String(e.data.object['object']);
-    let verification: PopulationItem['verification'] = null;
+    let verification: PopulationItem['verification'];
     if (['subscription', 'invoice', 'payment_intent'].includes(kind)) {
       if (!live.has(objId))
         live.set(

@@ -7,6 +7,7 @@
 import { createShopifyNetsuiteRuntime, SHOPIFY_NETSUITE } from '@mi/adopted-order-sync';
 import { createStripeQuickbooksRuntime, STRIPE_QUICKBOOKS } from '@mi/adopted-ledgerly';
 import { createStripeSubscriptionsRuntime, STRIPE_SUBSCRIPTIONS } from '@mi/adopted-stripe-subscriptions';
+import { createQboToolsRuntime, QBO_TOOLS } from '@mi/adopted-qbo-tools';
 import { FLOW_TYPE } from '@mi/contracts';
 import type { Db } from '@mi/database';
 import type { CredentialCipher, ProviderEndpointConfig, RetryPolicy } from '@mi/integration-shopify-netsuite';
@@ -107,6 +108,7 @@ export const DESCRIPTORS: readonly IntegrationDescriptor[] = [
   SHOPIFY_NETSUITE,
   STRIPE_QUICKBOOKS,
   STRIPE_SUBSCRIPTIONS,
+  QBO_TOOLS,
   NATIVE_SHOPIFY_NETSUITE,
 ];
 
@@ -130,6 +132,7 @@ export function createRegistry(deps: RegistryDeps): IntegrationRegistry {
     createShopifyNetsuiteRuntime(deps),
     createStripeQuickbooksRuntime(deps),
     createStripeSubscriptionsRuntime(deps),
+    createQboToolsRuntime(deps),
     { descriptor: NATIVE_SHOPIFY_NETSUITE },
   ]);
 }
