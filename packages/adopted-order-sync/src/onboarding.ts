@@ -15,17 +15,8 @@
  * of the discovered window with the existing reconciliation, and only then mark the integration managed.
  * Every step is durable in `onboardings`, so an interrupted onboarding resumes.
  */
-import { and, eq, inArray } from 'drizzle-orm';
-import {
-  auditLog,
-  connections,
-  deliveries,
-  integrations,
-  onboardings,
-  reconciliationItems,
-  reconciliationRuns,
-  type Db,
-} from '@mi/database';
+import { and, eq } from 'drizzle-orm';
+import { deliveries, integrations, reconciliationItems, reconciliationRuns, type Db } from '@mi/database';
 import {
   ConnectionCredentials,
   DEFAULT_RETRY,
@@ -37,63 +28,31 @@ import {
   type ProviderEndpointConfig,
   type RetryPolicy,
 } from '@mi/integration-shopify-netsuite';
-import { describeError } from '@mi/observability';
+import {
+  confidenceOf,
+  discoveryOutcome,
+  OnboardingError,
+  type ActivationStep,
+  type Candidate,
+  type Discovery,
+  type OnboardingImplementation,
+  type StepContext,
+  type StepResult,
+} from '@mi/managed';
 import { readDestination, type SourceIdentity } from '@mi/reliability';
 import { ADOPTED_CONTRACT, ADOPTED_FLOW_TYPE, registerAdoptedContract } from './contract.ts';
+import { SHOPIFY_NETSUITE } from './descriptor.ts';
 import { ReconciliationBusy, startReconciliation, type AdoptedClients } from './reconcile.ts';
 import { DISCOVERY_QUERY, discoveryFilter, type DiscoveredOrder } from './source.ts';
 
-export const ONBOARDING_STATUSES = [
-  'connect',
-  'discovering',
-  'confirm',
-  'select',
-  'activating',
-  'managed',
-  'blocked',
-] as const;
-export type OnboardingStatus = (typeof ONBOARDING_STATUSES)[number];
+export { OnboardingError, type Candidate, type Discovery };
 
 /** What the customer authorizes when they confirm (versioned: the confirmation records the version). */
-export const RESPONSIBILITIES = {
-  version: 'r1',
-  maintain: [
-    'Run your Shopify → NetSuite order integration for you: the same software you run today, pinned to a known version.',
-    'Receive Shopify’s new-order notifications at our service and create each order in NetSuite exactly once.',
-    'Check Shopify and NetSuite against each other and recover orders that never arrived.',
-    'Adapt the integration when Shopify or NetSuite change, verify the result, and tell you what happened.',
-  ],
-  access: [
-    'Shopify: read your orders, and register a new-order notification for our service.',
-    'NetSuite: create sales orders; read customers, items and sales orders.',
-  ],
-  verify: [
-    'Every Shopify order is in NetSuite exactly once, with the same items, quantities and prices.',
-    'Orders that never reached NetSuite are found by comparing both systems.',
-  ],
-} as const;
+export const RESPONSIBILITIES = SHOPIFY_NETSUITE.responsibilities;
 
 const DISCOVERY_DAYS = 30;
 const GRACE_MS = 10 * 60_000;
 const SAMPLE_LIMIT = 100;
-
-export interface Candidate {
-  id: string;
-  kind: 'adoptable' | 'unsupported' | 'new';
-  title: string;
-  /** Plain-language finding for the customer. */
-  summary: string;
-  implementation: string | null;
-  confidence: 'established' | 'partial' | null;
-  evidence: Record<string, unknown>;
-}
-export interface Discovery {
-  at: string;
-  outcome: 'found' | 'ambiguous' | 'unsupported' | 'not_found' | 'insufficient_evidence' | 'already_managed';
-  window: { from: string; to: string };
-  sampled: number;
-  candidates: Candidate[];
-}
 
 const NEW_CANDIDATE: Candidate = {
   id: 'new.shopify_orders_netsuite',
@@ -104,18 +63,6 @@ const NEW_CANDIDATE: Candidate = {
   confidence: null,
   evidence: {},
 };
-
-async function ready(db: Db, tenantId: string) {
-  const rows = await db
-    .select()
-    .from(connections)
-    .where(and(eq(connections.tenantId, tenantId), inArray(connections.providerId, ['shopify', 'netsuite'])));
-  const ok = (p: string) =>
-    rows.some(
-      (c) => c.providerId === p && ['authorized', 'verified'].includes(c.status) && !!c.credentialsCiphertext,
-    );
-  return { shopify: ok('shopify'), netsuite: ok('netsuite'), rows };
-}
 
 /** Provider clients for a tenant, from its durable connections. */
 export async function tenantClients(
@@ -136,32 +83,6 @@ export async function tenantClients(
     }),
     netsuite: new NetSuiteClient({ baseUrl: ns.baseUrl, auth: creds.netsuiteAuth(ns) }),
   };
-}
-
-export class OnboardingError extends Error {}
-
-export async function getOnboarding(db: Db, tenantId: string) {
-  // Tenants that already have an active integration (enrolled before self-service onboarding) are managed.
-  const [active] = await db
-    .select({ id: integrations.id })
-    .from(integrations)
-    .where(and(eq(integrations.tenantId, tenantId), eq(integrations.lifecycle, 'active')))
-    .limit(1);
-  await db
-    .insert(onboardings)
-    .values({ tenantId, status: active ? 'managed' : 'connect', integrationId: active?.id ?? null })
-    .onConflictDoNothing();
-  const [row] = await db.select().from(onboardings).where(eq(onboardings.tenantId, tenantId));
-  return row!;
-}
-
-async function setOnboarding(db: Db, tenantId: string, set: Partial<typeof onboardings.$inferInsert>) {
-  const [row] = await db
-    .update(onboardings)
-    .set({ ...set, updatedAt: new Date() })
-    .where(eq(onboardings.tenantId, tenantId))
-    .returning();
-  return row!;
 }
 
 /* ================================================================== discover */
@@ -254,7 +175,7 @@ export async function discoverIntegration(
   const candidates: Candidate[] = [];
   if (signature.length) {
     const coverage = signature.length / orders.length;
-    const confidence = coverage >= 0.8 && signature.length >= 3 ? 'established' : 'partial';
+    const confidence = confidenceOf(signature.length, orders.length);
     candidates.push({
       id: 'adopted.shopify_erp_order_sync',
       kind: 'adoptable',
@@ -292,16 +213,7 @@ export async function discoverIntegration(
       },
     });
   }
-  const adoptable = candidates.filter((c) => c.kind === 'adoptable');
-  const unsupported = candidates.filter((c) => c.kind === 'unsupported');
-  const outcome: Discovery['outcome'] =
-    adoptable.length && !unsupported.length
-      ? 'found'
-      : adoptable.length
-        ? 'ambiguous'
-        : unsupported.length
-          ? 'unsupported'
-          : 'not_found';
+  const outcome = discoveryOutcome(candidates);
   return {
     ...base,
     outcome,
@@ -310,138 +222,7 @@ export async function discoverIntegration(
   };
 }
 
-/** Runs discovery for a tenant and records the result (resumable). */
-export async function runDiscovery(
-  db: Db,
-  cipher: CredentialCipher,
-  endpoints: ProviderEndpointConfig,
-  tenantId: string,
-  opts: { now?: Date; retry?: RetryPolicy } = {},
-) {
-  const ob = await getOnboarding(db, tenantId);
-  if (ob.status === 'activating' || ob.status === 'managed') return ob;
-  const r = await ready(db, tenantId);
-  if (!r.shopify || !r.netsuite) return setOnboarding(db, tenantId, { status: 'connect', problem: null });
-  await setOnboarding(db, tenantId, { status: 'discovering', problem: null });
-  try {
-    const clients = await tenantClients(db, cipher, endpoints, tenantId);
-    const discovery = await discoverIntegration(db, clients, tenantId, opts);
-    const status: OnboardingStatus =
-      discovery.outcome === 'already_managed'
-        ? 'managed'
-        : discovery.outcome === 'found'
-          ? 'confirm'
-          : 'select';
-    return setOnboarding(db, tenantId, { status, discovery });
-  } catch (err) {
-    return setOnboarding(db, tenantId, {
-      status: 'blocked',
-      problem: `We could not read your systems to look for the integration (${describeError(err).message}). Check the connections and try again.`,
-    });
-  }
-}
-
-/* ================================================================== confirm */
-
-export async function confirmOnboarding(
-  db: Db,
-  tenantId: string,
-  p: { candidateId: string; responsibilitiesVersion: string; userId: string },
-) {
-  const ob = await getOnboarding(db, tenantId);
-  if (ob.status !== 'confirm' && ob.status !== 'select')
-    throw new OnboardingError(`Nothing to confirm (onboarding is ${ob.status})`);
-  if (p.responsibilitiesVersion !== RESPONSIBILITIES.version)
-    throw new OnboardingError('The responsibilities changed; review them again');
-  const discovery = ob.discovery as Discovery;
-  const c = discovery.candidates.find((x) => x.id === p.candidateId);
-  if (!c) throw new OnboardingError('Unknown choice');
-  if (c.kind === 'unsupported')
-    throw new OnboardingError(
-      'We cannot take over that integration’s software; choose the managed integration instead',
-    );
-  await registerAdoptedContract(db);
-  // Adopting an existing integration covers its recent history; a NEW integration starts now
-  // (orders from before it existed are not "missing", and are not sent without the customer asking).
-  const from = c.kind === 'new' ? new Date().toISOString() : discovery.window.from;
-  return db.transaction(async (tx) => {
-    const [locked] = await tx
-      .select()
-      .from(onboardings)
-      .where(eq(onboardings.tenantId, tenantId))
-      .for('update');
-    if (locked!.integrationId) throw new OnboardingError('Already confirmed');
-    const [integ] = await tx
-      .insert(integrations)
-      .values({
-        tenantId,
-        flowType: ADOPTED_FLOW_TYPE,
-        displayName: 'Shopify → NetSuite orders',
-        contractVersion: ADOPTED_CONTRACT.version,
-        // The adopted code's own defaults; the customer can change them in Settings later.
-        config: {
-          erp: 'netsuite',
-          customerByEmail: {},
-          defaultCustomer: 'WEB',
-          reconcileFrom: from,
-          reconcileGraceMinutes: 10,
-        },
-        enabled: true,
-        lifecycle: 'setup',
-      })
-      .returning();
-    const confirmation = {
-      candidateId: c.id,
-      kind: c.kind,
-      implementation: c.implementation,
-      coverFrom: from,
-      responsibilitiesVersion: RESPONSIBILITIES.version,
-      responsibilities: RESPONSIBILITIES,
-      by: p.userId,
-      at: new Date().toISOString(),
-    };
-    await tx
-      .update(onboardings)
-      .set({
-        status: 'activating',
-        confirmation,
-        integrationId: integ!.id,
-        activation: { steps: {} },
-        problem: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(onboardings.tenantId, tenantId));
-    await tx.insert(auditLog).values({
-      actorUserId: p.userId,
-      actorRole: 'customer',
-      action: 'onboarding.confirmed',
-      targetType: 'integration',
-      targetId: integ!.id,
-      details: { candidateId: c.id, responsibilitiesVersion: RESPONSIBILITIES.version },
-    });
-    return integ!;
-  });
-}
-
 /* ================================================================== protect */
-
-interface ActivationSteps {
-  webhook?: { subscriptionId: string | null; callbackUrl: string; at: string; existing: boolean };
-  baseline?: { runId: string; at: string; attempts: number };
-  /** Orders the customer's existing deployment had already written, recorded as delivered history. */
-  history?: { adopted: number; at: string };
-  verify?: { runId: string; at: string; attempts: number };
-  baselineResult?: {
-    checked: number | null;
-    accountedFor: number | null;
-    previouslyDelivered: number;
-    missing: number;
-    unresolved: number;
-    outcome: string | null;
-    verifyRunId: string;
-  };
-}
-export type OnboardingAdvance = { state: 'continue' | 'wait' | 'done' | 'blocked' | 'noop'; detail: string };
 
 const SUBSCRIBE = /* GraphQL */ `
   mutation Subscribe($topic: WebhookSubscriptionTopic!, $sub: WebhookSubscriptionInput!) {
@@ -457,215 +238,235 @@ const SUBSCRIBE = /* GraphQL */ `
   }
 `;
 
-/** Advances activation by one step; idempotent and resumable. */
-export async function advanceOnboarding(p: {
-  db: Db;
-  tenantId: string;
-  clients: AdoptedClients;
+export interface ShopifyOnboardingDeps {
+  cipher: CredentialCipher;
+  endpoints: ProviderEndpointConfig;
   webhookBaseUrl: string;
   enqueueReconciliation: (runId: string) => Promise<void>;
   retry?: RetryPolicy;
-}): Promise<OnboardingAdvance> {
-  const { db } = p;
-  const ob = await getOnboarding(db, p.tenantId);
-  if (ob.status !== 'activating' || !ob.integrationId) return { state: 'noop', detail: ob.status };
-  const steps = ((ob.activation as { steps?: ActivationSteps } | null)?.steps ?? {}) as ActivationSteps;
-  const save = (next: ActivationSteps) => setOnboarding(db, p.tenantId, { activation: { steps: next } });
+}
 
-  // 1. Route new-order notifications to our service (Shopify Admin API, app-owned subscription).
-  if (!steps.webhook) {
-    const callbackUrl = `${p.webhookBaseUrl.replace(/\/$/, '')}/webhooks/shopify/${ob.integrationId}`;
-    const res = await withRetry(
-      () =>
-        p.clients.shopify.graphql(SUBSCRIBE, {
-          topic: 'ORDERS_CREATE',
-          sub: { callbackUrl, format: 'JSON' },
-        }),
-      p.retry ?? DEFAULT_RETRY,
-    );
-    const out = (
-      res.data as {
-        webhookSubscriptionCreate: {
-          webhookSubscription: { id: string } | null;
-          userErrors: { message: string }[];
-        };
-      }
-    ).webhookSubscriptionCreate;
-    const taken = out.userErrors.some((e) => /already been taken/i.test(e.message));
-    if (!out.webhookSubscription && !taken) {
-      await setOnboarding(db, p.tenantId, {
-        status: 'blocked',
-        problem: `Shopify did not accept our order notification: ${out.userErrors.map((e) => e.message).join('; ')}`,
-      });
-      return { state: 'blocked', detail: 'webhook registration refused' };
-    }
-    await save({
-      ...steps,
-      webhook: {
-        subscriptionId: out.webhookSubscription?.id ?? null,
-        callbackUrl,
-        at: new Date().toISOString(),
-        existing: taken,
-      },
+/** Starts a reconciliation of a window, or waits while another one runs. */
+async function startCheck(
+  ctx: StepContext,
+  window: { from: Date; to: Date },
+  deps: ShopifyOnboardingDeps,
+): Promise<StepResult> {
+  try {
+    const s = await startReconciliation(ctx.db, {
+      integrationId: ctx.integrationId,
+      trigger: 'manual',
+      requestedBy: 'system:onboarding',
+      window,
     });
-    return { state: 'continue', detail: 'webhook registered' };
+    await ctx.save({
+      runId: s.runId,
+      at: new Date().toISOString(),
+      attempts: ((ctx.record?.['attempts'] as number) ?? 0) + 1,
+    });
+    await deps.enqueueReconciliation(s.runId);
+    return { state: 'continue', detail: 'check started' };
+  } catch (err) {
+    if (err instanceof ReconciliationBusy)
+      return { state: 'wait', detail: 'another reconciliation is running' };
+    throw err;
   }
+}
 
-  // 2. Baseline: reconcile the discovered window with the existing reconciliation.
-  if (!steps.baseline) {
-    const from = new Date((ob.confirmation as { coverFrom: string }).coverFrom);
-    try {
-      const s = await startReconciliation(db, {
-        integrationId: ob.integrationId,
-        trigger: 'manual',
-        requestedBy: 'system:onboarding',
-        window: { from, to: new Date(Math.max(from.getTime(), Date.now() - GRACE_MS)) },
-      });
-      await save({ ...steps, baseline: { runId: s.runId, at: new Date().toISOString(), attempts: 1 } });
-      await p.enqueueReconciliation(s.runId);
-      return { state: 'continue', detail: 'baseline started' };
-    } catch (err) {
-      if (err instanceof ReconciliationBusy)
-        return { state: 'wait', detail: 'another reconciliation is running' };
-      throw err;
-    }
-  }
-  const [run] = await db
+/** Waits for a check to complete; retries an incomplete one up to 3 times. */
+async function awaitCheck(
+  ctx: StepContext,
+  name: string,
+): Promise<StepResult | typeof reconciliationRuns.$inferSelect> {
+  const [run] = await ctx.db
     .select()
     .from(reconciliationRuns)
-    .where(eq(reconciliationRuns.id, steps.baseline.runId));
-  if (!run || run.status === 'running') return { state: 'wait', detail: 'baseline running' };
+    .where(eq(reconciliationRuns.id, String(ctx.record!['runId'])));
+  if (!run || run.status === 'running') return { state: 'wait', detail: `${name} running` };
   if (run.status !== 'completed' || run.outcome === 'partial') {
-    if (steps.baseline.attempts >= 3) {
-      await setOnboarding(db, p.tenantId, {
-        status: 'blocked',
+    if (((ctx.record!['attempts'] as number) ?? 1) >= 3)
+      return {
+        state: 'blocked',
+        detail: `${name} incomplete`,
         problem: 'We could not complete the first full check of your orders. We are looking into it.',
-      });
-      return { state: 'blocked', detail: 'baseline incomplete' };
-    }
-    await save({ ...steps, baseline: undefined as never });
-    return { state: 'wait', detail: 'baseline incomplete; retrying' };
+      };
+    await ctx.save({ attempts: ctx.record!['attempts'] });
+    return { state: 'wait', detail: `${name} incomplete; retrying` };
   }
+  return run;
+}
 
-  // 3. History: orders the existing deployment already wrote carry exactly the adopted implementation's
-  //    signature in NetSuite (classified "exists, untracked"). Record them as delivered history, with
-  //    their provenance, so later checks account for them — nothing is written to NetSuite.
-  if (!steps.history) {
-    const items = await db
-      .select()
-      .from(reconciliationItems)
-      .where(
-        and(
-          eq(reconciliationItems.runId, run.id),
-          eq(reconciliationItems.classification, 'destination_exists_untracked'),
-        ),
-      );
-    let adopted = 0;
-    for (const it of items) {
-      const inserted = await db
-        .insert(deliveries)
-        .values({
-          integrationId: ob.integrationId,
-          idempotencyKey: `${ob.integrationId}:${it.sourceOrderId}`,
-          sourceId: it.sourceOrderId,
-          sourceLegacyId: it.sourceLegacyId,
-          sourceName: it.orderName,
-          sourceCreatedAt: it.sourceCreatedAt,
-          sourceUpdatedAt: it.sourceCreatedAt,
-          latestSourceUpdatedAt: it.sourceCreatedAt,
-          externalId: `shopify-${it.sourceLegacyId}`,
-          destinationId: it.destinationIds?.[0] ?? null,
-          outcome: 'delivered',
-          attempts: 0,
-          validation: {
-            origin: 'baseline',
-            note: 'Written by the customer’s existing deployment before we took over',
-            runId: run.id,
+export function shopifyActivationSteps(deps: ShopifyOnboardingDeps): ActivationStep[] {
+  const clients = (ctx: StepContext) => tenantClients(ctx.db, deps.cipher, deps.endpoints, ctx.tenantId);
+  return [
+    {
+      key: 'webhook',
+      label: 'New Shopify orders come to us',
+      // Route new-order notifications to our service (Shopify Admin API, app-owned subscription).
+      async run(ctx) {
+        const callbackUrl = `${deps.webhookBaseUrl.replace(/\/$/, '')}/webhooks/shopify/${ctx.integrationId}`;
+        const c = await clients(ctx);
+        const res = await withRetry(
+          () =>
+            c.shopify.graphql(SUBSCRIBE, { topic: 'ORDERS_CREATE', sub: { callbackUrl, format: 'JSON' } }),
+          deps.retry ?? DEFAULT_RETRY,
+        );
+        const out = (
+          res.data as {
+            webhookSubscriptionCreate: {
+              webhookSubscription: { id: string } | null;
+              userErrors: { message: string }[];
+            };
+          }
+        ).webhookSubscriptionCreate;
+        const taken = out.userErrors.some((e) => /already been taken/i.test(e.message));
+        if (!out.webhookSubscription && !taken)
+          return {
+            state: 'blocked',
+            detail: 'webhook registration refused',
+            problem: `Shopify did not accept our order notification: ${out.userErrors.map((e) => e.message).join('; ')}`,
+          };
+        return {
+          state: 'done',
+          detail: 'webhook registered',
+          record: {
+            subscriptionId: out.webhookSubscription?.id ?? null,
+            callbackUrl,
+            at: new Date().toISOString(),
+            existing: taken,
           },
-        })
-        .onConflictDoNothing()
-        .returning({ id: deliveries.id });
-      adopted += inserted.length;
-    }
-    await save({ ...steps, history: { adopted, at: new Date().toISOString() } });
-    return { state: 'continue', detail: `${adopted} earlier order(s) recorded as history` };
-  }
+        };
+      },
+    },
+    {
+      key: 'baseline',
+      label: 'Every recent order checked against NetSuite',
+      // Reconcile the discovered window with the existing reconciliation.
+      async run(ctx) {
+        if (!ctx.record?.['runId']) {
+          const from = new Date(ctx.confirmation.coverFrom);
+          return startCheck(
+            ctx,
+            { from, to: new Date(Math.max(from.getTime(), Date.now() - GRACE_MS)) },
+            deps,
+          );
+        }
+        const run = await awaitCheck(ctx, 'baseline');
+        if ('state' in run) return run;
+        return { state: 'done', detail: 'baseline complete', record: { ...ctx.record } };
+      },
+    },
+    {
+      key: 'history',
+      label: 'Earlier orders recorded as history',
+      // Orders the existing deployment already wrote carry exactly the adopted implementation's signature in
+      // NetSuite (classified "exists, untracked"). Record them as delivered history, with their provenance, so
+      // later checks account for them — nothing is written to NetSuite.
+      async run(ctx) {
+        const runId = String(ctx.records['baseline']!['runId']);
+        const items = await ctx.db
+          .select()
+          .from(reconciliationItems)
+          .where(
+            and(
+              eq(reconciliationItems.runId, runId),
+              eq(reconciliationItems.classification, 'destination_exists_untracked'),
+            ),
+          );
+        let adopted = 0;
+        for (const it of items) {
+          const inserted = await ctx.db
+            .insert(deliveries)
+            .values({
+              integrationId: ctx.integrationId,
+              idempotencyKey: `${ctx.integrationId}:${it.sourceOrderId}`,
+              sourceId: it.sourceOrderId,
+              sourceLegacyId: it.sourceLegacyId,
+              sourceName: it.orderName,
+              sourceCreatedAt: it.sourceCreatedAt,
+              sourceUpdatedAt: it.sourceCreatedAt,
+              latestSourceUpdatedAt: it.sourceCreatedAt,
+              externalId: `shopify-${it.sourceLegacyId}`,
+              destinationId: it.destinationIds?.[0] ?? null,
+              outcome: 'delivered',
+              attempts: 0,
+              validation: {
+                origin: 'baseline',
+                note: 'Written by the customer’s existing deployment before we took over',
+                runId,
+              },
+            })
+            .onConflictDoNothing()
+            .returning({ id: deliveries.id });
+          adopted += inserted.length;
+        }
+        return {
+          state: 'done',
+          detail: `${adopted} earlier order(s) recorded as history`,
+          record: { adopted, at: new Date().toISOString() },
+        };
+      },
+    },
+    {
+      key: 'verify',
+      label: 'Independent second check',
+      async run(ctx) {
+        if (!ctx.record?.['runId']) {
+          const [run] = await ctx.db
+            .select()
+            .from(reconciliationRuns)
+            .where(eq(reconciliationRuns.id, String(ctx.records['baseline']!['runId'])));
+          return startCheck(ctx, { from: run!.windowFrom, to: run!.windowTo }, deps);
+        }
+        const run = await awaitCheck(ctx, 'verification check');
+        if ('state' in run) return run;
+        return { state: 'done', detail: 'verified', record: { ...ctx.record } };
+      },
+    },
+  ];
+}
 
-  // 4. Independent check of the same window, now that history is recorded.
-  if (!steps.verify) {
-    try {
-      const s = await startReconciliation(db, {
-        integrationId: ob.integrationId,
-        trigger: 'manual',
-        requestedBy: 'system:onboarding',
-        window: { from: run.windowFrom, to: run.windowTo },
+export function shopifyOnboarding(deps: ShopifyOnboardingDeps): OnboardingImplementation {
+  return {
+    descriptor: SHOPIFY_NETSUITE,
+    async discover(db, tenantId, opts) {
+      const clients = await tenantClients(db, deps.cipher, deps.endpoints, tenantId);
+      return discoverIntegration(db, clients, tenantId, {
+        ...opts,
+        ...(deps.retry ? { retry: deps.retry } : {}),
       });
-      await save({ ...steps, verify: { runId: s.runId, at: new Date().toISOString(), attempts: 1 } });
-      await p.enqueueReconciliation(s.runId);
-      return { state: 'continue', detail: 'verification check started' };
-    } catch (err) {
-      if (err instanceof ReconciliationBusy)
-        return { state: 'wait', detail: 'another reconciliation is running' };
-      throw err;
-    }
-  }
+    },
+    ensureContract: registerAdoptedContract,
+    integrationValues: (_c, coverFrom) => ({
+      displayName: SHOPIFY_NETSUITE.name,
+      contractVersion: ADOPTED_CONTRACT.version,
+      // The adopted code's own defaults; the customer can change them in Settings later.
+      config: {
+        erp: 'netsuite',
+        customerByEmail: {},
+        defaultCustomer: 'WEB',
+        reconcileFrom: coverFrom,
+        reconcileGraceMinutes: 10,
+      },
+    }),
+    steps: shopifyActivationSteps(deps),
+    baselineResult: baselineResultOf,
+  };
+}
+
+/** What the baseline established, from the independent check. */
+async function baselineResultOf(db: Db, records: Record<string, Record<string, unknown>>) {
   const [check] = await db
     .select()
     .from(reconciliationRuns)
-    .where(eq(reconciliationRuns.id, steps.verify.runId));
-  if (!check || check.status === 'running') return { state: 'wait', detail: 'verification check running' };
-  if (check.status !== 'completed' || check.outcome === 'partial') {
-    if (steps.verify.attempts >= 3) {
-      await setOnboarding(db, p.tenantId, {
-        status: 'blocked',
-        problem: 'We could not complete the first full check of your orders. We are looking into it.',
-      });
-      return { state: 'blocked', detail: 'verification incomplete' };
-    }
-    await save({ ...steps, verify: undefined as never });
-    return { state: 'wait', detail: 'verification incomplete; retrying' };
-  }
-
-  // 5. Managed: prerequisites are all durable facts now (authorization, identity, notification, baseline).
-  const baselineResult = {
-    checked: check.expectedCount ?? check.sourceCount,
-    accountedFor: check.matchedCount,
-    previouslyDelivered: steps.history.adopted,
-    missing: (check.missing as unknown[] | null)?.length ?? 0,
-    unresolved: (check.unresolved as unknown[] | null)?.length ?? 0,
-    outcome: check.outcome,
-    verifyRunId: check.id,
+    .where(eq(reconciliationRuns.id, String(records['verify']!['runId'])));
+  return {
+    checked: check!.expectedCount ?? check!.sourceCount,
+    accountedFor: check!.matchedCount,
+    previouslyDelivered: (records['history']?.['adopted'] as number | undefined) ?? 0,
+    missing: (check!.missing as unknown[] | null)?.length ?? 0,
+    unresolved: (check!.unresolved as unknown[] | null)?.length ?? 0,
+    outcome: check!.outcome,
+    verifyRunId: check!.id,
   };
-  await db.transaction(async (tx) => {
-    await tx
-      .update(integrations)
-      .set({ lifecycle: 'active', updatedAt: new Date() })
-      .where(eq(integrations.id, ob.integrationId!));
-    await tx
-      .update(onboardings)
-      .set({
-        status: 'managed',
-        activation: { steps: { ...steps, baselineResult } },
-        problem: null,
-        updatedAt: new Date(),
-      })
-      .where(eq(onboardings.tenantId, p.tenantId));
-    await tx.insert(auditLog).values({
-      actorRole: 'system',
-      action: 'onboarding.managed',
-      targetType: 'integration',
-      targetId: ob.integrationId!,
-      details: { baselineResult, webhook: steps.webhook },
-    });
-  });
-  return { state: 'done', detail: 'managed' };
-}
-
-/** Tenants whose activation should be (re)driven (crash safety: the worker tick picks them up). */
-export async function onboardingsActivating(db: Db): Promise<string[]> {
-  const rows = await db
-    .select({ t: onboardings.tenantId })
-    .from(onboardings)
-    .where(eq(onboardings.status, 'activating'));
-  return rows.map((r) => r.t);
 }

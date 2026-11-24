@@ -17,8 +17,21 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { and, asc, desc, eq, inArray, lt, sql } from 'drizzle-orm';
-import { adaptations, auditLog, deliveries, integrations, webhookReceipts, type Db } from '@mi/database';
+import { and, asc, desc, eq, lt } from 'drizzle-orm';
+import { adaptations, deliveries, integrations, webhookReceipts, type Db } from '@mi/database';
+import {
+  activateAdaptation as activateGeneric,
+  activeAdaptations,
+  AdaptationError,
+  CheckList,
+  recordAdaptation,
+  recordValidation,
+  rejectAdaptation as rejectGeneric,
+  rollbackAdaptation as rollbackGeneric,
+  startValidation,
+  type AdaptationRow,
+  type RuntimeHooks,
+} from '@mi/managed';
 import {
   DEFAULT_RETRY,
   withRetry,
@@ -43,18 +56,18 @@ import { ADOPTED } from './provenance.ts';
 import { RECOVERY_ORDER_QUERY, type RecoveryOrder } from './source.ts';
 import type { AdoptedClients } from './reconcile.ts';
 
-export const ADAPTATION_KINDS = ['adapter', 'patch', 'unsupported'] as const;
-export const ADAPTATION_STATUSES = [
-  'proposed',
-  'validating',
-  'validated',
-  'active',
-  'rejected',
-  'rolled_back',
-  'unsupported',
-] as const;
-export type AdaptationStatus = (typeof ADAPTATION_STATUSES)[number];
-export type AdaptationRow = typeof adaptations.$inferSelect;
+export {
+  ADAPTATION_KINDS,
+  ADAPTATION_STATUSES,
+  AdaptationError,
+  activeAdaptations,
+  adaptationsAwaitingDecision,
+  previouslyRolledBack,
+  type AdaptationRow,
+  type AdaptationStatus,
+  type AdaptationValidation,
+  type ValidationCheck,
+} from '@mi/managed';
 
 const sha256 = (b: Buffer | string) => createHash('sha256').update(b).digest('hex');
 export const BASE_ARTIFACT = {
@@ -127,14 +140,6 @@ export async function selectRuntime(rows: AdaptationRow[]): Promise<RuntimeSelec
   return { artifact, adapters, adaptationIds: rows.map((r) => r.id) };
 }
 
-export async function activeAdaptations(db: Db, integrationId: string): Promise<AdaptationRow[]> {
-  return db
-    .select()
-    .from(adaptations)
-    .where(and(eq(adaptations.integrationId, integrationId), eq(adaptations.status, 'active')))
-    .orderBy(asc(adaptations.activatedAt));
-}
-
 /** The runtime for an integration: what the executor runs right now. */
 export async function runtimeFor(db: Db, integrationId: string): Promise<RuntimeSelection> {
   return selectRuntime(await activeAdaptations(db, integrationId));
@@ -150,53 +155,14 @@ export function evaluateInput(payload: unknown, rt: Pick<RuntimeSelection, 'arti
   return { payload: adapted.payload, applied: adapted.applied, conflicts: adapted.conflicts, violations };
 }
 
-/* ================================================================== lifecycle */
+/* ================================================================== lifecycle (generic: @mi/managed) */
 
-async function transition(
-  db: Db,
-  id: string,
-  from: AdaptationStatus[],
-  to: AdaptationStatus,
-  actor: string,
-  note: string,
-  extra: Partial<typeof adaptations.$inferInsert> = {},
-): Promise<AdaptationRow> {
-  return db.transaction(async (tx) => {
-    const [cur] = await tx.select().from(adaptations).where(eq(adaptations.id, id)).for('update');
-    if (!cur) throw new AdaptationError('NOT_FOUND', `Adaptation ${id} not found`);
-    if (!from.includes(cur.status as AdaptationStatus))
-      throw new AdaptationError('CONFLICT', `Adaptation is ${cur.status}; cannot move to ${to}`);
-    const at = new Date();
-    const [row] = await tx
-      .update(adaptations)
-      .set({
-        ...extra,
-        status: to,
-        history: sql`${adaptations.history} || ${JSON.stringify([{ at: at.toISOString(), from: cur.status, to, actor, note }])}::jsonb`,
-        updatedAt: at,
-      })
-      .where(eq(adaptations.id, id))
-      .returning();
-    await tx.insert(auditLog).values({
-      actorRole: actor.startsWith('system') ? 'system' : 'operator',
-      actorUserId: /^[0-9a-f-]{36}$/.test(actor) ? actor : null,
-      action: `adaptation.${to}`,
-      targetType: 'adaptation',
-      targetId: id,
-      details: { from: cur.status, note, integrationId: cur.integrationId },
-    });
-    return row!;
-  });
-}
-
-export class AdaptationError extends Error {
-  constructor(
-    readonly code: 'NOT_FOUND' | 'CONFLICT' | 'INVALID',
-    message: string,
-  ) {
-    super(message);
-  }
-}
+/** Which corrections may not be active together, and the runtime a set of them produces. */
+export const RUNTIME_HOOKS: RuntimeHooks = {
+  scopeKey: (r: AdaptationRow) =>
+    r.kind === 'adapter' ? `a:${(r.spec as { target: string }).target}` : `p:${patchOf(r).file}`,
+  loadRuntime: (rows: AdaptationRow[]) => selectRuntime(rows),
+};
 
 export interface ProposalInput {
   integrationId: string;
@@ -211,75 +177,13 @@ export interface ProposalInput {
 }
 
 export async function proposeAdaptation(db: Db, p: ProposalInput): Promise<AdaptationRow> {
-  const [integ] = await db.select().from(integrations).where(eq(integrations.id, p.integrationId));
-  if (!integ) throw new AdaptationError('NOT_FOUND', 'Integration not found');
   if (p.kind === 'adapter') FieldMovedSpecSchema.parse(p.spec);
   if (p.kind === 'patch' && !patchCatalog().some((x) => x.id === (p.spec as { patchId?: string }).patchId))
     throw new AdaptationError('INVALID', 'Only reviewed patches from the catalog can be proposed');
-  const status = p.kind === 'unsupported' ? 'unsupported' : 'proposed';
-  const at = new Date().toISOString();
-  const [row] = await db
-    .insert(adaptations)
-    .values({
-      tenantId: integ.tenantId,
-      integrationId: integ.id,
-      maintenanceEventId: p.maintenanceEventId ?? null,
-      kind: p.kind,
-      status,
-      artifact: BASE_ARTIFACT,
-      dependency: p.dependency,
-      codePath: p.codePath,
-      spec: p.spec,
-      rationale: p.rationale,
-      evidence: p.evidence ?? {},
-      history: [{ at, from: null, to: status, actor: p.actor, note: p.rationale }],
-    })
-    .returning();
-  await db.insert(auditLog).values({
-    actorRole: p.actor.startsWith('system') ? 'system' : 'operator',
-    actorUserId: /^[0-9a-f-]{36}$/.test(p.actor) ? p.actor : null,
-    action: `adaptation.${status}`,
-    targetType: 'adaptation',
-    targetId: row!.id,
-    details: { kind: p.kind, integrationId: integ.id },
-  });
-  return row!;
-}
-
-/** Adapters and patches that were rolled back for this integration with the same spec (not re-proposed automatically). */
-export async function previouslyRolledBack(db: Db, integrationId: string, spec: Record<string, unknown>) {
-  const rows = await db
-    .select()
-    .from(adaptations)
-    .where(and(eq(adaptations.integrationId, integrationId), eq(adaptations.status, 'rolled_back')));
-  // jsonb does not preserve key order: compare canonically.
-  const canon = (v: unknown): string =>
-    v && typeof v === 'object' && !Array.isArray(v)
-      ? `{${Object.keys(v as object)
-          .sort()
-          .map((k) => `${JSON.stringify(k)}:${canon((v as Record<string, unknown>)[k])}`)
-          .join(',')}}`
-      : JSON.stringify(v);
-  return rows.find((r) => canon(r.spec) === canon(spec)) ?? null;
+  return recordAdaptation(db, { ...p, artifact: BASE_ARTIFACT });
 }
 
 /* ================================================================== validation */
-
-export interface ValidationCheck {
-  name: string;
-  status: 'passed' | 'failed' | 'not_applicable';
-  detail: string;
-}
-export interface AdaptationValidation {
-  passed: boolean;
-  /** Some checks could not run: activation then needs an explicit human decision. */
-  requiresDecision: boolean;
-  checks: ValidationCheck[];
-  /** Verified after activation by the maintenance event (accounting, destination, duplicates, recovery). */
-  postActivation: Record<string, unknown> | null;
-  artifact: { before: string; after: string };
-  validatedAt: string;
-}
 
 const round = (n: number, dp: number) => Math.round(n * 10 ** dp) / 10 ** dp;
 
@@ -300,17 +204,10 @@ export async function validateAdaptation(
   clients: AdoptedClients,
   retry: RetryPolicy = DEFAULT_RETRY,
 ): Promise<AdaptationRow> {
-  const row0 = await transition(
-    db,
-    adaptationId,
-    ['proposed', 'validated'],
-    'validating',
-    'system:validation',
-    'Validation started',
-  );
-  const checks: ValidationCheck[] = [];
-  const add = (name: string, ok: boolean | null, detail: string) =>
-    checks.push({ name, status: ok === null ? 'not_applicable' : ok ? 'passed' : 'failed', detail });
+  const row0 = await startValidation(db, adaptationId);
+  const list = new CheckList();
+  const checks = list.checks;
+  const add = (name: string, ok: boolean | null, detail: string) => list.add(name, ok, detail);
   let artifactIds = { before: '', after: '' };
   try {
     const [integ] = await db.select().from(integrations).where(eq(integrations.id, row0.integrationId));
@@ -470,31 +367,7 @@ export async function validateAdaptation(
   } catch (err) {
     add('validation ran', false, describeError(err).message);
   }
-  const passed = !checks.some((c) => c.status === 'failed');
-  const validation: AdaptationValidation = {
-    passed,
-    requiresDecision: passed && checks.some((c) => c.status === 'not_applicable'),
-    checks,
-    postActivation: null,
-    artifact: artifactIds,
-    validatedAt: new Date().toISOString(),
-  };
-  return transition(
-    db,
-    adaptationId,
-    ['validating'],
-    passed ? 'validated' : 'rejected',
-    'system:validation',
-    passed
-      ? validation.requiresDecision
-        ? 'Validated with limitations (decision required)'
-        : 'Validated'
-      : `Validation failed: ${checks
-          .filter((c) => c.status === 'failed')
-          .map((c) => c.name)
-          .join(', ')}`,
-    { validation },
-  );
+  return recordValidation(db, adaptationId, checks, artifactIds);
 }
 
 /* ================================================================== activation and rollback */
@@ -506,37 +379,15 @@ export async function activateAdaptation(
   note: string,
   opts: { acceptLimitations?: boolean } = {},
 ): Promise<AdaptationRow> {
-  const [row] = await db.select().from(adaptations).where(eq(adaptations.id, adaptationId));
-  if (!row) throw new AdaptationError('NOT_FOUND', 'Adaptation not found');
-  const v = row.validation as AdaptationValidation | null;
-  if (row.status !== 'validated' || !v?.passed)
-    throw new AdaptationError('CONFLICT', 'Only a validated adaptation can be activated');
-  if (v.requiresDecision && !opts.acceptLimitations)
-    throw new AdaptationError(
-      'CONFLICT',
-      'Validation could not cover everything; activation needs an explicit decision to accept its limitations',
-    );
-  // One active correction per adopted field / file.
-  const active = await activeAdaptations(db, row.integrationId);
-  const key = (r: AdaptationRow) =>
-    r.kind === 'adapter' ? `a:${(r.spec as { target: string }).target}` : `p:${patchOf(r).file}`;
-  if (active.some((r) => key(r) === key(row)))
-    throw new AdaptationError('CONFLICT', 'Another active correction already changes the same field or file');
-  // The runtime it produces must load (patch applies, hashes match) before anything switches.
-  await selectRuntime([...active, row]);
-  return transition(db, adaptationId, ['validated'], 'active', actor, note, { activatedAt: new Date() });
+  return activateGeneric(db, adaptationId, actor, note, RUNTIME_HOOKS, opts);
 }
 
 export async function rollbackAdaptation(db: Db, adaptationId: string, actor: string, reason: string) {
-  const [row] = await db.select().from(adaptations).where(eq(adaptations.id, adaptationId));
-  if (!row) throw new AdaptationError('NOT_FOUND', 'Adaptation not found');
-  const remaining = (await activeAdaptations(db, row.integrationId)).filter((r) => r.id !== row.id);
-  await selectRuntime(remaining); // the previous known-good runtime must load before we switch to it
-  return transition(db, adaptationId, ['active'], 'rolled_back', actor, reason, { rolledBackAt: new Date() });
+  return rollbackGeneric(db, adaptationId, actor, reason, RUNTIME_HOOKS);
 }
 
 export async function rejectAdaptation(db: Db, adaptationId: string, actor: string, reason: string) {
-  return transition(db, adaptationId, ['proposed', 'validated'], 'rejected', actor, reason);
+  return rejectGeneric(db, adaptationId, actor, reason);
 }
 
 /* ================================================================== "what exact code is running and why" */
@@ -588,13 +439,4 @@ export async function runningCode(db: Db, integrationId: string) {
     adaptations: rows,
     catalog: patchCatalog().map((p) => ({ id: p.id, title: p.title, file: p.file, addresses: p.addresses })),
   };
-}
-
-/** Adaptations needing a person: unsupported, awaiting activation decision, or validated patches. */
-export async function adaptationsAwaitingDecision(db: Db) {
-  return db
-    .select()
-    .from(adaptations)
-    .where(inArray(adaptations.status, ['unsupported', 'validated', 'proposed']))
-    .orderBy(desc(adaptations.createdAt));
 }

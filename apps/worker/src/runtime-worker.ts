@@ -3,7 +3,7 @@
  * canaries) and the periodic reliability tick. Holds credentials (decrypts connections); never
  * runs maintenance-agent code.
  */
-import { and, eq, gt, lt } from 'drizzle-orm';
+import { and, eq, gt } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import {
   AdoptedExecuteJobSchema,
@@ -21,8 +21,8 @@ import {
   SyncJobSchema,
 } from '@mi/contracts';
 import {
-  deliveries,
   adaptations,
+  deliveries,
   incidents,
   integrations,
   maintenanceRuns,
@@ -41,25 +41,14 @@ import {
 } from '@mi/integration-shopify-netsuite';
 import { describeError, withCorrelation, type Logger } from '@mi/observability';
 import { runRelease } from '@mi/maintenance';
+import { createRegistry } from '@mi/integrations';
 import {
-  adoptedClients,
-  executeRecovery,
-  findOrphanedWork,
-  advanceMaintenance,
-  heldWithoutEvent,
-  openMaintenanceEvents,
-  recordInputContractFinding,
-  validateAdaptation,
   advanceOnboarding,
+  monitorIntegration,
   onboardingsActivating,
-  tenantClients,
-  scanReconciliation,
-  startReconciliation,
-  ADOPTED_FLOW_TYPE,
-  executeDelivery,
-  nextAutomaticRetryDelaySeconds,
-  requestDeliveryRetry,
-} from '@mi/adopted-order-sync';
+  type ExecutionTrigger,
+  type WorkServices,
+} from '@mi/managed';
 import {
   applyReconciliationResult,
   evaluateIntegration,
@@ -122,6 +111,36 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     ...(deps.retry ? { retry: deps.retry } : {}),
     ...(deps.implementationOverride ? { implementationOverride: deps.implementationOverride } : {}),
   });
+
+  /** Shared queues, offered to every integration's runtime. Integrations never see pg-boss. */
+  const services: WorkServices = {
+    async enqueueExecution(deliveryId: string, trigger: ExecutionTrigger, afterSeconds?: number) {
+      const opts = { singletonKey: `adopted:${deliveryId}` };
+      if (afterSeconds)
+        await boss.sendAfter(QUEUES.adoptedExecute, { deliveryId, trigger }, opts, afterSeconds);
+      else await boss.send(QUEUES.adoptedExecute, { deliveryId, trigger }, opts);
+    },
+    async enqueueReconciliation(runId: string) {
+      await boss.send(QUEUES.adoptedReconcile, { runId }, { singletonKey: `adopted-recon:${runId}` });
+    },
+    async enqueueRecovery(itemId: string) {
+      await boss.send(QUEUES.adoptedRecover, { itemId }, { singletonKey: `adopted-recover:${itemId}` });
+    },
+    enqueueMaintenance: (incidentId: string, afterSeconds?: number) =>
+      enqueueMaintenance(incidentId, afterSeconds),
+  };
+  const registry = createRegistry({
+    db,
+    cipher: config.cipher!,
+    endpoints: config.endpoints,
+    services,
+    webhookBaseUrl: config.env.WEBHOOK_BASE_URL ?? config.env.PUBLIC_BASE_URL,
+    workerId: deps.workerId,
+    reconcileIntervalMinutes: config.env.RECONCILE_INTERVAL_MINUTES,
+    ...(deps.retry ? { retry: deps.retry } : {}),
+  });
+  /** When each integration was last probed by monitoring (cadence only; the facts themselves are durable). */
+  const lastProbe = new Map<string, number>();
 
   async function executeActions(actions: ReliabilityAction[]): Promise<void> {
     for (const a of actions) {
@@ -233,63 +252,38 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     async tick(): Promise<void> {
       const interrupted = await recoverInterruptedRuns(db);
       if (interrupted.length) logger.warn({ interrupted }, 'marked interrupted sync runs');
-      // Durable outbox completion for adopted executors: re-enqueue deliveries accepted but never picked up
-      // (e.g. the API stopped between committing the receipt and enqueueing the job).
-      const orphaned = await db
-        .select({ id: deliveries.id })
-        .from(deliveries)
-        .innerJoin(integrations, eq(integrations.id, deliveries.integrationId))
-        .where(
-          and(
-            eq(integrations.flowType, ADOPTED_FLOW_TYPE),
-            eq(deliveries.outcome, 'pending'),
-            lt(deliveries.updatedAt, new Date(Date.now() - 2 * 60_000)),
-          ),
-        );
-      for (const o of orphaned) {
-        await boss.send(
-          QUEUES.adoptedExecute,
-          { deliveryId: o.id, trigger: { kind: 'automatic_retry' } },
-          { singletonKey: `adopted:${o.id}` },
-        );
+      // Integration-specific periodic work (orphaned work, held transactions, open events, scheduled checks).
+      for (const rt of registry.all()) {
+        try {
+          await rt.sweep?.();
+        } catch (err) {
+          logger.error(
+            { flowType: rt.descriptor.flowType, err: describeError(err) },
+            'integration sweep failed',
+          );
+        }
       }
-      // Adopted reconciliation: resume scans and recoveries left behind by a dead worker (expired leases).
-      const orphanedRecon = await findOrphanedWork(db);
-      for (const runId of orphanedRecon.runIds) {
-        await boss.send(QUEUES.adoptedReconcile, { runId }, { singletonKey: `adopted-recon:${runId}` });
-      }
-      for (const itemId of orphanedRecon.itemIds) {
-        await boss.send(QUEUES.adoptedRecover, { itemId }, { singletonKey: `adopted-recover:${itemId}` });
-      }
-      // Maintenance (slice 4): record held orders whose finding was lost, and drive open events.
-      for (const deliveryId of await heldWithoutEvent(db)) {
-        const f = await recordInputContractFinding(db, config.cipher!, deliveryId);
-        if (f) await enqueueMaintenance(f.incidentId);
-      }
-      for (const incidentId of await openMaintenanceEvents(db)) await enqueueMaintenance(incidentId);
       // Onboarding activations resume after a crash or restart.
-      for (const tenantId of await onboardingsActivating(db))
-        await boss.send(QUEUES.onboardingActivate, { tenantId }, { singletonKey: `onboarding:${tenantId}` });
-      // Scheduled completeness check for adopted integrations (bounded: one run per interval).
-      const adoptedActive = await db
+      for (const o of await onboardingsActivating(db))
+        await boss.send(QUEUES.onboardingActivate, o, {
+          singletonKey: `onboarding:${o.tenantId}:${o.flowType}`,
+        });
+      // Monitoring: every managed integration whose runtime can probe its systems, at the monitoring interval.
+      const monitored = await db
         .select()
         .from(integrations)
-        .where(and(eq(integrations.enabled, true), eq(integrations.flowType, ADOPTED_FLOW_TYPE)));
-      for (const integ of adoptedActive) {
-        const due = new Date(Date.now() - config.env.RECONCILE_INTERVAL_MINUTES * 60_000);
-        const recent = await db
-          .select({ id: reconciliationRuns.id })
-          .from(reconciliationRuns)
-          .where(and(eq(reconciliationRuns.integrationId, integ.id), gt(reconciliationRuns.startedAt, due)))
-          .limit(1);
-        if (!recent.length) {
-          const started = await startReconciliation(db, { integrationId: integ.id, trigger: 'schedule' });
-          if (!started.deduplicated)
-            await boss.send(
-              QUEUES.adoptedReconcile,
-              { runId: started.runId },
-              { singletonKey: `adopted-recon:${started.runId}` },
-            );
+        .where(and(eq(integrations.enabled, true), eq(integrations.lifecycle, 'active')));
+      for (const integ of monitored) {
+        const rt = registry.get(integ.flowType);
+        if (!rt?.probe) continue;
+        if (Date.now() - (lastProbe.get(integ.id) ?? 0) < config.env.MONITOR_INTERVAL_MINUTES * 60_000)
+          continue;
+        lastProbe.set(integ.id, Date.now());
+        try {
+          const m = await monitorIntegration(db, integ, rt.descriptor, await rt.probe(integ));
+          if (m.reauthorizationEventId && rt.maintain) await enqueueMaintenance(m.reauthorizationEventId);
+        } catch (err) {
+          logger.error({ integrationId: integ.id, err: describeError(err) }, 'monitoring failed');
         }
       }
       const active = await db
@@ -419,40 +413,27 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
       });
     },
 
-    /** Scans the source for an adopted reconciliation run (resumable; lease-fenced). */
+    /** Scans the source for a reconciliation run, by the integration that owns it (resumable; lease-fenced). */
     async adoptedReconcile(raw: unknown): Promise<unknown> {
       const job = AdoptedReconcileJobSchema.parse(raw);
-      const [run] = await db.select().from(reconciliationRuns).where(eq(reconciliationRuns.id, job.runId));
-      if (!run) return { skipped: 'unknown run' };
-      const clients = await adoptedClients(db, config.cipher!, config.endpoints, run.integrationId);
-      return scanReconciliation({
-        db,
-        runId: job.runId,
-        workerId: deps.workerId,
-        clients,
-        ...(deps.retry ? { retry: deps.retry } : {}),
-      });
+      const rt = await registry.forRun(job.runId);
+      if (!rt?.scan) return { skipped: 'no scanner for this run' };
+      return rt.scan(job.runId);
     },
 
-    /** Executes one requested recovery through the adopted executor and verifies NetSuite. */
+    /** Executes one requested recovery through the owning integration's executor and verifies it. */
     async adoptedRecover(raw: unknown): Promise<unknown> {
       const job = AdoptedRecoverJobSchema.parse(raw);
-      const [item] = await db
-        .select()
-        .from(reconciliationItems)
-        .where(eq(reconciliationItems.id, job.itemId));
-      if (!item) return { skipped: 'unknown item' };
-      const clients = await adoptedClients(db, config.cipher!, config.endpoints, item.integrationId);
-      const r = await executeRecovery({
-        db,
-        cipher: config.cipher!,
-        endpoints: config.endpoints,
-        itemId: job.itemId,
-        clients,
-        ...(deps.retry ? { retry: deps.retry } : {}),
-      });
-      if (!r.done && r.retryLater) throw new Error(`recovery deferred: ${r.reason}`); // pg-boss retries with backoff
-      if (r.done) await evaluateAndAct(item.integrationId);
+      const rt = await registry.forItem(job.itemId);
+      if (!rt?.recover) return { skipped: 'no recovery for this item' };
+      const r = (await rt.recover(job.itemId)) as { done?: boolean };
+      if (r.done) {
+        const [item] = await db
+          .select()
+          .from(reconciliationItems)
+          .where(eq(reconciliationItems.id, job.itemId));
+        if (item) await evaluateAndAct(item.integrationId);
+      }
       return r;
     },
 
@@ -463,31 +444,12 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
     async adoptedMaintenance(raw: unknown): Promise<unknown> {
       const job = AdoptedMaintenanceJobSchema.parse(raw);
       const [inc] = await db.select().from(incidents).where(eq(incidents.id, job.incidentId));
-      if (!inc?.integrationId) return { state: 'noop' };
-      const clients = await adoptedClients(db, config.cipher!, config.endpoints, inc.integrationId);
-      let r: Awaited<ReturnType<typeof advanceMaintenance>> = { state: 'continue', detail: '' };
+      const rt = inc?.integrationId ? await registry.forIntegration(inc.integrationId) : undefined;
+      if (!inc?.integrationId || !rt?.maintain) return { state: 'noop' };
+      let r: { state: string; detail: string } = { state: 'continue', detail: '' };
       const steps: string[] = [];
       for (let i = 0; i < 40 && r.state === 'continue'; i++) {
-        r = await advanceMaintenance({
-          db,
-          cipher: config.cipher!,
-          incidentId: job.incidentId,
-          clients,
-          enqueueExecution: async (deliveryId, trigger) => {
-            await boss.send(
-              QUEUES.adoptedExecute,
-              { deliveryId, trigger },
-              { singletonKey: `adopted:${deliveryId}` },
-            );
-          },
-          enqueueReconciliation: async (runId) => {
-            await boss.send(QUEUES.adoptedReconcile, { runId }, { singletonKey: `adopted-recon:${runId}` });
-          },
-          enqueueRecovery: async (itemId) => {
-            await boss.send(QUEUES.adoptedRecover, { itemId }, { singletonKey: `adopted-recover:${itemId}` });
-          },
-          ...(deps.retry ? { retry: deps.retry } : {}),
-        });
+        r = await rt.maintain(job.incidentId);
         steps.push(r.detail);
       }
       if (r.state === 'wait' || r.state === 'continue') await enqueueMaintenance(job.incidentId, 2);
@@ -495,75 +457,51 @@ export function createRuntimeWorker(deps: RuntimeWorkerDeps) {
       return { state: r.state, steps };
     },
 
-    /** Drives one tenant's onboarding activation step by step (idempotent; resumes after crashes). */
+    /** Drives one onboarding activation step by step (idempotent; resumes after crashes). */
     async onboardingActivate(raw: unknown): Promise<unknown> {
       const job = OnboardingActivateJobSchema.parse(raw);
-      const clients = await tenantClients(db, config.cipher!, config.endpoints, job.tenantId);
+      const impl = registry.get(job.flowType)?.onboarding;
+      if (!impl) return { state: 'noop', detail: 'not onboardable' };
       let r: Awaited<ReturnType<typeof advanceOnboarding>> = { state: 'continue', detail: '' };
       const steps: string[] = [];
       for (let i = 0; i < 20 && r.state === 'continue'; i++) {
-        r = await advanceOnboarding({
-          db,
-          tenantId: job.tenantId,
-          clients,
-          webhookBaseUrl: config.env.WEBHOOK_BASE_URL ?? config.env.PUBLIC_BASE_URL,
-          enqueueReconciliation: async (runId) => {
-            await boss.send(QUEUES.adoptedReconcile, { runId }, { singletonKey: `adopted-recon:${runId}` });
-          },
-          ...(deps.retry ? { retry: deps.retry } : {}),
-        });
+        r = await advanceOnboarding(db, job.tenantId, impl);
         steps.push(r.detail);
       }
       if (r.state === 'wait' || r.state === 'continue')
-        await boss.sendAfter(QUEUES.onboardingActivate, { tenantId: job.tenantId }, { singletonKey: `onboarding:${job.tenantId}` }, 2);
+        await boss.sendAfter(
+          QUEUES.onboardingActivate,
+          job,
+          { singletonKey: `onboarding:${job.tenantId}:${job.flowType}` },
+          2,
+        );
       return { state: r.state, steps };
     },
 
-    /** Validates one adaptation against stored and affected orders (operator-requested). */
+    /** Validates one adaptation, by the integration that owns it (operator-requested). */
     async adoptedAdaptationValidate(raw: unknown): Promise<unknown> {
       const job = AdoptedAdaptationValidateJobSchema.parse(raw);
       const [row] = await db.select().from(adaptations).where(eq(adaptations.id, job.adaptationId));
-      if (!row || !['proposed', 'validated'].includes(row.status)) return { skipped: row?.status ?? 'unknown' };
-      const clients = await adoptedClients(db, config.cipher!, config.endpoints, row.integrationId);
-      const v = await validateAdaptation(db, config.cipher!, row.id, clients, deps.retry);
+      if (!row || !['proposed', 'validated'].includes(row.status))
+        return { skipped: row?.status ?? 'unknown' };
+      const rt = await registry.forIntegration(row.integrationId);
+      if (!rt?.adaptations) return { skipped: 'no adaptation support' };
+      const v = await rt.adaptations.validate(row.id);
       return { status: v.status };
     },
 
-    /** Runs one delivery through the ADOPTED upstream implementation (shopify-erp-order-sync). */
+    /** Runs one delivery through the owning integration's adopted executor. */
     async adoptedExecute(raw: unknown): Promise<unknown> {
       const job = AdoptedExecuteJobSchema.parse(raw);
-      const result = await executeDelivery({
-        db,
-        cipher: config.cipher!,
-        endpoints: config.endpoints,
-        deliveryId: job.deliveryId,
-        trigger: job.trigger,
-      });
-      if (result.executed && result.outcome === 'held') {
-        // The input no longer satisfies the adopted contract: nothing was written; maintenance takes over.
-        const f = await recordInputContractFinding(db, config.cipher!, job.deliveryId);
-        if (f) await enqueueMaintenance(f.incidentId);
-      }
-      if (result.executed && result.outcome === 'failed') {
-        const delay = nextAutomaticRetryDelaySeconds(result.attemptNo);
-        if (delay != null) {
-          const retry = await requestDeliveryRetry(db, job.deliveryId);
-          if (retry.accepted) {
-            await boss.sendAfter(
-              QUEUES.adoptedExecute,
-              { deliveryId: job.deliveryId, trigger: { kind: 'automatic_retry' } },
-              { singletonKey: `adopted:${job.deliveryId}` },
-              delay,
-            );
-          }
-        }
-      }
+      const rt = await registry.forDelivery(job.deliveryId);
+      if (!rt?.execute) return { skipped: 'no executor for this delivery' };
+      const result = (await rt.execute(job.deliveryId, job.trigger)) as { executed?: boolean };
       if (result.executed) {
         const [d] = await db
-          .select({ integrationId: deliveries.integrationId })
+          .select({ i: deliveries.integrationId })
           .from(deliveries)
           .where(eq(deliveries.id, job.deliveryId));
-        if (d) await evaluateAndAct(d.integrationId);
+        if (d) await evaluateAndAct(d.i);
       }
       return result;
     },

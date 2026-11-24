@@ -21,6 +21,8 @@ const EnvSchema = z.object({
   ARTIFACT_DIR: z.string().default('./var/artifacts'),
   SYNC_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(5),
   RECONCILE_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(10080).default(60),
+  /** How often each managed integration's systems are probed by monitoring (slice 6). */
+  MONITOR_INTERVAL_MINUTES: z.coerce.number().int().min(1).max(1440).default(5),
   LOG_LEVEL: z.string().default('info'),
   /** Self-service signup (slice 5). Default: on outside production, off in production unless 'true'. */
   ALLOW_SIGNUP: z.enum(['true', 'false']).optional(),

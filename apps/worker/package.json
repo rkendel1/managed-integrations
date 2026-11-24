@@ -16,7 +16,9 @@
     "@mi/integration-shopify-netsuite": "workspace:*",
     "@mi/reliability": "workspace:*",
     "@mi/maintenance": "workspace:*",
-    "@mi/adopted-order-sync": "workspace:*"
+    "@mi/adopted-order-sync": "workspace:*",
+    "@mi/integrations": "workspace:*",
+    "@mi/managed": "workspace:*"
   },
   "scripts": {
     "dev": "tsx watch src/main.ts",

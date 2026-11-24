@@ -9,3 +9,5 @@ export * from './maintenance.ts';
 export * from './artifact.ts';
 export * from './adaptation.ts';
 export * from './onboarding.ts';
+export * from './descriptor.ts';
+export * from './runtime.ts';

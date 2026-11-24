@@ -5,6 +5,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -612,23 +613,30 @@ export const adaptations = pgTable(
 );
 
 /**
- * Slice 5 — one customer's onboarding: Connect → Discover → Confirm → Protect. Durable so an
- * interrupted onboarding resumes where it stopped. Discovery evidence and the customer's explicit
- * confirmation (who, when, which responsibilities) are kept as facts.
+ * One customer's onboarding of one kind of integration (slice 5; per integration kind since slice 6):
+ * Connect → Discover → Confirm → Protect. Durable so an interrupted onboarding resumes where it stopped.
+ * Discovery evidence and the customer's explicit confirmation (who, when, which responsibilities) are
+ * kept as facts. Connections are per provider and shared by all of a customer's integrations.
  */
-export const onboardings = pgTable('onboardings', {
-  tenantId: uuid('tenant_id')
-    .primaryKey()
-    .references(() => tenants.id),
-  /** connect | discovering | confirm | select | activating | managed | blocked */
-  status: text('status').notNull().default('connect'),
-  discovery: jsonb('discovery'),
-  /** The candidate the customer confirmed (or selected) and the responsibilities they authorized. */
-  confirmation: jsonb('confirmation'),
-  integrationId: uuid('integration_id').references(() => integrations.id),
-  /** Activation progress and baseline facts. */
-  activation: jsonb('activation'),
-  problem: text('problem'),
-  createdAt: createdAt(),
-  updatedAt: updatedAt(),
-});
+export const onboardings = pgTable(
+  'onboardings',
+  {
+    tenantId: uuid('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    /** The integration kind (integrations.flow_type) this onboarding is for. */
+    flowType: text('flow_type').notNull(),
+    /** connect | discovering | confirm | select | activating | managed | blocked */
+    status: text('status').notNull().default('connect'),
+    discovery: jsonb('discovery'),
+    /** The candidate the customer confirmed (or selected) and the responsibilities they authorized. */
+    confirmation: jsonb('confirmation'),
+    integrationId: uuid('integration_id').references(() => integrations.id),
+    /** Activation progress and baseline facts. */
+    activation: jsonb('activation'),
+    problem: text('problem'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.tenantId, t.flowType] })],
+);

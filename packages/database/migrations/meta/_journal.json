@@ -43,6 +43,13 @@
       "when": 1795473407262,
       "tag": "0005_adaptations_onboarding",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795478034860,
+      "tag": "0006_portability",
+      "breakpoints": true
     }
   ]
 }

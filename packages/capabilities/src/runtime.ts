@@ -32,6 +32,7 @@ export interface AppPortRuntimeOptions {
   enqueueAdaptationValidation?: import('./capabilities/adaptations.ts').EnqueueAdaptationValidation;
   runOnboardingDiscovery?: import('./capabilities/onboarding.ts').RunOnboardingDiscovery;
   enqueueOnboardingActivation?: import('./capabilities/onboarding.ts').EnqueueOnboardingActivation;
+  registry?: import('@mi/managed').IntegrationRegistry;
   telemetry?: import('@appport/core').TelemetrySink;
   /** Host logger (for example the API's pino instance). */
   logger?: Logger;
@@ -68,6 +69,7 @@ export function createAppPortRuntime(options: AppPortRuntimeOptions): AppPortRun
     ...(options.enqueueOnboardingActivation
       ? { enqueueOnboardingActivation: options.enqueueOnboardingActivation }
       : {}),
+    ...(options.registry ? { registry: options.registry } : {}),
     ...(options.telemetry ? { telemetry: options.telemetry } : {}),
     ...(options.logger ? { logger: options.logger } : {}),
   });

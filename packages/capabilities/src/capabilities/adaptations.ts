@@ -14,20 +14,26 @@ import { defineCapability, type CapabilityDefinition } from '@appport/core';
 import { errors } from '@appport/protocol';
 import { s } from '@appport/schema';
 import { eq } from 'drizzle-orm';
-import {
-  activateAdaptation,
-  AdaptationError,
-  patchCatalog,
-  proposeAdaptation,
-  rejectAdaptation,
-  rollbackAdaptation,
-  runningCode,
-} from '@mi/adopted-order-sync';
 import { adaptations, type Db } from '@mi/database';
+import { AdaptationError, type IntegrationRegistry } from '@mi/managed';
 import { AppPortPermissions } from '../identity.ts';
 
 const UUID = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
 export type EnqueueAdaptationValidation = (adaptationId: string) => Promise<void>;
+
+/** The integration that owns an adaptation (or an integration) decides what its corrections mean. */
+async function opsFor(
+  registry: IntegrationRegistry | undefined,
+  by: { integrationId?: string; adaptationId?: string },
+) {
+  const rt = by.integrationId
+    ? await registry?.forIntegration(by.integrationId)
+    : by.adaptationId
+      ? await registry?.forAdaptation(by.adaptationId)
+      : undefined;
+  if (!rt) throw errors.notFound('Integration or adaptation not found');
+  return rt;
+}
 
 const actorOf = (principal: { id?: string } | undefined) => principal?.id ?? 'operator:unknown';
 const reason = s.string({ minLength: 3, maxLength: 500 });
@@ -65,7 +71,7 @@ const rowSchema = s.object({
 });
 
 export function createAdaptationsInspectCapability(
-  db: Db,
+  registry: IntegrationRegistry | undefined,
 ): CapabilityDefinition<{ integrationId: string }, Record<string, unknown>> {
   return defineCapability({
     name: 'adaptations.inspect',
@@ -85,14 +91,17 @@ export function createAdaptationsInspectCapability(
       catalog: s.unknown(),
     }),
     async handler(input) {
-      const code = await runningCode(db, input.integrationId);
+      const rt = await opsFor(registry, { integrationId: input.integrationId });
+      if (!rt.inspect)
+        throw errors.conflict(`${rt.descriptor.name} is not adopted code; there is nothing to inspect`);
+      const code = await rt.inspect(input.integrationId);
       return { ...code, adaptations: code.adaptations.map(view) };
     },
   });
 }
 
 export function createAdaptationProposeCapability(
-  db: Db,
+  registry: IntegrationRegistry | undefined,
   enqueue: EnqueueAdaptationValidation | undefined,
 ): CapabilityDefinition<
   { integrationId: string; patchId: string; reason: string; maintenanceEventId?: string },
@@ -113,30 +122,15 @@ export function createAdaptationProposeCapability(
     }),
     output: rowSchema,
     async handler(input, context) {
-      const p = patchCatalog().find((x) => x.id === input.patchId);
-      if (!p) throw errors.invalidInput('Only reviewed patches from the catalog can be proposed');
       try {
-        const row = await proposeAdaptation(db, {
+        const rt = await opsFor(registry, { integrationId: input.integrationId });
+        if (!rt.adaptations) throw errors.conflict(`${rt.descriptor.name} has no reviewed corrections`);
+        const row = await rt.adaptations.propose({
           integrationId: input.integrationId,
-          maintenanceEventId: input.maintenanceEventId ?? null,
-          kind: 'patch',
-          dependency: { addresses: p.addresses },
-          codePath: { file: p.file, originalBehavior: p.originalBehavior },
-          spec: {
-            patchId: p.id,
-            file: p.file,
-            baseSha256: p.baseSha256,
-            resultSha256: p.resultSha256,
-            find: p.find,
-            replace: p.replace,
-          },
-          rationale: `${p.reason} — proposed by operator: ${input.reason}`,
-          evidence: {
-            providerEvidence: p.providerEvidence,
-            assumptions: p.assumptions,
-            rollback: p.rollback,
-          },
+          patchId: input.patchId,
+          reason: input.reason,
           actor: actorOf(context.principal),
+          maintenanceEventId: input.maintenanceEventId ?? null,
         });
         if (enqueue) await enqueue(row.id);
         return view(row);
@@ -173,7 +167,7 @@ export function createAdaptationValidateCapability(
 }
 
 export function createAdaptationActivateCapability(
-  db: Db,
+  registry: IntegrationRegistry | undefined,
 ): CapabilityDefinition<
   { adaptationId: string; reason: string; acceptLimitations?: boolean },
   ReturnType<typeof view>
@@ -193,8 +187,9 @@ export function createAdaptationActivateCapability(
     output: rowSchema,
     async handler(input, context) {
       try {
+        const rt = await opsFor(registry, { adaptationId: input.adaptationId });
         return view(
-          await activateAdaptation(db, input.adaptationId, actorOf(context.principal), input.reason, {
+          await rt.adaptations!.activate(input.adaptationId, actorOf(context.principal), input.reason, {
             acceptLimitations: input.acceptLimitations === true,
           }),
         );
@@ -206,21 +201,22 @@ export function createAdaptationActivateCapability(
 }
 
 export function createAdaptationRollbackCapability(
-  db: Db,
+  registry: IntegrationRegistry | undefined,
 ): CapabilityDefinition<{ adaptationId: string; reason: string }, ReturnType<typeof view>> {
   return defineCapability({
     name: 'adaptations.rollback',
     version: 1,
     description:
-      'Operators only. Switches an active correction off; the next execution runs the previous known-good code. Orders already written are not rewritten; affected new orders are held again.',
+      'Operators only. Switches an active correction off; the next execution runs the previous known-good code. Transactions already written are not rewritten; affected new ones are held again.',
     effect: 'consequential',
     authorization: [AppPortPermissions.operateAny],
     input: s.object({ adaptationId: s.string({ pattern: UUID }), reason }),
     output: rowSchema,
     async handler(input, context) {
       try {
+        const rt = await opsFor(registry, { adaptationId: input.adaptationId });
         return view(
-          await rollbackAdaptation(db, input.adaptationId, actorOf(context.principal), input.reason),
+          await rt.adaptations!.rollback(input.adaptationId, actorOf(context.principal), input.reason),
         );
       } catch (err) {
         return mapError(err);
@@ -230,7 +226,7 @@ export function createAdaptationRollbackCapability(
 }
 
 export function createAdaptationRejectCapability(
-  db: Db,
+  registry: IntegrationRegistry | undefined,
 ): CapabilityDefinition<{ adaptationId: string; reason: string }, ReturnType<typeof view>> {
   return defineCapability({
     name: 'adaptations.reject',
@@ -242,7 +238,10 @@ export function createAdaptationRejectCapability(
     output: rowSchema,
     async handler(input, context) {
       try {
-        return view(await rejectAdaptation(db, input.adaptationId, actorOf(context.principal), input.reason));
+        const rt = await opsFor(registry, { adaptationId: input.adaptationId });
+        return view(
+          await rt.adaptations!.reject(input.adaptationId, actorOf(context.principal), input.reason),
+        );
       } catch (err) {
         return mapError(err);
       }

@@ -14,7 +14,8 @@
     "@mi/observability": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "zod": "^4.6.7",
-    "@mi/reliability": "workspace:*"
+    "@mi/reliability": "workspace:*",
+    "@mi/managed": "workspace:*"
   },
   "scripts": {
     "test:upstream": "node --test node_modules/shopify-sync/test/*.test.js"

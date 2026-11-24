@@ -285,7 +285,7 @@ describe('the correction registry', () => {
     await validateAdaptation(db(), testCipher, p2.id, clients, FAST_RETRY);
     await expect(
       activateAdaptation(db(), p2.id, 'operator:test', 'x', { acceptLimitations: true }),
-    ).rejects.toThrow(/same field/);
+    ).rejects.toThrow(/same behaviour \(a:line_items\[\]\.price\)/);
     await rejectAdaptation(db(), p2.id, 'operator:test', 'duplicate');
     await expect(
       proposeAdaptation(db(), {

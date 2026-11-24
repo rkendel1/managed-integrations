@@ -22,6 +22,8 @@
     "pg-boss": "^12.39.0",
     "zod": "^4.6.7",
     "@mi/adopted-order-sync": "workspace:*",
+    "@mi/integrations": "workspace:*",
+    "@mi/managed": "workspace:*",
     "@appport/core": "1.13.0"
   },
   "scripts": {

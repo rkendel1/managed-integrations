@@ -15,7 +15,9 @@
     "@appport/server": "1.5.0",
     "@mi/database": "workspace:*",
     "drizzle-orm": "^0.45.4",
-    "@mi/adopted-order-sync": "workspace:*"
+    "@mi/adopted-order-sync": "workspace:*",
+    "@mi/integrations": "workspace:*",
+    "@mi/managed": "workspace:*"
   },
   "devDependencies": {
     "@appport/client": "1.2.0",

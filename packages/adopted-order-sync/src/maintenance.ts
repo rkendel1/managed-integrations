@@ -40,6 +40,16 @@ import {
 } from '@mi/integration-shopify-netsuite';
 import { describeError } from '@mi/observability';
 import {
+  accountTransactions,
+  escalate,
+  MAINTENANCE_ACTOR,
+  note,
+  recordPostActivation,
+  setFacts,
+  setProgress as setProgressGeneric,
+  type TransactionAccounting,
+} from '@mi/managed';
+import {
   openIncident,
   readDestination,
   resolutionBlockers,
@@ -77,7 +87,7 @@ import {
 import { RECOVERY_ORDER_QUERY, type RecoveryOrder } from './source.ts';
 
 export const MAINTENANCE_KIND = 'input_contract_change' as const;
-export const MAINTENANCE_ACTOR = 'system:maintenance';
+export { MAINTENANCE_ACTOR };
 
 const docsDir = () =>
   process.env.PROVIDER_DOCS_DIR ??
@@ -109,39 +119,8 @@ export interface Finding {
   detectedAt: string;
 }
 
-export interface Accounting {
-  window: { from: string; to: string };
-  sourceRunId: string;
-  population: number;
-  populationComplete: boolean;
-  deliveredBeforeChange: number;
-  delayed: number;
-  failedDuringDisruption: number;
-  discoveredByReconciliation: number;
-  recovered: number;
-  verified: number;
-  excluded: { count: number; reasons: Record<string, number> };
-  unresolved: number;
-  duplicates: number;
-  orders: {
-    order: string;
-    legacyId: string;
-    category:
-      | 'delivered_before_change'
-      | 'delayed'
-      | 'failed'
-      | 'discovered'
-      | 'delivered'
-      | 'excluded'
-      | 'unresolved';
-    verified: boolean;
-    detail: string;
-  }[];
-  /** Held orders missing from the reconciled population (makes the population incomplete). */
-  notInPopulation?: string[];
-  zeroLoss: boolean;
-  computedAt: string;
-}
+/** Transaction accounting (the generic rule in @mi/managed, applied to this integration's population). */
+export type Accounting = TransactionAccounting;
 
 /** The incident's `correction` fact: which registry entry corrects this event. */
 export interface CorrectionFact {
@@ -768,73 +747,28 @@ export async function computeAccounting(
         )
     : [];
   const verifiedBy = new Map(p.verification.map((v) => [v.sourceOrderId, v]));
-  const excludedReasons: Record<string, number> = {};
-  const orders: Accounting['orders'] = [];
-  let duplicates = 0;
-  for (const i of items) {
-    if (i.classification === 'excluded') {
-      excludedReasons[i.reason ?? 'excluded'] = (excludedReasons[i.reason ?? 'excluded'] ?? 0) + 1;
-      orders.push({
-        order: i.orderName,
-        legacyId: i.sourceLegacyId,
-        category: 'excluded',
-        verified: false,
-        detail: i.reason ?? '',
-      });
-      continue;
-    }
-    const d = dels.find((x) => x.sourceId === i.sourceOrderId);
-    const att = d ? attempts.filter((a) => a.deliveryId === d.id) : [];
-    const v = verifiedBy.get(i.sourceOrderId);
-    if ((v?.records ?? 0) > 1) duplicates++;
-    const verified = v?.verified === true && i.classification === 'delivered';
-    let category: Accounting['orders'][number]['category'];
-    if (!verified) category = 'unresolved';
-    else if (discovered.has(i.sourceOrderId)) category = 'discovered';
-    else if (att.some((a) => a.outcome === 'held')) category = 'delayed';
-    else if (att.some((a) => a.outcome === 'failed' || a.outcome === 'rejected')) category = 'failed';
-    else if (d?.deliveredAt && d.deliveredAt < detectedAt) category = 'delivered_before_change';
-    else category = 'delivered';
-    orders.push({
-      order: i.orderName,
-      legacyId: i.sourceLegacyId,
-      category,
-      verified,
-      detail: v?.detail ?? i.reason ?? '',
-    });
-  }
-  const count = (c: string) => orders.filter((o) => o.category === c).length;
-  const unresolved = count('unresolved');
-  const inPopulation = new Set(items.map((i) => i.sourceOrderId));
-  const notCovered = p.affectedSourceIds.filter((id) => !inPopulation.has(id));
-  // The claim is about a population: it must have been read completely AND contain every order we held.
-  const populationComplete =
-    run?.status === 'completed' && run.outcome !== 'partial' && items.length > 0 && notCovered.length === 0;
-  const verified = orders.filter((o) => o.verified).length;
-  return {
-    window: { from: run!.windowFrom.toISOString(), to: run!.windowTo.toISOString() },
+  return accountTransactions({
+    window: { from: run!.windowFrom, to: run!.windowTo },
     sourceRunId: p.verifyRunId,
-    population: items.length,
-    populationComplete,
-    deliveredBeforeChange: count('delivered_before_change'),
-    delayed: count('delayed'),
-    failedDuringDisruption: count('failed'),
-    discoveredByReconciliation: count('discovered'),
-    recovered: count('delayed') + count('failed') + count('discovered'),
-    verified,
-    excluded: { count: count('excluded'), reasons: excludedReasons },
-    unresolved: unresolved + notCovered.length,
-    duplicates,
-    orders,
-    ...(notCovered.length ? { notInPopulation: notCovered } : {}),
-    zeroLoss:
-      populationComplete &&
-      unresolved === 0 &&
-      duplicates === 0 &&
-      verified > 0 &&
-      verified === items.length - count('excluded'),
-    computedAt: new Date().toISOString(),
-  };
+    readCompletely: run?.status === 'completed' && run.outcome !== 'partial',
+    detectedAt,
+    affectedSourceIds: p.affectedSourceIds,
+    items: items.map((i) => {
+      const d = dels.find((x) => x.sourceId === i.sourceOrderId);
+      const v = verifiedBy.get(i.sourceOrderId);
+      return {
+        sourceId: i.sourceOrderId,
+        label: i.orderName,
+        reference: i.sourceLegacyId,
+        excluded: i.classification === 'excluded' ? (i.reason ?? 'excluded') : null,
+        delivered: i.classification === 'delivered',
+        discovered: discovered.has(i.sourceOrderId),
+        attemptOutcomes: d ? attempts.filter((a) => a.deliveryId === d.id).map((a) => a.outcome) : [],
+        deliveredAt: d?.deliveredAt ?? null,
+        verification: v ? { verified: v.verified, records: v.records, detail: v.detail } : null,
+      };
+    }),
+  });
 }
 
 /* ================================================================== the driver */
@@ -854,46 +788,8 @@ export type AdvanceResult = {
   detail: string;
 };
 
-async function setFacts(
-  db: Db,
-  id: string,
-  facts: Partial<Record<'investigation' | 'correction' | 'validation' | 'accounting', unknown>>,
-) {
-  await db
-    .update(incidents)
-    .set({ ...(facts as object), updatedAt: new Date() })
-    .where(eq(incidents.id, id));
-}
 async function setProgress(db: Db, id: string, progress: Progress) {
-  await db
-    .update(incidents)
-    .set({
-      evidence: sql`jsonb_set(${incidents.evidence}, '{maintenance}', coalesce(${incidents.evidence}->'maintenance', '{}'::jsonb) || ${JSON.stringify(progress)}::jsonb)`,
-      updatedAt: new Date(),
-    })
-    .where(eq(incidents.id, id));
-}
-async function note(
-  db: Db,
-  inc: IncidentRow,
-  text: string,
-  customerVisible: boolean,
-  evidence: Record<string, unknown> = {},
-) {
-  await db.insert(incidentEvents).values({
-    incidentId: inc.id,
-    fromStatus: inc.status,
-    toStatus: inc.status,
-    actor: MAINTENANCE_ACTOR,
-    note: text,
-    customerVisible,
-    evidence,
-  });
-}
-async function escalate(db: Db, inc: IncidentRow, reason: string): Promise<AdvanceResult> {
-  await setProgress(db, inc.id, { escalated: reason });
-  await note(db, inc, `Escalated to an operator: ${reason}`, false);
-  return { state: 'escalated', detail: reason };
+  await setProgressGeneric(db, id, progress as Record<string, unknown>);
 }
 
 /** Advances a maintenance event by one step. Safe to call repeatedly and after crashes. */
@@ -1233,23 +1129,17 @@ export async function advanceMaintenance(p: AdvanceParams): Promise<AdvanceResul
       // The correction's own record carries what was proven after it went live.
       const adaptationId = (inc.correction as CorrectionFact | null)?.adaptationId;
       if (adaptationId)
-        await db
-          .update(adaptations)
-          .set({
-            validation: sql`jsonb_set(${adaptations.validation}, '{postActivation}', ${JSON.stringify({
-              maintenanceEventId: inc.id,
-              verifiedAt: new Date().toISOString(),
-              population: accounting.population,
-              verified: accounting.verified,
-              recovered: accounting.recovered,
-              unresolved: accounting.unresolved,
-              duplicates: accounting.duplicates,
-              zeroLoss: accounting.zeroLoss,
-              verificationRunId: run!.id,
-            })}::jsonb)`,
-            updatedAt: new Date(),
-          })
-          .where(eq(adaptations.id, adaptationId));
+        await recordPostActivation(db, adaptationId, {
+          maintenanceEventId: inc.id,
+          verifiedAt: new Date().toISOString(),
+          population: accounting.population,
+          verified: accounting.verified,
+          recovered: accounting.recovered,
+          unresolved: accounting.unresolved,
+          duplicates: accounting.duplicates,
+          zeroLoss: accounting.zeroLoss,
+          verificationRunId: run!.id,
+        });
       return { state: 'resolved', detail: 'verified and resolved' };
     }
   }

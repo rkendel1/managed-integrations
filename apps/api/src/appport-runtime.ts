@@ -61,7 +61,8 @@ export function createApiAppPortRuntime(deps: {
   reconcileIntervalMinutes?: number;
   enqueueAdaptationValidation?: (adaptationId: string) => Promise<void>;
   runOnboardingDiscovery?: (tenantId: string) => Promise<void>;
-  enqueueOnboardingActivation?: (tenantId: string) => Promise<void>;
+  enqueueOnboardingActivation?: (tenantId: string, flowType: string) => Promise<void>;
+  registry?: import('@mi/managed').IntegrationRegistry;
   telemetry?: TelemetrySink;
 }): AppPortRuntime {
   const resolveIdentity = async (headers: CallerHeaders) => {
@@ -94,6 +95,7 @@ export function createApiAppPortRuntime(deps: {
       ? { enqueueAdaptationValidation: deps.enqueueAdaptationValidation }
       : {}),
     ...(deps.runOnboardingDiscovery ? { runOnboardingDiscovery: deps.runOnboardingDiscovery } : {}),
+    ...(deps.registry ? { registry: deps.registry } : {}),
     ...(deps.enqueueOnboardingActivation
       ? { enqueueOnboardingActivation: deps.enqueueOnboardingActivation }
       : {}),

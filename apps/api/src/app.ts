@@ -10,9 +10,10 @@ import { sql } from 'drizzle-orm';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { QUEUES } from '@mi/contracts';
-import { runDiscovery } from '@mi/adopted-order-sync';
+import { createRegistry, type IntegrationRegistry } from '@mi/integrations';
+import { discoverAll, type WorkServices } from '@mi/managed';
 import { auditLogTelemetrySink } from '@mi/capabilities';
-import { auditLog, onboardings, tenants, users, type Db } from '@mi/database';
+import { auditLog, tenants, users, type Db } from '@mi/database';
 import type { ServiceConfig } from '@mi/integration-shopify-netsuite';
 import { newCorrelationId, redact, withCorrelation } from '@mi/observability';
 import {
@@ -38,6 +39,8 @@ export interface ApiDeps {
   logLevel?: string;
   /** Override the AppPort invocation evidence sink (tests). */
   invocationEvidence?: import('@appport/core').TelemetrySink;
+  /** Override the integration registry (tests). */
+  registry?: IntegrationRegistry;
 }
 
 export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
@@ -93,8 +96,46 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
     }
   });
 
+  /* ------------------------------ integrations (slice 6) ------------------------------ */
+  // The same registry the worker uses; in the API it serves discovery, onboarding confirmation,
+  // operator inspection and correction decisions. Durable work is only ever queued from here.
+  const services: WorkServices = {
+    enqueueExecution: async (deliveryId, trigger) => {
+      await deps.boss.send(
+        QUEUES.adoptedExecute,
+        { deliveryId, trigger },
+        { singletonKey: `adopted:${deliveryId}` },
+      );
+    },
+    enqueueReconciliation: async (runId) => {
+      await deps.boss.send(QUEUES.adoptedReconcile, { runId }, { singletonKey: `adopted-recon:${runId}` });
+    },
+    enqueueRecovery: async (itemId) => {
+      await deps.boss.send(QUEUES.adoptedRecover, { itemId }, { singletonKey: `adopted-recover:${itemId}` });
+    },
+    enqueueMaintenance: async (incidentId) => {
+      await deps.boss.send(
+        QUEUES.adoptedMaintenance,
+        { incidentId },
+        { singletonKey: `adopted-maint:${incidentId}` },
+      );
+    },
+  };
+  const registry: IntegrationRegistry =
+    deps.registry ??
+    createRegistry({
+      db: deps.db,
+      cipher: deps.config.cipher!,
+      endpoints: deps.config.endpoints,
+      services,
+      webhookBaseUrl: deps.config.env.WEBHOOK_BASE_URL ?? deps.config.env.PUBLIC_BASE_URL,
+      workerId: 'api',
+      reconcileIntervalMinutes: deps.config.env.RECONCILE_INTERVAL_MINUTES,
+    });
+
   /* ------------------------------ AppPort: capabilities + MCP ------------------------------ */
   const appPort = createApiAppPortRuntime({
+    registry,
     db: deps.db,
     logger: pinoToAppPortLogger({
       debug: (obj, msg) => app.log.debug(obj, msg),
@@ -115,13 +156,13 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
     },
     reconcileIntervalMinutes: deps.config.env.RECONCILE_INTERVAL_MINUTES,
     runOnboardingDiscovery: async (tenantId) => {
-      await runDiscovery(deps.db, deps.config.cipher!, deps.config.endpoints, tenantId);
+      await discoverAll(deps.db, tenantId, registry.onboardable());
     },
-    enqueueOnboardingActivation: async (tenantId) => {
+    enqueueOnboardingActivation: async (tenantId, flowType) => {
       await deps.boss.send(
         QUEUES.onboardingActivate,
-        { tenantId },
-        { singletonKey: `onboarding:${tenantId}` },
+        { tenantId, flowType },
+        { singletonKey: `onboarding:${tenantId}:${flowType}` },
       );
     },
     enqueueAdaptationValidation: async (adaptationId) => {
@@ -206,7 +247,6 @@ export async function buildApp(deps: ApiDeps): Promise<FastifyInstance> {
             lifecycle: 'active',
           })
           .returning();
-        await tx.insert(onboardings).values({ tenantId: t!.id, status: 'connect' });
         const [u] = await tx
           .insert(users)
           .values({ email, passwordHash, role: 'customer', tenantId: t!.id })

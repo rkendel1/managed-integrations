@@ -1,0 +1,18 @@
+{
+  "name": "@mi/adopted-ledgerly",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "ledgerly": "github:jakethehoffer/ledgerly#3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090",
+    "@mi/contracts": "workspace:*",
+    "@mi/database": "workspace:*",
+    "@mi/integration-shopify-netsuite": "workspace:*",
+    "@mi/observability": "workspace:*",
+    "drizzle-orm": "^0.45.4",
+    "zod": "^4.6.7"
+  }
+}

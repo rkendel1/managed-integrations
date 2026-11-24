@@ -17,6 +17,7 @@ import {
   onboardings,
   reconciliationRuns,
   syncRuns,
+  type Db,
 } from '@mi/database';
 import {
   buildShopifyAuthorizeUrl,
@@ -53,6 +54,18 @@ export function customerIncidentView(i: typeof incidents.$inferSelect) {
     resolvedAt: i.resolvedAt,
     resolution: i.resolution,
   };
+}
+
+/** After connecting a system: back to onboarding while the customer is still setting up, else to connections. */
+export async function returnPage(db: Db, tenantId: string): Promise<string> {
+  const rows = await db.select().from(onboardings).where(eq(onboardings.tenantId, tenantId));
+  if (rows.some((r) => r.status !== 'managed')) return '/app/welcome';
+  const [active] = await db
+    .select({ id: integrations.id })
+    .from(integrations)
+    .where(and(eq(integrations.tenantId, tenantId), eq(integrations.lifecycle, 'active')))
+    .limit(1);
+  return active ? '/app/connections' : '/app/welcome';
 }
 
 export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps) {
@@ -189,13 +202,9 @@ export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps
     const [tenantId, state] = String(q.state ?? '').split('.');
     // Back to onboarding while the customer is still setting up; otherwise to their connections.
     const fail = async (msg: string) => {
-      const [ob] =
-        tenantId && /^[0-9a-f-]{36}$/.test(tenantId)
-          ? await db.select().from(onboardings).where(eq(onboardings.tenantId, tenantId))
-          : [];
-      return reply.redirect(
-        `${ob && ob.status !== 'managed' ? '/app/welcome' : '/app/connections'}?error=${encodeURIComponent(msg)}`,
-      );
+      const page =
+        tenantId && /^[0-9a-f-]{36}$/.test(tenantId) ? await returnPage(db, tenantId) : '/app/connections';
+      return reply.redirect(`${page}?error=${encodeURIComponent(msg)}`);
     };
     if (!verifyShopifyCallbackHmac(q, deps.config.endpoints.shopifyClientSecret))
       return fail('Shopify signature check failed');
@@ -243,12 +252,7 @@ export async function registerCustomerRoutes(app: FastifyInstance, deps: ApiDeps
         details: { scopes },
       });
       // Back to onboarding if the customer is still setting up; otherwise to their connections.
-      const [ob] = await db.select().from(onboardings).where(eq(onboardings.tenantId, tenantId));
-      return reply.redirect(
-        ob && ob.status !== 'managed'
-          ? '/app/welcome?connected=shopify'
-          : '/app/connections?connected=shopify',
-      );
+      return reply.redirect(`${await returnPage(db, tenantId)}?connected=shopify`);
     } catch (err) {
       req.log.warn({ err: describeError(err) }, 'shopify code exchange failed');
       return fail('Shopify did not complete authorization');

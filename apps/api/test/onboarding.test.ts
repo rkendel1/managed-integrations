@@ -13,11 +13,12 @@ import type { FastifyInstance } from 'fastify';
 import { PgBoss } from 'pg-boss';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  advanceOnboarding,
   executeDelivery,
   scanReconciliation,
+  shopifyOnboarding,
   tenantClients,
 } from '@mi/adopted-order-sync';
+import { advanceOnboarding } from '@mi/managed';
 import { QUEUES } from '@mi/contracts';
 import { auditLog, connections, deliveries, integrations } from '@mi/database';
 import { loadServiceConfig } from '@mi/integration-shopify-netsuite';
@@ -153,16 +154,16 @@ async function customer(email = 'owner@northwind.test') {
 async function activate(tenantId: string, maxSteps = 30) {
   const clients = await tenantClients(h.dbh.db, testCipher, h.endpoints, tenantId);
   const queued: string[] = [];
+  const impl = shopifyOnboarding({
+    cipher: testCipher,
+    endpoints: h.endpoints,
+    webhookBaseUrl: base,
+    enqueueReconciliation: async (runId: string) => void queued.push(runId),
+    retry: FAST_RETRY,
+  });
   const states: string[] = [];
   for (let i = 0; i < maxSteps; i++) {
-    const r = await advanceOnboarding({
-      db: h.dbh.db,
-      tenantId,
-      clients,
-      webhookBaseUrl: base,
-      enqueueReconciliation: async (runId) => void queued.push(runId),
-      retry: FAST_RETRY,
-    });
+    const r = await advanceOnboarding(h.dbh.db, tenantId, impl);
     states.push(`${r.state}:${r.detail}`);
     for (const runId of queued.splice(0))
       await scanReconciliation({ db: h.dbh.db, runId, workerId: 'w', clients, retry: FAST_RETRY });
@@ -170,7 +171,8 @@ async function activate(tenantId: string, maxSteps = 30) {
   }
   return states;
 }
-type Status = {
+type Flow = {
+  flowType: string;
   status: string;
   discovery: {
     outcome: string;
@@ -181,6 +183,10 @@ type Status = {
   integrationId: string | null;
   responsibilities: { version: string };
 };
+type Status = { status: string; integrations: Flow[]; systems: { id: string; connected: boolean }[] };
+/** The Shopify → NetSuite onboarding inside the customer's overall view. */
+const shopifyFlow = (v: Status) =>
+  v.integrations.find((i) => i.flowType === 'adopted.shopify_erp_order_sync.netsuite')!;
 
 describe('onboarding: connect → discover → confirm → protect', () => {
   it('finds the existing integration, puts it under management with a verified baseline, and takes over new orders', async () => {
@@ -199,15 +205,15 @@ describe('onboarding: connect → discover → confirm → protect', () => {
 
     const found = await c.call<Status>('onboarding.discover');
     expect(found.status).toBe('confirm');
-    expect(found.discovery).toMatchObject({ outcome: 'found', checked: 6 });
-    expect(found.discovery!.candidates).toEqual([
+    expect(shopifyFlow(found).discovery).toMatchObject({ outcome: 'found', checked: 6 });
+    expect(shopifyFlow(found).discovery!.candidates).toEqual([
       expect.objectContaining({
         id: 'adopted.shopify_erp_order_sync',
         kind: 'adoptable',
         confidence: 'established',
       }),
     ]);
-    expect(found.discovery!.candidates[0]!.summary).toMatch(
+    expect(shopifyFlow(found).discovery!.candidates[0]!.summary).toMatch(
       /^6 of your last 6 Shopify orders are in NetSuite/,
     );
 
@@ -221,13 +227,13 @@ describe('onboarding: connect → discover → confirm → protect', () => {
     c.actions.push('confirm: maintain this integration');
     const confirmed = await c.call<Status>('onboarding.confirm', {
       candidateId: 'adopted.shopify_erp_order_sync',
-      responsibilitiesVersion: found.responsibilities.version,
+      responsibilitiesVersion: shopifyFlow(found).responsibilities.version,
     });
     expect(confirmed.status).toBe('activating');
     const [integ] = await h.dbh.db
       .select()
       .from(integrations)
-      .where(eq(integrations.id, confirmed.integrationId!));
+      .where(eq(integrations.id, shopifyFlow(confirmed).integrationId!));
     expect(integ).toMatchObject({
       lifecycle: 'setup',
       enabled: true,
@@ -236,15 +242,7 @@ describe('onboarding: connect → discover → confirm → protect', () => {
 
     // interrupted activation: one step, then a fresh driver resumes without repeating work
     const tenantId = integ!.tenantId;
-    const clients = await tenantClients(h.dbh.db, testCipher, h.endpoints, tenantId);
-    await advanceOnboarding({
-      db: h.dbh.db,
-      tenantId,
-      clients,
-      webhookBaseUrl: base,
-      enqueueReconciliation: async () => undefined,
-      retry: FAST_RETRY,
-    });
+    await activate(tenantId, 1);
     const states = await activate(tenantId);
     expect(states.pop()).toBe('done:managed');
     expect(shop.state.subscriptions).toEqual([
@@ -256,7 +254,7 @@ describe('onboarding: connect → discover → confirm → protect', () => {
 
     const managed = await c.call<Status>('onboarding.status');
     expect(managed.status).toBe('managed');
-    expect(managed.activation!.baseline).toMatchObject({
+    expect(shopifyFlow(managed).activation!.baseline).toMatchObject({
       checked: 6,
       accountedFor: 6,
       previouslyDelivered: 6,
@@ -337,10 +335,14 @@ describe('onboarding: connect → discover → confirm → protect', () => {
     await c.connectNetSuite();
     const d = await c.call<Status>('onboarding.discover');
     expect(d.status).toBe('select');
-    expect(d.discovery!.outcome).toBe('ambiguous');
-    expect(d.discovery!.candidates.map((x) => x.kind)).toEqual(['adoptable', 'unsupported', 'new']);
-    expect(d.discovery!.candidates[0]!.confidence).toBe('partial');
-    const unsupported = d.discovery!.candidates[1]!;
+    expect(shopifyFlow(d).discovery!.outcome).toBe('ambiguous');
+    expect(shopifyFlow(d).discovery!.candidates.map((x) => x.kind)).toEqual([
+      'adoptable',
+      'unsupported',
+      'new',
+    ]);
+    expect(shopifyFlow(d).discovery!.candidates[0]!.confidence).toBe('partial');
+    const unsupported = shopifyFlow(d).discovery!.candidates[1]!;
     await expect(
       c.call('onboarding.confirm', { candidateId: unsupported.id, responsibilitiesVersion: 'r1' }),
     ).rejects.toMatchObject({ code: 'CONFLICT' });
@@ -361,8 +363,9 @@ describe('onboarding: connect → discover → confirm → protect', () => {
     await c.connectShopify();
     await c.connectNetSuite();
     const d = await c.call<Status>('onboarding.discover');
-    expect(d).toMatchObject({ status: 'select', discovery: { outcome: 'not_found' } });
-    expect(d.discovery!.candidates.map((x) => x.id)).toEqual(['new.shopify_orders_netsuite']);
+    expect(d.status).toBe('select');
+    expect(shopifyFlow(d).discovery).toMatchObject({ outcome: 'not_found' });
+    expect(shopifyFlow(d).discovery!.candidates.map((x) => x.id)).toEqual(['new.shopify_orders_netsuite']);
     const conf = await c.call<Status>('onboarding.confirm', {
       candidateId: 'new.shopify_orders_netsuite',
       responsibilitiesVersion: 'r1',
@@ -370,10 +373,10 @@ describe('onboarding: connect → discover → confirm → protect', () => {
     const [integ] = await h.dbh.db
       .select()
       .from(integrations)
-      .where(eq(integrations.id, conf.integrationId!));
+      .where(eq(integrations.id, shopifyFlow(conf).integrationId!));
     expect((await activate(integ!.tenantId)).pop()).toBe('done:managed');
     // the 3 old orders are not treated as missing (the integration did not exist then)
-    expect((await c.call<Status>('onboarding.status')).activation!.baseline).toMatchObject({
+    expect(shopifyFlow(await c.call<Status>('onboarding.status')).activation!.baseline).toMatchObject({
       missing: 0,
       checked: 0,
     });
@@ -402,7 +405,7 @@ describe('onboarding: connect → discover → confirm → protect', () => {
     expect((await a.call<Status>('onboarding.discover')).status).toBe('confirm');
     const b = await customer('b@elsewhere.test');
     const bs = await b.call<Status>('onboarding.status');
-    expect(bs).toMatchObject({ status: 'connect', discovery: null, integrationId: null });
+    expect(bs).toMatchObject({ status: 'connect', integrations: [] });
     await expect(
       b.call('onboarding.confirm', {
         candidateId: 'adopted.shopify_erp_order_sync',

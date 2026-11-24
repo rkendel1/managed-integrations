@@ -95,9 +95,15 @@ importers:
       '@mi/integration-shopify-netsuite':
         specifier: workspace:*
         version: link:../../packages/integration-shopify-netsuite
+      '@mi/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       '@mi/maintenance':
         specifier: workspace:*
         version: link:../../packages/maintenance
+      '@mi/managed':
+        specifier: workspace:*
+        version: link:../../packages/managed
       '@mi/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -190,9 +196,15 @@ importers:
       '@mi/integration-shopify-netsuite':
         specifier: workspace:*
         version: link:../../packages/integration-shopify-netsuite
+      '@mi/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       '@mi/maintenance':
         specifier: workspace:*
         version: link:../../packages/maintenance
+      '@mi/managed':
+        specifier: workspace:*
+        version: link:../../packages/managed
       '@mi/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -209,6 +221,30 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
+  packages/adopted-ledgerly:
+    dependencies:
+      '@mi/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@mi/database':
+        specifier: workspace:*
+        version: link:../database
+      '@mi/integration-shopify-netsuite':
+        specifier: workspace:*
+        version: link:../integration-shopify-netsuite
+      '@mi/observability':
+        specifier: workspace:*
+        version: link:../observability
+      drizzle-orm:
+        specifier: ^0.45.4
+        version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
+      ledgerly:
+        specifier: github:jakethehoffer/ledgerly#3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090
+        version: git+https://git@github.com:jakethehoffer/ledgerly.git#3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090(stripe@16.12.0)
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+
   packages/adopted-order-sync:
     dependencies:
       '@mi/contracts':
@@ -220,6 +256,9 @@ importers:
       '@mi/integration-shopify-netsuite':
         specifier: workspace:*
         version: link:../integration-shopify-netsuite
+      '@mi/managed':
+        specifier: workspace:*
+        version: link:../managed
       '@mi/observability':
         specifier: workspace:*
         version: link:../observability
@@ -262,6 +301,12 @@ importers:
       '@mi/database':
         specifier: workspace:*
         version: link:../database
+      '@mi/integrations':
+        specifier: workspace:*
+        version: link:../integrations
+      '@mi/managed':
+        specifier: workspace:*
+        version: link:../managed
       drizzle-orm:
         specifier: ^0.45.4
         version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
@@ -319,6 +364,24 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
+  packages/integrations:
+    dependencies:
+      '@mi/adopted-order-sync':
+        specifier: workspace:*
+        version: link:../adopted-order-sync
+      '@mi/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@mi/database':
+        specifier: workspace:*
+        version: link:../database
+      '@mi/integration-shopify-netsuite':
+        specifier: workspace:*
+        version: link:../integration-shopify-netsuite
+      '@mi/managed':
+        specifier: workspace:*
+        version: link:../managed
+
   packages/maintenance:
     dependencies:
       '@anthropic-ai/sdk':
@@ -345,6 +408,27 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+
+  packages/managed:
+    dependencies:
+      '@mi/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@mi/database':
+        specifier: workspace:*
+        version: link:../database
+      '@mi/observability':
+        specifier: workspace:*
+        version: link:../observability
+      '@mi/reliability':
+        specifier: workspace:*
+        version: link:../reliability
+      drizzle-orm:
+        specifier: ^0.45.4
+        version: 0.45.4(@opentelemetry/api@1.10.0)(@types/pg@8.23.1)(pg@8.23.1)
       zod:
         specifier: ^4.6.7
         version: 4.6.7
@@ -1986,6 +2070,24 @@ packages:
   keyv@5.6.0:
     resolution: {integrity: sha512-CYDD3SOtsHtyXeEORYRx2qBtpDJFjRTGXUtmNEMGyzYOKj1TE3tycdlho7kA1Ufx9OYWZzg52QFBGALTirzDSw==}
 
+  ledgerly@git+https://git@github.com:jakethehoffer/ledgerly.git#3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090:
+    resolution: {commit: 3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090, repo: git@github.com:jakethehoffer/ledgerly.git, type: git}
+    version: 0.18.1
+    engines: {node: '>=22'}
+    hasBin: true
+    peerDependencies:
+      better-sqlite3: ^13.0.3
+      dotenv: ^17.4.2
+      express: ^4.22.2
+      stripe: ^16
+    peerDependenciesMeta:
+      better-sqlite3:
+        optional: true
+      dotenv:
+        optional: true
+      express:
+        optional: true
+
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
@@ -2469,6 +2571,10 @@ packages:
 
   std-env@4.3.0:
     resolution: {integrity: sha512-OtU/EgQ1kIm5KwqQpBC6ZEMXrZRui11w8zgfTWp8cdO9B8OaPsbA8bTHO2P+HNo1VlUTGMVBwPhydu6poeXiag==}
+
+  stripe@16.12.0:
+    resolution: {integrity: sha512-H7eFVLDxeTNNSn4JTRfL2//LzCbDrMSZ+2q1c7CanVWgK2qIW5TwS+0V7N9KcKZZNpYh/uCqK0PyZh/2UsaAtQ==}
+    engines: {node: '>=12.*'}
 
   tagged-tag@1.0.0:
     resolution: {integrity: sha512-yEFYrVhod+hdNyx7g5Bnkkb0G6si8HJurOoOEgC8B/O0uXLHlaey/65KRv6cuWBNhBgHKAROVpc7QyYqE5gFng==}
@@ -4062,6 +4168,10 @@ snapshots:
     dependencies:
       '@keyv/serialize': 1.1.1
 
+  ledgerly@git+https://git@github.com:jakethehoffer/ledgerly.git#3101182eadc9e3a94b6d9c2f5bb2d0dd299e4090(stripe@16.12.0):
+    dependencies:
+      stripe: 16.12.0
+
   levn@0.4.1:
     dependencies:
       prelude-ls: 1.2.1
@@ -4512,6 +4622,11 @@ snapshots:
   statuses@2.0.2: {}
 
   std-env@4.3.0: {}
+
+  stripe@16.12.0:
+    dependencies:
+      '@types/node': 22.20.5
+      qs: 6.17.1
 
   tagged-tag@1.0.0: {}
 

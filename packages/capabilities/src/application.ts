@@ -23,6 +23,8 @@ import {
   type EnqueueRecovery,
 } from './capabilities/reconciliation.ts';
 import { createIntegrationsListCapability } from './capabilities/integrations-list.ts';
+import { createMonitoringCapability } from './capabilities/monitoring.ts';
+import type { IntegrationRegistry } from '@mi/managed';
 import {
   createMaintenanceEventGetCapability,
   createMaintenanceEvidenceCapability,
@@ -66,6 +68,8 @@ export interface IntegrationsApplicationOptions {
   enqueueOnboardingActivation?: EnqueueOnboardingActivation;
   /** Queues validation of an adaptation in the worker (host-provided). */
   enqueueAdaptationValidation?: EnqueueAdaptationValidation;
+  /** The managed integrations and their runtimes, by flow type (host-provided; slice 6). */
+  registry?: IntegrationRegistry;
   /** How often the worker reconciles (stated to customers as a responsibility). */
   reconcileIntervalMinutes?: number;
   /** Receives one record per capability invocation (persisted as invocation evidence). */
@@ -90,15 +94,16 @@ export function createIntegrationsApplication(options: IntegrationsApplicationOp
       createPortfolioIntegrationCapability(options.db, options.reconcileIntervalMinutes ?? null),
       createMaintenanceEventGetCapability(options.db),
       createMaintenanceEvidenceCapability(options.db),
-      createOnboardingStatusCapability(options.db),
-      createOnboardingDiscoverCapability(options.db, options.runOnboardingDiscovery),
-      createOnboardingConfirmCapability(options.db, options.enqueueOnboardingActivation),
-      createAdaptationsInspectCapability(options.db),
-      createAdaptationProposeCapability(options.db, options.enqueueAdaptationValidation),
+      createOnboardingStatusCapability(options.db, options.registry),
+      createOnboardingDiscoverCapability(options.db, options.registry, options.runOnboardingDiscovery),
+      createOnboardingConfirmCapability(options.db, options.registry, options.enqueueOnboardingActivation),
+      createAdaptationsInspectCapability(options.registry),
+      createAdaptationProposeCapability(options.registry, options.enqueueAdaptationValidation),
       createAdaptationValidateCapability(options.db, options.enqueueAdaptationValidation),
-      createAdaptationActivateCapability(options.db),
-      createAdaptationRollbackCapability(options.db),
-      createAdaptationRejectCapability(options.db),
+      createAdaptationActivateCapability(options.registry),
+      createAdaptationRollbackCapability(options.registry),
+      createAdaptationRejectCapability(options.registry),
+      createMonitoringCapability(options.db),
     ],
     authorizer: combineAuthorizers([integrationsAuthorizer(), resourceTenantAuthorizer(options.db)]),
     ...(options.telemetry ? { telemetry: options.telemetry } : {}),
