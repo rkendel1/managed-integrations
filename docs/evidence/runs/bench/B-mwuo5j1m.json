@@ -1,0 +1,50 @@
+{
+  "system": "B",
+  "at": "2026-11-24T12:27:10.776Z",
+  "config": {
+    "sequential": 100,
+    "burst": 200,
+    "concurrency": 20
+  },
+  "sequential": {
+    "ackMs": {
+      "n": 100,
+      "p50": 7.5,
+      "p95": 10.2,
+      "p99": 11.8,
+      "max": 12.9
+    },
+    "endToEndMs": {
+      "n": 100,
+      "p50": 243.9,
+      "p95": 260.5,
+      "p99": 264.3,
+      "max": 264.5
+    }
+  },
+  "burst": {
+    "ackMs": {
+      "n": 200,
+      "p50": 123,
+      "p95": 369.8,
+      "p99": 1430.4,
+      "max": 1810.1
+    },
+    "endToEndMs": {
+      "n": 200,
+      "p50": 2050.9,
+      "p95": 2332.5,
+      "p99": 3419.8,
+      "max": 3759.4
+    },
+    "delivered": 200,
+    "acceptSeconds": 1.835,
+    "drainSeconds": 3.771,
+    "throughputOrdersPerSecond": 53
+  },
+  "resources": {
+    "cpuSeconds": 5.25,
+    "memoryMiBBefore": 169,
+    "memoryMiBAfter": 207
+  }
+}

@@ -1,0 +1,230 @@
+{
+  "at": "2026-11-24T12:30:16.077Z",
+  "commit": "539ed67",
+  "A": {
+    "totals": {
+      "excluded": 64905,
+      "D": 957,
+      "tests": 15568,
+      "B": 24248,
+      "C": 1559,
+      "third-party": 2967,
+      "generated": 28111,
+      "S1-only": 2609,
+      "analysis": 1535
+    },
+    "byRule": {
+      "excluded · documentation": {
+        "cat": "excluded",
+        "files": 68,
+        "loc": 5440
+      },
+      "excluded · not code": {
+        "cat": "excluded",
+        "files": 53,
+        "loc": 35569
+      },
+      "excluded · experiment harness": {
+        "cat": "excluded",
+        "files": 2,
+        "loc": 269
+      },
+      "excluded · System B": {
+        "cat": "excluded",
+        "files": 153,
+        "loc": 23627
+      },
+      "D · build, deploy, operations": {
+        "cat": "D",
+        "files": 10,
+        "loc": 389
+      },
+      "D · tool configuration": {
+        "cat": "D",
+        "files": 3,
+        "loc": 17
+      },
+      "excluded · package store": {
+        "cat": "excluded",
+        "files": 3,
+        "loc": 0
+      },
+      "D · build and tool configuration": {
+        "cat": "D",
+        "files": 8,
+        "loc": 204
+      },
+      "tests · tests, simulators, demos": {
+        "cat": "tests",
+        "files": 108,
+        "loc": 14904
+      },
+      "B · product routes": {
+        "cat": "B",
+        "files": 4,
+        "loc": 1213
+      },
+      "C · HTTP server, sessions/CSRF/rate limits, queue and AppPort host wiring": {
+        "cat": "C",
+        "files": 6,
+        "loc": 573
+      },
+      "B · product UI": {
+        "cat": "B",
+        "files": 17,
+        "loc": 3711
+      },
+      "C · queue workers and schedules (wiring)": {
+        "cat": "C",
+        "files": 4,
+        "loc": 647
+      },
+      "B · product: managed-integration logic, adopted-code hosting, providers": {
+        "cat": "B",
+        "files": 121,
+        "loc": 18758
+      },
+      "third-party · vendored or installed code": {
+        "cat": "third-party",
+        "files": 44,
+        "loc": 2967
+      },
+      "C · database client and migrations plumbing": {
+        "cat": "C",
+        "files": 5,
+        "loc": 67
+      },
+      "generated · drizzle-kit migrations and snapshots (FeltKit derives schema changes itself)": {
+        "cat": "generated",
+        "files": 19,
+        "loc": 28111
+      },
+      "B · data model": {
+        "cat": "B",
+        "files": 1,
+        "loc": 566
+      },
+      "C · credential encryption keyring, configuration": {
+        "cat": "C",
+        "files": 2,
+        "loc": 162
+      },
+      "S1-only · native polling engine (S1)": {
+        "cat": "S1-only",
+        "files": 1,
+        "loc": 836
+      },
+      "S1-only · agent repair, sandbox validation and releases of the native flow (S1)": {
+        "cat": "S1-only",
+        "files": 11,
+        "loc": 1773
+      },
+      "C · logging and telemetry plumbing": {
+        "cat": "C",
+        "files": 2,
+        "loc": 110
+      },
+      "analysis · slice-8 contract analysis tooling (not a runtime feature; not in B)": {
+        "cat": "analysis",
+        "files": 16,
+        "loc": 1535
+      },
+      "D · seeding the deployment": {
+        "cat": "D",
+        "files": 1,
+        "loc": 347
+      },
+      "tests · test support": {
+        "cat": "tests",
+        "files": 5,
+        "loc": 664
+      }
+    },
+    "unmatched": []
+  },
+  "B": {
+    "totals": {
+      "tests": 756,
+      "D": 190,
+      "B": 3711,
+      "excluded": 5918,
+      "generated": 257,
+      "C": 266,
+      "E": 70,
+      "third-party": 12459
+    },
+    "byRule": {
+      "tests · scenario drivers and browser journeys": {
+        "cat": "tests",
+        "files": 10,
+        "loc": 756
+      },
+      "D · build and tool configuration": {
+        "cat": "D",
+        "files": 7,
+        "loc": 151
+      },
+      "B · product UI": {
+        "cat": "B",
+        "files": 7,
+        "loc": 482
+      },
+      "excluded · not code": {
+        "cat": "excluded",
+        "files": 5,
+        "loc": 5914
+      },
+      "generated · written by tools (checked)": {
+        "cat": "generated",
+        "files": 2,
+        "loc": 257
+      },
+      "B · domain functions and data model": {
+        "cat": "B",
+        "files": 11,
+        "loc": 1608
+      },
+      "excluded · static assets": {
+        "cat": "excluded",
+        "files": 1,
+        "loc": 4
+      },
+      "B · integration runtime: providers, adopted-code execution and hosting, maintenance work": {
+        "cat": "B",
+        "files": 13,
+        "loc": 1621
+      },
+      "C · component plumbing: routes, tickets, work loop (provider-signed webhooks there: F5)": {
+        "cat": "C",
+        "files": 1,
+        "loc": 266
+      },
+      "E · per-workspace secret custody (FINDINGS F4)": {
+        "cat": "E",
+        "files": 1,
+        "loc": 35
+      },
+      "D · type declarations": {
+        "cat": "D",
+        "files": 1,
+        "loc": 12
+      },
+      "E · ship build-time artifacts because a deployment carries only the build (F10)": {
+        "cat": "E",
+        "files": 1,
+        "loc": 35
+      },
+      "D · reset for scenario runs": {
+        "cat": "D",
+        "files": 1,
+        "loc": 27
+      },
+      "third-party · vendored adopted applications": {
+        "cat": "third-party",
+        "files": 92,
+        "loc": 12459
+      }
+    },
+    "unmatched": []
+  }
+}

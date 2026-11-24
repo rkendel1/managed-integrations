@@ -82,7 +82,8 @@ async function view(ctx: any, kind: Kind) {
   const conns = await ctx.db.find(connections, {});
   const missing = KINDS[kind].providers.filter((p) => !conns.some((c: any) => c.provider === p && c.status === "verified"));
   const [integ] = await ctx.db.find(integrations, { kind });
-  const status = o?.status ?? "connect";
+  // An integration already under management (however it was adopted) is never offered set-up again.
+  const status = o?.status ?? (integ ? "managed" : "connect");
   const next =
     status === "connect" ? (missing.length ? `Connect ${missing.join(" and ")}` : "Find your integration")
     : status === "discovering" ? "Looking for your integration"
