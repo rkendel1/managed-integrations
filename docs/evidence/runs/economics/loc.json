@@ -1,10 +1,10 @@
 {
-  "at": "2026-11-24T12:30:16.077Z",
-  "commit": "539ed67",
+  "at": "2026-11-24T12:54:28.692Z",
+  "commit": "b999566",
   "A": {
     "totals": {
-      "excluded": 64905,
       "D": 957,
+      "excluded": 66467,
       "tests": 15568,
       "B": 24248,
       "C": 1559,
@@ -14,26 +14,6 @@
       "analysis": 1535
     },
     "byRule": {
-      "excluded · documentation": {
-        "cat": "excluded",
-        "files": 68,
-        "loc": 5440
-      },
-      "excluded · not code": {
-        "cat": "excluded",
-        "files": 53,
-        "loc": 35569
-      },
-      "excluded · experiment harness": {
-        "cat": "excluded",
-        "files": 2,
-        "loc": 269
-      },
-      "excluded · System B": {
-        "cat": "excluded",
-        "files": 153,
-        "loc": 23627
-      },
       "D · build, deploy, operations": {
         "cat": "D",
         "files": 10,
@@ -48,6 +28,11 @@
         "cat": "excluded",
         "files": 3,
         "loc": 0
+      },
+      "excluded · not code": {
+        "cat": "excluded",
+        "files": 53,
+        "loc": 35573
       },
       "D · build and tool configuration": {
         "cat": "D",
@@ -78,6 +63,16 @@
         "cat": "C",
         "files": 4,
         "loc": 647
+      },
+      "excluded · documentation": {
+        "cat": "excluded",
+        "files": 72,
+        "loc": 5700
+      },
+      "excluded · experiment harness": {
+        "cat": "excluded",
+        "files": 2,
+        "loc": 271
       },
       "B · product: managed-integration logic, adopted-code hosting, providers": {
         "cat": "B",
@@ -134,6 +129,11 @@
         "files": 1,
         "loc": 347
       },
+      "excluded · System B": {
+        "cat": "excluded",
+        "files": 162,
+        "loc": 24923
+      },
       "tests · test support": {
         "cat": "tests",
         "files": 5,
@@ -144,45 +144,50 @@
   },
   "B": {
     "totals": {
-      "tests": 756,
-      "D": 190,
-      "B": 3711,
-      "excluded": 5918,
-      "generated": 257,
-      "C": 266,
+      "D": 266,
+      "excluded": 6614,
+      "B": 4151,
+      "tests": 837,
+      "generated": 258,
+      "C": 268,
       "E": 70,
       "third-party": 12459
     },
     "byRule": {
-      "tests · scenario drivers and browser journeys": {
-        "cat": "tests",
-        "files": 10,
-        "loc": 756
-      },
       "D · build and tool configuration": {
         "cat": "D",
-        "files": 7,
-        "loc": 151
-      },
-      "B · product UI": {
-        "cat": "B",
-        "files": 7,
-        "loc": 482
+        "files": 8,
+        "loc": 203
       },
       "excluded · not code": {
         "cat": "excluded",
-        "files": 5,
-        "loc": 5914
+        "files": 7,
+        "loc": 6610
+      },
+      "B · repair proposer (EVE agent definition, instructions, channel)": {
+        "cat": "B",
+        "files": 2,
+        "loc": 13
+      },
+      "D · the EVE agent's package": {
+        "cat": "D",
+        "files": 1,
+        "loc": 15
+      },
+      "tests · scenario drivers and browser journeys": {
+        "cat": "tests",
+        "files": 11,
+        "loc": 837
       },
       "generated · written by tools (checked)": {
         "cat": "generated",
         "files": 2,
-        "loc": 257
+        "loc": 258
       },
       "B · domain functions and data model": {
         "cat": "B",
-        "files": 11,
-        "loc": 1608
+        "files": 12,
+        "loc": 1764
       },
       "excluded · static assets": {
         "cat": "excluded",
@@ -191,13 +196,13 @@
       },
       "B · integration runtime: providers, adopted-code execution and hosting, maintenance work": {
         "cat": "B",
-        "files": 13,
-        "loc": 1621
+        "files": 14,
+        "loc": 1892
       },
       "C · component plumbing: routes, tickets, work loop (provider-signed webhooks there: F5)": {
         "cat": "C",
         "files": 1,
-        "loc": 266
+        "loc": 268
       },
       "E · per-workspace secret custody (FINDINGS F4)": {
         "cat": "E",
@@ -217,7 +222,12 @@
       "D · reset for scenario runs": {
         "cat": "D",
         "files": 1,
-        "loc": 27
+        "loc": 36
+      },
+      "B · product UI": {
+        "cat": "B",
+        "files": 7,
+        "loc": 482
       },
       "third-party · vendored adopted applications": {
         "cat": "third-party",
