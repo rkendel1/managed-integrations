@@ -19,6 +19,7 @@ import { exchangeToken, verifyCallbackHmac, subscribeOrdersCreate, type ShopifyC
 import { accessToken, AuthorizationLost, forgetToken, newKeyPair, type NetSuiteCredential } from "./netsuite.ts";
 import { ADAPTERS, UPSTREAM, contractViolations, execute, type Payload } from "./order-sync.ts";
 import { handlers as maintenanceHandlers } from "./maintain.ts";
+import { handlers as reconcileHandlers } from "./reconcile.ts";
 
 const SHOPIFY_CLIENT_ID = process.env.SHOPIFY_CLIENT_ID ?? "fixture-shopify-client-id";
 const PUBLIC_URL = (process.env.MI_PUBLIC_URL ?? "http://127.0.0.1:3100").replace(/\/$/, "");
@@ -235,6 +236,7 @@ export default defineComponent(async (ctx) => {
       return { outcome: "done", receipt: { subscription: id } };
     },
     ...maintenanceHandlers(() => rt),
+    ...reconcileHandlers(() => rt),
   };
 
   let stopped = false;

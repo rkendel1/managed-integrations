@@ -98,3 +98,38 @@ export async function connectNetSuite(c: FeltKitClient, api: any) {
   await c.mutation(api.connections.verify, { provider: "netsuite" });
   await wait("NetSuite verified", async () => (await c.query(api.connections.list)).find((x: any) => x.provider === "netsuite" && x.status === "verified"));
 }
+
+/** A company with the Shopify → NetSuite order sync under management and its webhook subscribed. */
+export async function adoptedCompany(api: any, name: string, shopUrl: string) {
+  const run = Date.now().toString(36);
+  await json(`${FX.netsuite}/__fixture/config`, { method: "POST", body: { oneWorld: false } });
+  const co = await company(name, `ops-${run}@${name.toLowerCase()}.test`);
+  await connectShopify(co.c, api, shopUrl);
+  await connectNetSuite(co.c, api);
+  const integrationId: string = await co.c.mutation(api.integrations.adoptOrderSync, { defaultCustomer: "WEB" });
+  await wait("orders/create subscription", async () => {
+    const st = await json(`${shopUrl}/__fixture/state`);
+    return st.body.subscriptions.some((x: { callbackUrl: string }) => x.callbackUrl.includes(integrationId));
+  });
+  return { ...co, integrationId, run };
+}
+
+export const netsuiteRecords = async (legacyId: string) =>
+  ((await json(`${FX.netsuite}/__fixture/state`)).body.salesOrders as { externalId: string | null; id: string; item: { items: { rate: number }[] } }[]).filter(
+    (r) => r.externalId === `shopify-${legacyId}`,
+  );
+
+/**
+ * A member of the provider's staff, invited into the company's workspace as `operator` and accepting it.
+ * Development: staff are FeltKit dev identities (which may accept invitations in development). Production
+ * requires an account whose verified address is the invited one (FeltKit refuses otherwise).
+ */
+export async function staff(owner: FeltKitClient, workspace: string, devId = "staff-1") {
+  const { link } = await owner.invite({ email: `${devId}@staff.mi.test`, role: "operator", send: false });
+  const token = new URLSearchParams(new URL(link, B).hash.slice(1)).get("feltkit-invitation") ?? "";
+  const s = client();
+  await s.signInAsDevUser(devId);
+  await s.acceptInvitation(token);
+  await s.switchTenant(workspace);
+  return s;
+}

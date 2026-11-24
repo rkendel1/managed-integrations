@@ -23,7 +23,12 @@ export const app = feltkit({
     tenant: { name: "company", roles: ["owner", "operator", "runtime"], create: "anyone" },
   },
   dev: {
-    users: [{ id: "platform-admin", name: "Platform admin", roles: ["admin"] }],
+    users: [
+      { id: "platform-admin", name: "Platform admin", roles: ["admin"] },
+      // Provider staff in development; in production staff are accounts with a verified address.
+      { id: "staff-1", name: "Operator One", roles: ["person"] },
+      { id: "staff-2", name: "Operator Two", roles: ["person"] },
+    ],
   },
   services: {
     configuration: true,
@@ -160,6 +165,9 @@ export const events = app.collection(
     boundary: s.enum(["source", "target", "provider", "integration", "combined"]),
     status: s.enum(["detected", "investigating", "requires_action", "recovery", "verification", "resolved"]),
     dedupeKey: s.string(),
+    /** Where the maintenance driver is (investigate, correct, validate, activate, recover, verify, account). */
+    phase: s.optional(s.string()),
+    reconRunId: s.optional(s.string()),
     finding: s.optional(s.record(s.unknown())),
     accounting: s.optional(s.object({ affected: s.integer(), delivered: s.integer(), unresolved: s.integer(), duplicates: s.integer() })),
     timeline: s.array(s.object({ at, status: s.string(), text: s.string(), customerVisible: s.boolean() })),

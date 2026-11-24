@@ -1,26 +1,26 @@
 {
   "scenario": "adopted",
   "system": "B",
-  "startedAt": "2026-11-24T11:19:49.641Z",
-  "ms": 1662,
+  "startedAt": "2026-11-24T11:28:44.544Z",
+  "ms": 1777,
   "steps": [
     {
       "n": "1",
-      "text": "Company tnt_be01ca353547334f53e6b166 connected: shopify=verified, netsuite=verified",
-      "ms": 407
+      "text": "Company tnt_45d5546806776c24efd3b9c8 connected: shopify=verified, netsuite=verified",
+      "ms": 696
     },
     {
       "n": "2",
       "text": "Adopted implementation attached: github.com/Milo-ai-HQ/shopify-erp-order-sync @ d01b51d95993; webhook subscribed",
-      "ms": 727
+      "ms": 1016
     },
     {
       "n": "3",
       "text": "Signed orders/create → upstream code created NetSuite sales order 9001",
-      "ms": 1067,
+      "ms": 1202,
       "data": [
         {
-          "at": 1795519190590,
+          "at": 1795519725718,
           "outcome": "delivered",
           "by": "runtime (github.com/Milo-ai-HQ/shopify-erp-order-sync @ d01b51d95993)",
           "detail": "upstream: created"
@@ -30,32 +30,32 @@
     {
       "n": "4",
       "text": "Independent check: the simulator holds the record (read without credentials → 401; state below)",
-      "ms": 1069
+      "ms": 1204
     },
     {
       "n": "5",
       "text": "Failure represented accurately: rejected — \"Items not found in NetSuite: SKU-PURPLE\"",
-      "ms": 1254
+      "ms": 1529
     },
     {
       "n": "6",
       "text": "Another company is refused: NOT_FOUND: No such delivery.",
-      "ms": 1325
+      "ms": 1600
     },
     {
       "n": "7",
       "text": "Simulator stand-in for the customer's fix: item SKU-PURPLE now exists in NetSuite",
-      "ms": 1326
+      "ms": 1602
     },
     {
       "n": "8",
       "text": "Retry → {\"status\":\"queued\",\"previousStatus\":\"rejected\"}; duplicate → refused (CONFLICT)",
-      "ms": 1336
+      "ms": 1613
     },
     {
       "n": "9",
       "text": "Recovered: NetSuite sales order 9002",
-      "ms": 1660,
+      "ms": 1776,
       "data": [
         {
           "outcome": "rejected",
@@ -63,7 +63,7 @@
         },
         {
           "outcome": "retry_requested",
-          "by": "acct_2c2620df8edfb4fa2754b1f4f17ee631"
+          "by": "acct_c6414513e29adefea813fb0fd4ad6877"
         },
         {
           "outcome": "delivered",
@@ -74,7 +74,7 @@
     {
       "n": "10",
       "text": "Exactly one NetSuite record per order",
-      "ms": 1662
+      "ms": 1777
     }
   ]
 }

@@ -5,7 +5,7 @@
  */
 import { fail, s } from "@feltdb/feltkit";
 import type { MutationCtx } from "@feltdb/feltkit";
-import { app, corrections, deliveries, events, integrations } from "./app.js";
+import { app, corrections, deliveries, events, integrations, receipts, reconItems, reconRuns } from "./app.js";
 
 type Boundary = "source" | "target" | "provider" | "integration" | "combined";
 
@@ -31,7 +31,7 @@ export async function openOrJoinEvent(
     openedAt: now,
   });
   await ctx.db.patch(integrations, e.integrationId, { status: "maintaining" });
-  ctx.afterCommit.work("runtime", "maintain", { eventId: id }, { maxAttempts: 10 });
+  ctx.afterCommit.work("runtime", "maintain", { eventId: id }, { maxAttempts: 100 });
   return id;
 }
 
@@ -93,4 +93,210 @@ export const list = app.query({
   args: { integrationId: s.optional(s.string()) },
   handler: async (ctx, { integrationId }) =>
     (await ctx.db.find(events, integrationId ? { integrationId } : {})).map((e) => ({ id: e.id, integrationId: e.integrationId, kind: e.kind, boundary: e.boundary, status: e.status, openedAt: e.openedAt, resolvedAt: e.resolvedAt ?? null })),
+});
+
+/* ------------------------------------------- runtime driver ------------------------------------------- */
+
+const note = (text: string, customerVisible = false, status = "investigating") => ({ at: Date.now(), status, text, customerVisible });
+
+/** Everything the driver needs about one event: the event, its corrections, and the work it holds. */
+export const eventContext = app.query({
+  access: "mi.runtime",
+  args: { eventId: s.string() },
+  handler: async (ctx, { eventId }) => {
+    const e = await ctx.db.get(events, eventId);
+    if (!e) fail("NOT_FOUND", "No such event.");
+    const fixes = (await ctx.db.find(corrections, { integrationId: e.integrationId })).filter((c) => c.eventId === eventId);
+    const all = await ctx.db.find(deliveries, { integrationId: e.integrationId });
+    const affected = all.filter((d) => d.heldBy === eventId);
+    const sealed = [];
+    for (const d of affected) {
+      const r = await ctx.db.get(receipts, d.receiptId);
+      if (r) sealed.push({ deliveryId: d.id, sourceId: d.sourceId, sealed: r.sealed, apiVersion: r.apiVersion ?? null });
+    }
+    return {
+      event: { id: e.id, integrationId: e.integrationId, status: e.status, phase: e.phase ?? "investigate", finding: e.finding ?? {}, openedAt: e.openedAt, reconRunId: e.reconRunId ?? null },
+      corrections: fixes.map((c) => ({ id: c.id, kind: c.kind, status: c.status, spec: c.spec, validation: c.validation ?? null })),
+      affected: affected.map((d) => ({ id: d.id, sourceId: d.sourceId, reference: d.reference, status: d.status, destinationRef: d.destinationRef ?? null })),
+      receipts: sealed,
+    };
+  },
+});
+
+export const recordInvestigation = app.mutation({
+  access: "mi.runtime",
+  args: { eventId: s.string(), location: s.array(s.string()), summary: s.string() },
+  handler: async (ctx, { eventId, location, summary }) => {
+    const e = await ctx.db.get(events, eventId);
+    if (!e) fail("NOT_FOUND", "No such event.");
+    await ctx.db.patch(events, eventId, {
+      status: "investigating",
+      phase: "correct",
+      finding: { ...(e.finding ?? {}), location, summary },
+      timeline: [...e.timeline, note(`Investigated: ${summary} (adopted code reads it at ${location.join(", ")})`)],
+    });
+  },
+});
+
+export const proposeCorrection = app.mutation({
+  access: "mi.runtime",
+  args: { eventId: s.string(), kind: s.enum(["adapter", "patch", "configuration", "unsupported"]), scopeKey: s.string(), spec: s.record(s.unknown()), reason: s.string() },
+  returns: s.string(),
+  handler: async (ctx, a) => {
+    const e = await ctx.db.get(events, a.eventId);
+    if (!e) fail("NOT_FOUND", "No such event.");
+    const now = Date.now();
+    const status = a.kind === "unsupported" ? "unsupported" : "proposed";
+    const id = await ctx.db.insert(corrections, {
+      integrationId: e.integrationId, eventId: a.eventId, kind: a.kind, status, scopeKey: a.scopeKey, spec: a.spec,
+      history: [{ at: now, from: "none", to: status, by: "runtime", note: a.reason }], createdAt: now,
+    });
+    await ctx.db.patch(events, a.eventId, {
+      phase: a.kind === "unsupported" ? "requires_action" : "validate",
+      ...(a.kind === "unsupported" ? { status: "requires_action" } : {}),
+      timeline: [...e.timeline, note(`Correction ${id} proposed (${a.kind}): ${a.reason}`, false, a.kind === "unsupported" ? "requires_action" : "investigating")],
+    });
+    return id;
+  },
+});
+
+export const recordValidation = app.mutation({
+  access: "mi.runtime",
+  args: { correctionId: s.string(), checks: s.array(s.object({ name: s.string(), result: s.enum(["passed", "failed", "not_applicable"]), detail: s.string() })) },
+  handler: async (ctx, { correctionId, checks }) => {
+    const c = await ctx.db.get(corrections, correctionId);
+    if (!c || (c.status !== "proposed" && c.status !== "validating")) fail("FAILED_PRECONDITION", "Correction is not awaiting validation.");
+    const passed = checks.every((x) => x.result === "passed");
+    const failed = checks.some((x) => x.result === "failed");
+    const to = failed ? "rejected" : "validated";
+    await ctx.db.patch(corrections, c.id, {
+      status: to,
+      validation: { passed, checks },
+      history: [...c.history, { at: Date.now(), from: c.status, to, by: "runtime", note: `${checks.filter((x) => x.result === "passed").length}/${checks.length} checks passed` }],
+    });
+    if (c.eventId) {
+      const e = await ctx.db.get(events, c.eventId);
+      if (e)
+        await ctx.db.patch(events, e.id, {
+          phase: failed ? "requires_action" : passed ? "activate" : "requires_action",
+          ...(failed || !passed ? { status: "requires_action" } : {}),
+          timeline: [...e.timeline, note(`Validation of ${c.id}: ${failed ? "failed" : passed ? "passed" : "needs a decision"} — ${checks.map((x) => `${x.name}: ${x.result}`).join("; ")}`)],
+        });
+    }
+  },
+});
+
+/**
+ * Activate a validated correction: one active correction per scope; held work for its event is released.
+ * Used by the runtime (an adapter that passed validation) and by operators (adaptations.activate).
+ */
+export async function activateCorrection(ctx: MutationCtx, correctionId: string, by: string) {
+  const c = await ctx.db.get(corrections, correctionId);
+  if (!c) fail("NOT_FOUND", "No such correction.");
+  if (c.status !== "validated" || !c.validation?.passed) fail("FAILED_PRECONDITION", "Only a correction that passed validation can be activated.");
+  const clash = (await ctx.db.find(corrections, { integrationId: c.integrationId, status: "active" })).find((x) => x.scopeKey === c.scopeKey);
+  if (clash) fail("CONFLICT", `Correction ${clash.id} is already active for this scope.`);
+  const now = Date.now();
+  await ctx.db.patch(corrections, c.id, { status: "active", history: [...c.history, { at: now, from: c.status, to: "active", by }] });
+  if (c.eventId) {
+    const e = await ctx.db.get(events, c.eventId);
+    if (e) {
+      let released = 0;
+      for (const d of await ctx.db.find(deliveries, { integrationId: c.integrationId, status: "held" })) {
+        if (d.heldBy !== e.id) continue;
+        await ctx.db.patch(deliveries, d.id, { status: "queued", updatedAt: now });
+        ctx.afterCommit.work("runtime", "deliver", { deliveryId: d.id }, { maxAttempts: 5 });
+        released++;
+      }
+      await ctx.db.patch(events, e.id, {
+        status: "recovery",
+        phase: "recover",
+        timeline: [
+          ...e.timeline,
+          note(`Correction ${c.id} activated by ${by}; ${released} held order(s) released`, false, "recovery"),
+          note("We adapted your integration to the change. Orders that were held are being delivered now.", true, "recovery"),
+        ],
+      });
+    }
+  }
+}
+
+export const activateValidated = app.mutation({
+  access: "mi.runtime",
+  args: { correctionId: s.string() },
+  handler: async (ctx, { correctionId }) => activateCorrection(ctx, correctionId, "runtime (adapter auto-activation)"),
+});
+
+/** Start the recovery reconciliation for the event's window (as the runtime, for maintenance). */
+export const startRecovery = app.mutation({
+  access: "mi.runtime",
+  args: { eventId: s.string() },
+  handler: async (ctx, { eventId }) => {
+    const e = await ctx.db.get(events, eventId);
+    if (!e) fail("NOT_FOUND", "No such event.");
+    const runId = await ctx.db.insert(reconRuns, {
+      integrationId: e.integrationId, status: "running", counts: {}, requestedBy: "runtime (maintenance)", startedAt: Date.now(),
+      window: { from: new Date(e.openedAt - 3600_000).toISOString(), to: new Date(Date.now() + 60_000).toISOString() },
+    });
+    ctx.afterCommit.work("runtime", "reconcile", { runId }, { maxAttempts: 5 });
+    await ctx.db.patch(events, eventId, { phase: "await_recover", reconRunId: runId, timeline: [...e.timeline, note(`Reconciliation ${runId} started for the event window`, false, "recovery")] });
+  },
+});
+
+/** Recover every order the recovery run found missing (maintenance-owned, so no person is asked). */
+export const recoverMissing = app.mutation({
+  access: "mi.runtime",
+  args: { eventId: s.string() },
+  returns: s.integer(),
+  handler: async (ctx, { eventId }) => {
+    const e = await ctx.db.get(events, eventId);
+    if (!e?.reconRunId) fail("FAILED_PRECONDITION", "No recovery run.");
+    let n = 0;
+    for (const item of await ctx.db.find(reconItems, { runId: e.reconRunId, classification: "missing_delivery" })) {
+      if (item.recovery !== "none") continue;
+      await ctx.db.patch(reconItems, item.id, { recovery: "requested" });
+      ctx.afterCommit.work("runtime", "recover", { itemId: item.id }, { maxAttempts: 5 });
+      n++;
+    }
+    await ctx.db.patch(events, eventId, { phase: "verify", timeline: [...e.timeline, note(`${n} lost order(s) found and sent for recovery`, false, "recovery")] });
+    return n;
+  },
+});
+
+export const recoveryItems = app.query({
+  access: "mi.runtime",
+  args: { eventId: s.string() },
+  handler: async (ctx, { eventId }) => {
+    const e = await ctx.db.get(events, eventId);
+    if (!e?.reconRunId) return { run: null, items: [] };
+    const run = await ctx.db.get(reconRuns, e.reconRunId);
+    const items = await ctx.db.find(reconItems, { runId: e.reconRunId });
+    return { run: run ? { status: run.status } : null, items: items.map((i) => ({ id: i.id, sourceId: i.sourceId, classification: i.classification, recovery: i.recovery, deliveryId: i.deliveryId ?? null, verifiedAt: i.verifiedAt ?? null })) };
+  },
+});
+
+/** Close the event with its accounting; resolved only when nothing is unresolved or duplicated. */
+export const recordAccounting = app.mutation({
+  access: "mi.runtime",
+  args: { eventId: s.string(), affected: s.integer(), delivered: s.integer(), unresolved: s.integer(), duplicates: s.integer(), checks: s.array(s.string()) },
+  handler: async (ctx, a) => {
+    const e = await ctx.db.get(events, a.eventId);
+    if (!e) fail("NOT_FOUND", "No such event.");
+    const ok = a.unresolved === 0 && a.duplicates === 0;
+    const now = Date.now();
+    await ctx.db.patch(events, e.id, {
+      accounting: { affected: a.affected, delivered: a.delivered, unresolved: a.unresolved, duplicates: a.duplicates },
+      status: ok ? "resolved" : "requires_action",
+      phase: ok ? "done" : "requires_action",
+      ...(ok ? { resolvedAt: now } : {}),
+      timeline: [
+        ...e.timeline,
+        note(`Verification: ${a.checks.join("; ")}`, false, "verification"),
+        ok
+          ? note(`Completed: all ${a.affected} affected order(s) are in NetSuite exactly once with Shopify's prices. Nothing was lost and nothing is needed from you.`, true, "resolved")
+          : note(`${a.unresolved} order(s) still need attention; our team has it.`, true, "requires_action"),
+      ],
+    });
+    if (ok) await ctx.db.patch(integrations, e.integrationId, { status: "verified" });
+  },
 });

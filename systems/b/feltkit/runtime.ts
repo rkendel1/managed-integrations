@@ -3,7 +3,7 @@
  * runs in the workspace the component names, so FeltKit scopes every read and write to that customer.
  */
 import { fail, s } from "@feltdb/feltkit";
-import { app, connections, corrections, deliveries, integrations, receipts, tickets } from "./app.js";
+import { app, connections, corrections, deliveries, integrations, receipts, reconItems, tickets } from "./app.js";
 import { openOrJoinEvent } from "./maintenance.js";
 
 const MAX_AUTOMATIC = 5;
@@ -179,10 +179,15 @@ export const recordAttempt = app.mutation({
       automaticAttempts,
       ...(a.destinationRef ? { destinationRef: a.destinationRef } : {}),
       lastError: a.outcome === "delivered" ? undefined : a.detail,
-      heldBy: a.outcome === "held" ? heldBy : undefined,
+      // The event that held it stays recorded after delivery: its accounting depends on it.
+      heldBy: heldBy ?? d.heldBy,
       attempts: [...d.attempts, { at: now, outcome: a.outcome, by: a.by, ...(a.detail ? { detail: a.detail } : {}), ...(a.correction ? { correction: a.correction } : {}) }],
       updatedAt: now,
     });
+    // A delivery that recovers a reconciliation item is verified in the target, separately.
+    if (a.outcome === "delivered")
+      for (const item of await ctx.db.find(reconItems, { deliveryId: d.id }))
+        if (item.recovery === "requested") ctx.afterCommit.work("runtime", "verify-recovery", { itemId: item.id }, { maxAttempts: 5 });
     return { status: a.outcome, automaticAttempts, retry };
   },
 });

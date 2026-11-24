@@ -260,7 +260,10 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
       callbackUrl: string;
       status: number | null;
       error?: string;
+      dropped?: boolean;
     }[],
+    /** FIXTURE-ONLY: how many upcoming orders lose their orders/create webhook (to every subscriber). */
+    dropWebhooks: 0,
   };
 
   const schemas: Record<SchemaVariant, GraphQLSchema> = {
@@ -304,6 +307,8 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
 
   /** Shopify sends orders/create to every app subscription, signed with the app's client secret. */
   function deliverOrderCreated(o: FixtureOrder) {
+    const lost = state.dropWebhooks > 0;
+    if (lost) state.dropWebhooks--;
     for (const sub of state.subscriptions) {
       const raw = Buffer.from(JSON.stringify(control.webhookPayload(o)));
       const rec: (typeof state.webhookDeliveries)[number] = {
@@ -313,6 +318,10 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
         status: null,
       };
       state.webhookDeliveries.push(rec);
+      if (lost) {
+        rec.dropped = true;
+        continue;
+      }
       void fetch(sub.callbackUrl, {
         method: 'POST',
         headers: {
@@ -493,6 +502,7 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
       state.requestLog.length = 0;
       state.nextLegacyId = firstOrderId;
       state.webhookVersion = '2026-10';
+      state.dropWebhooks = 0;
       state.subscriptions.length = 0;
       state.webhookDeliveries.length = 0;
     },
@@ -710,6 +720,11 @@ export function createShopifyFixture(opts: ShopifyFixtureOptions = {}) {
   app.post('/__fixture/webhook-version', async (req) => {
     control.setWebhookVersion((req.body as { version: WebhookVersion }).version);
     return { version: state.webhookVersion };
+  });
+  /** FIXTURE-ONLY: the next `n` orders' orders/create webhooks are never sent (to any subscriber). */
+  app.post('/__fixture/drop-webhooks', async (req) => {
+    state.dropWebhooks = Number((req.body as { n?: number } | undefined)?.n ?? 1);
+    return { dropWebhooks: state.dropWebhooks };
   });
   app.post('/__fixture/seed', async (req) => {
     const b = req.body as { count: number; start?: string; stepMs?: number };
