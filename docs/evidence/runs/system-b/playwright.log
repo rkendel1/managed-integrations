@@ -1,13 +1,10 @@
-
-Running 8 tests using 1 worker
-
-  ✓  1 systems/b/e2e/journeys.spec.ts:13:1 › rejects invalid credentials (813ms)
-  ✓  2 systems/b/e2e/journeys.spec.ts:22:1 › a new customer signs up, creates its company and lands in set-up at the Connect step (603ms)
-  ✓  3 systems/b/e2e/journeys.spec.ts:33:1 › customer: the portfolio shows what we maintain and its status; empty state for a new company (1.4s)
-  ✓  4 systems/b/e2e/journeys.spec.ts:59:3 › a provider change handled end to end › customer sees the completed maintenance as an outcome, with no internal machinery (447ms)
-  ✓  5 systems/b/e2e/journeys.spec.ts:68:3 › a provider change handled end to end › operator sees the same story and the evidence behind every claim (666ms)
-  ✓  6 systems/b/e2e/journeys.spec.ts:86:3 › a provider change handled end to end › another company cannot open the maintenance event or the integration (625ms)
-  ✓  7 systems/b/e2e/journeys.spec.ts:96:1 › operator detects orders whose webhooks never arrived and recovers them (bulk needs confirmation) (2.0s)
-  ✓  8 systems/b/e2e/journeys.spec.ts:120:1 › a customer whose integration is already managed is not asked to set up again (1.3s)
-
-  8 passed (10.8s)
+  ✓  1 systems/b/e2e/journeys.spec.ts:13:1 › rejects invalid credentials (1.6s)
+  ✓  2 systems/b/e2e/journeys.spec.ts:22:1 › a new customer signs up, creates its company and lands in set-up at the Connect step (673ms)
+  ✓  3 systems/b/e2e/journeys.spec.ts:33:1 › customer: the portfolio shows what we maintain and its status; empty state for a new company (1.8s)
+  ✓  4 systems/b/e2e/journeys.spec.ts:59:3 › a provider change handled end to end › customer sees the completed maintenance as an outcome, with no internal machinery (525ms)
+  ✓  5 systems/b/e2e/journeys.spec.ts:68:3 › a provider change handled end to end › operator sees the same story and the evidence behind every claim (608ms)
+  ✓  6 systems/b/e2e/journeys.spec.ts:86:3 › a provider change handled end to end › another company cannot open the maintenance event or the integration (631ms)
+  ✓  7 systems/b/e2e/journeys.spec.ts:96:1 › operator detects orders whose webhooks never arrived and recovers them (bulk needs confirmation) (1.9s)
+  ✓  8 systems/b/e2e/journeys.spec.ts:120:1 › a customer whose integration is already managed is not asked to set up again (1.5s)
+  ✓  9 systems/b/e2e/journeys.spec.ts:128:1 › customer: a target change asks a business question only the customer can answer, and the answer is taken from the screen (1.7s)
+  9 passed (14.3s)

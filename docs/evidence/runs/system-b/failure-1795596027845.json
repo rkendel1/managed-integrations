@@ -1,0 +1,143 @@
+{
+  "scenario": "failure",
+  "system": "B",
+  "startedAt": "2026-11-25T08:40:27.845Z",
+  "ms": 4082,
+  "steps": [
+    {
+      "n": "1",
+      "text": "Integration healthy: run mwvviizb052069dc5a1a on engine v1",
+      "ms": 1304
+    },
+    {
+      "n": "2",
+      "text": "Records delivered: 5 sales orders written by the adopted NetSuite adapter",
+      "ms": 1304,
+      "data": [
+        {
+          "sourceId": "5000000001",
+          "reference": "#1001",
+          "outcome": "delivered",
+          "destinationRef": "9001"
+        },
+        {
+          "sourceId": "5000000002",
+          "reference": "#1002",
+          "outcome": "delivered",
+          "destinationRef": "9002"
+        },
+        {
+          "sourceId": "5000000003",
+          "reference": "#1003",
+          "outcome": "delivered",
+          "destinationRef": "9003"
+        },
+        {
+          "sourceId": "5000000004",
+          "reference": "#1004",
+          "outcome": "delivered",
+          "destinationRef": "9004"
+        },
+        {
+          "sourceId": "5000000005",
+          "reference": "#1005",
+          "outcome": "delivered",
+          "destinationRef": "9005"
+        }
+      ]
+    },
+    {
+      "n": "3",
+      "text": "Delivery evidence recorded: cursor 2026-11-18T08:40:28.809Z → 2026-11-25T07:44:28.818Z",
+      "ms": 1304
+    },
+    {
+      "n": "4",
+      "text": "Simulator: controlled upstream schema change (LineItem.originalUnitPriceSet removed) + 5 new orders",
+      "ms": 1308
+    },
+    {
+      "n": "5",
+      "text": "Integration failed safely (schema_drift); cursor not advanced (held at 2026-11-25T07:44:28.818Z)",
+      "ms": 1633,
+      "data": "[{\"message\":\"Cannot query field \\\"originalUnitPriceSet\\\" on type \\\"LineItem\\\". Did you mean \\\"preDiscountUnitPriceSet\\\"?\",\"locations\":[{\"line\":1,\"column\":234}],\"extensions\":{\"code\":\"undefinedField\"}}]"
+    },
+    {
+      "n": "6",
+      "text": "Detected: maintenance event mwvvijdse254e9ca480b (schema_drift, boundary source)",
+      "ms": 1637
+    },
+    {
+      "n": "7",
+      "text": "Incident: \"[{\"message\":\"Cannot query field \\\"originalUnitPriceSet\\\" on type \\\"LineItem\\\". Did you mean \\\"preDiscountUnitPriceSet\\\"?\",\"locations\":[{\"line\":1,\"column\":234}],\"extensions\":{\"code\":\"undefinedField\"}}]\"",
+      "ms": 1678
+    },
+    {
+      "n": "8",
+      "text": "Affected records identified: 5 order(s) waiting since the held cursor",
+      "ms": 1678
+    },
+    {
+      "n": "9",
+      "text": "Planner received a bounded task (incident, engine specification, provider fields; no credentials): planner=playbook",
+      "ms": 1683
+    },
+    {
+      "n": "10",
+      "text": "Planner answered in 0 ms: \"originalUnitPriceSet is gone; preDiscountUnitPriceSet is the only MoneyBag field ending in PriceSet.\"",
+      "ms": 1683
+    },
+    {
+      "n": "11",
+      "text": "Candidate: engine v2 reads preDiscountUnitPriceSet",
+      "ms": 1683
+    },
+    {
+      "n": "12",
+      "text": "Acceptance suite not altered: passed (suite sha256 5f5cc2d035df283a… (the planner returns data, never tests))",
+      "ms": 1683
+    },
+    {
+      "n": "13",
+      "text": "Independent validation passed: ✓ the candidate query executes against the provider for the affected window (read only) · ✓ every affected order maps: SKU present, quantity > 0, unit price a positive number · ✓ every order's mapped lines add up to the provider's own order total · ✓ the candidate changes only the declared price field · ✓ the adopted engine specification stays available for rollback · ✓ acceptance suite not altered",
+      "ms": 1683
+    },
+    {
+      "n": "14",
+      "text": "Operator approval recorded (staff, in the operator's own session)",
+      "ms": 1692
+    },
+    {
+      "n": "15",
+      "text": "Candidate released via canary: run mwvvijm88d84a0aa4764 (1 order, verified in NetSuite) → proposed → validated → active",
+      "ms": 4061
+    },
+    {
+      "n": "16",
+      "text": "Synchronization resumed on engine v2: run mwvvikfd4a2dfa35079e delivered 6",
+      "ms": 4061
+    },
+    {
+      "n": "17",
+      "text": "Verification: every affected order is in NetSuite exactly once with Shopify's prices",
+      "ms": 4072,
+      "data": [
+        "5000000006: NetSuite 9006, rates equal Shopify's",
+        "5000000007: NetSuite 9007, rates equal Shopify's",
+        "5000000008: NetSuite 9008, rates equal Shopify's",
+        "5000000009: NetSuite 9009, rates equal Shopify's",
+        "5000000010: NetSuite 9010, rates equal Shopify's"
+      ]
+    },
+    {
+      "n": "18",
+      "text": "Incident resolved with verification evidence: {\"affected\":5,\"delivered\":5,\"unresolved\":0,\"duplicates\":0}",
+      "ms": 4072
+    },
+    {
+      "n": "19",
+      "text": "Customer sees: \"Shopify changed its API. Your orders are safe in Shopify and nothing was skipped; we are repairing the integration.\" → \"Done: the integration is repaired and verified; all 5 order(s) that waited are in NetSuite with Shopify's prices. Nothing was skipped.\"",
+      "ms": 4081
+    }
+  ]
+}

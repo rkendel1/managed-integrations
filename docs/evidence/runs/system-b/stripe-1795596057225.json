@@ -1,0 +1,94 @@
+{
+  "scenario": "stripe",
+  "system": "B",
+  "startedAt": "2026-11-25T08:40:57.225Z",
+  "ms": 7142,
+  "steps": [
+    {
+      "n": "B0",
+      "text": "Before: Lumen's own ledgerly deployment booked 5 Stripe transactions in QuickBooks (the pinned code, their own authorization)",
+      "ms": 172
+    },
+    {
+      "n": "B3",
+      "text": "Stripe connected with a restricted key → verified (acct_1FixtureStripe)",
+      "ms": 300
+    },
+    {
+      "n": "B3b",
+      "text": "QuickBooks connected through OAuth → back to http://127.0.0.1:3100/app/connections",
+      "ms": 328
+    },
+    {
+      "n": "B4",
+      "text": "Discovered: Stripe transactions → QuickBooks journal entries (ledgerly) (confidence: high) — {\"checked\":9,\"matched\":9,\"convention\":\"QuickBooks journal entries with DocNumber = the Stripe event id's last 21 characters (ledgerly's rule)\",\"windowDays\":7}",
+      "ms": 659
+    },
+    {
+      "n": "B5",
+      "text": "Baseline: 9 recent Stripe transactions checked, 9 in QuickBooks (9 written by their earlier deployment), 0 missing",
+      "ms": 1468
+    },
+    {
+      "n": "B6",
+      "text": "Under management: mwvvj5ereb1464ea13d4 running github.com/jakethehoffer/ledgerly",
+      "ms": 1477
+    },
+    {
+      "n": "B7",
+      "text": "Payment evt_Lm000000000000000044 booked once by the adopted code: debits 88.00 = credits 88.00",
+      "ms": 1787
+    },
+    {
+      "n": "B8",
+      "text": "Independent check (Stripe Events API vs deliveries and QuickBooks): {\"delivered\":1,\"destination_exists_untracked\":4,\"discovered\":5}",
+      "ms": 2115
+    },
+    {
+      "n": "P1",
+      "text": "Detected by reading the running code: github.com/jakethehoffer/ledgerly @ 3101182 requests minorversion 70; QuickBooks serves 75 since 2025-08-01 (at src/server/dispatchers/qbo.ts:25; https://blogs.intuit.com/2025/01/21/changes-to-our-accounting-api-that-may-impact-your-application/)",
+      "ms": 3103
+    },
+    {
+      "n": "P1b",
+      "text": "Validation: applies to the pinned source: passed; replay: only the minor version changes: passed; declares the served minor version: passed; rollback target available: passed",
+      "ms": 3103
+    },
+    {
+      "n": "P2",
+      "text": "Operator activated the patch: proposed → validated → active; running patch:qbo-minorversion-75",
+      "ms": 4368
+    },
+    {
+      "n": "P3",
+      "text": "QuickBooks request now declares minorversion 75 (served 75); after activation: {\"delivery\":\"mwvvj7b3e0013f253dc6\",\"minorversionRequested\":75,\"artifact\":\"6c19cdf1dd5f9e50\",\"at\":1795596061561}",
+      "ms": 4370
+    },
+    {
+      "n": "B9",
+      "text": "Simulator: Intuit revokes access. Customer sees \"QuickBooks stopped accepting our access. Reconnect it and we will deliver everything that waited; nothing is lost.\" (status customer_action); evt_Lm000000000000000052 is held; evt_Lm000000000000000056 is lost in transit",
+      "ms": 4716
+    },
+    {
+      "n": "B9b",
+      "text": "Customer reconnects QuickBooks → http://127.0.0.1:3100/app/connections",
+      "ms": 4747
+    },
+    {
+      "n": "B10",
+      "text": "\"Completed: all 2 Stripe transaction(s) that waited or were missed are in QuickBooks exactly once. Nothing was lost.\"",
+      "ms": 7139,
+      "data": {
+        "affected": 2,
+        "delivered": 2,
+        "unresolved": 0,
+        "duplicates": 0
+      }
+    },
+    {
+      "n": "B10b",
+      "text": "Both transactions are in QuickBooks exactly once (the held one and the one whose webhook was lost)",
+      "ms": 7142
+    }
+  ]
+}

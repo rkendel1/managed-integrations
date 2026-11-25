@@ -1,0 +1,88 @@
+{
+  "scenario": "onboarding",
+  "system": "B",
+  "startedAt": "2026-11-25T08:40:41.552Z",
+  "ms": 4104,
+  "steps": [
+    {
+      "n": "0",
+      "text": "Before: Northwind's own deployment of shopify-erp-order-sync wrote 6 orders to NetSuite",
+      "ms": 451
+    },
+    {
+      "n": "A1",
+      "text": "New company signed up: Connect shopify and netsuite",
+      "ms": 563
+    },
+    {
+      "n": "A2",
+      "text": "Shopify connected through OAuth (scope read_orders)",
+      "ms": 583
+    },
+    {
+      "n": "A3",
+      "text": "NetSuite connected (machine-to-machine certificate) → verified",
+      "ms": 1176
+    },
+    {
+      "n": "A4",
+      "text": "Discovered: Shopify orders → NetSuite sales orders (shopify-erp-order-sync) (confidence: high) — {\"checked\":6,\"matched\":6,\"convention\":\"NetSuite sales orders with external id shopify-<order id> (the adopted code's upsert key)\",\"windowDays\":7}",
+      "ms": 1510
+    },
+    {
+      "n": "A5",
+      "text": "Customer confirmed 4 responsibilities (version 1)",
+      "ms": 1525
+    },
+    {
+      "n": "A6",
+      "text": "Under management. Baseline: 6 recent orders checked, 6 in NetSuite (6 written by their earlier deployment), 0 missing",
+      "ms": 2324
+    },
+    {
+      "n": "A7",
+      "text": "Customer overview: protected",
+      "ms": 2329
+    },
+    {
+      "n": "A8",
+      "text": "A new order (#N-mwvvissw-NEW) reached us through the subscription we registered and is in NetSuite exactly once",
+      "ms": 2485
+    },
+    {
+      "n": "A9",
+      "text": "Customer actions in onboarding (5): sign up → connect Shopify → connect NetSuite → register the certificate in NetSuite → confirm: maintain this integration",
+      "ms": 2485
+    },
+    {
+      "n": "B1",
+      "text": "Simulator: Shopify switches order webhooks to 2027-01; #N-mwvvissw-CHG arrives in the new format",
+      "ms": 2489
+    },
+    {
+      "n": "B2",
+      "text": "Operator: running adapter:line-price-from-price-set on github.com/Milo-ai-HQ/shopify-erp-order-sync @ d01b51d95993; price is read at src/mapping.js:11",
+      "ms": 4013
+    },
+    {
+      "n": "B3",
+      "text": "Adapter line-price-from-price-set: proposed → validated → active; applies to every held payload: passed; adopted code unchanged: passed; business data preserved (Shopify Admin API): passed; rollback target available: passed",
+      "ms": 4013
+    },
+    {
+      "n": "B4",
+      "text": "#N-mwvvissw-CHG is in NetSuite with Shopify's price (7.25), written by the adopted code with the adapter applied",
+      "ms": 4014
+    },
+    {
+      "n": "B5",
+      "text": "Customer sees: \"Shopify changed the format of new orders. We are adapting your integration; no order will be lost.\" … \"Completed: all 1 affected order(s) are in NetSuite exactly once with Shopify's prices. Nothing was lost and nothing is needed from you.\"",
+      "ms": 4019
+    },
+    {
+      "n": "C1",
+      "text": "Another company sees only its own onboarding (status connect, integration none)",
+      "ms": 4103
+    }
+  ]
+}
