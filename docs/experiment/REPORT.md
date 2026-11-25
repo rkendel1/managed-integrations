@@ -1,5 +1,11 @@
 # Dual-system comparative experiment — report and decision
 
+> **Since this report:** the decision in §H was taken. System B (`systems/b`) is the repository's primary
+> application and System A is kept as the reference. The parity items listed below as open — configuration and
+> decision corrections, the OneWorld, inactive-account and combined scenarios — are now built and pass in B
+> (S8–S10). The current matrix, including what is still not at parity, is [`PARITY.md`](PARITY.md). The numbers
+> in this report are as measured at the time and were not re-measured.
+
 **System A** (control) is the existing implementation, unchanged:
 - Fastify, pg-boss, Drizzle/Postgres and React;
 - its own Dockerfile and Compose stack.

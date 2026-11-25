@@ -64,7 +64,7 @@ export function EventPage({ id }: { id: string }) {
   return (
     <Card title={e.headline} testId="event">
       <p data-testid="event-status">{e.status === "completed" ? "Completed" : e.customerAction ? "Needs you" : "In progress"}</p>
-      {e.customerAction && <p className="action">Reconnect the provider on <a href="/app/connections">Connections</a>. Nothing waits longer than it must and nothing is lost.</p>}
+      {e.decision ? <Decision eventId={e.id} decision={e.decision} /> : e.customerAction && <p className="action">Reconnect the provider on <a href="/app/connections">Connections</a>. Nothing waits longer than it must and nothing is lost.</p>}
       <ol className="timeline">
         {e.timeline.map((t, n) => <li key={n}><span className="muted">{when(t.at)}</span> {t.text}</li>)}
       </ol>
@@ -72,6 +72,33 @@ export function EventPage({ id }: { id: string }) {
         <p data-testid="accounting">Affected: {e.accounting.affected} · delivered: {e.accounting.delivered} · unresolved: {e.accounting.unresolved} · duplicates: {e.accounting.duplicates}</p>
       )}
     </Card>
+  );
+}
+
+/** A business question only the customer can answer, with options read from their own systems. */
+function Decision({ eventId, decision }: { eventId: string; decision: { id: string; question: string; options: { id: string; label: string }[] } }) {
+  const decide = useMutation(api.target.decide);
+  const [choice, setChoice] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="action"
+      data-testid="decision"
+      onSubmit={(ev) => {
+        ev.preventDefault();
+        setError(null);
+        decide({ eventId, decisionId: decision.id, optionId: choice }).catch((err: { message?: string }) => setError(err.message ?? "Could not save your answer."));
+      }}
+    >
+      <p><strong>{decision.question}</strong></p>
+      {decision.options.map((o) => (
+        <label key={o.id} className="option">
+          <input type="radio" name="choice" value={o.id} checked={choice === o.id} onChange={() => setChoice(o.id)} /> {o.label}
+        </label>
+      ))}
+      <p><button type="submit" disabled={!choice}>Confirm</button> <span className="muted">We check your choice before switching anything on. Your work stays held safely meanwhile.</span></p>
+      {error && <p role="alert" className="error">{error}</p>}
+    </form>
   );
 }
 

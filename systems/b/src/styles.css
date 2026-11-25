@@ -28,6 +28,7 @@ a { color: var(--accent); }
 .badge-customer_action { border-color: #c0392b; }
 .error { color: #c0392b; }
 .action { font-weight: 600; }
+.option { display: block; font-weight: 400; margin: 0.25rem 0; }
 .timeline { padding-left: 18px; }
 .key { white-space: pre-wrap; font-size: 0.75rem; max-height: 120px; overflow: auto; }
 input { margin: 4px 8px 4px 0; padding: 6px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }

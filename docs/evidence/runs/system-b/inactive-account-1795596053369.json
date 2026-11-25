@@ -1,0 +1,67 @@
+{
+  "scenario": "inactive-account",
+  "system": "B",
+  "startedAt": "2026-11-25T08:40:53.369Z",
+  "ms": 3782,
+  "steps": [
+    {
+      "n": "1",
+      "text": "Meridian's ledgerly integration mwvvj2alb47b22bb8c09 is under management (discovered from their own earlier deployment)",
+      "ms": 1296
+    },
+    {
+      "n": "2",
+      "text": "Baseline: evt_Lm000000000000000013 booked, its clearing line on \"Stripe Clearing\" (91)",
+      "ms": 1605
+    },
+    {
+      "n": "3",
+      "text": "Target change: the customer added \"Stripe Clearing 2027\" (214) and made \"Stripe Clearing\" (91) inactive",
+      "ms": 1608
+    },
+    {
+      "n": "4",
+      "text": "evt_Lm000000000000000017 held (not rejected): QuickBooks refused it (610); QuickBooks' own chart confirms 91 is inactive (Other Current Asset)",
+      "ms": 1986
+    },
+    {
+      "n": "5",
+      "text": "Customer is asked: \"Stripe Clearing is inactive in QuickBooks. Which account should your Stripe transactions use instead?\" — active accounts of the same type: [\"Disputes Receivable\",\"Stripe Clearing 2027 mwvvj1x5\"]",
+      "ms": 1986
+    },
+    {
+      "n": "6",
+      "text": "Customer chose Disputes Receivable, made inactive meanwhile → configuration rejected (\"replacement account is active in QuickBooks\": Disputes Receivable (92) is inactive now); nothing booked; asked again with [\"Stripe Clearing 2027 mwvvj1x5\"]",
+      "ms": 2160
+    },
+    {
+      "n": "7",
+      "text": "Resolved: {\"affected\":1,\"delivered\":1,\"unresolved\":0,\"duplicates\":0}",
+      "ms": 3752,
+      "data": [
+        "QuickBooks no longer accepts entries to Stripe Clearing (made inactive). Your Stripe transactions are held safely; nothing is lost.",
+        "You made Stripe Clearing inactive in QuickBooks. Choose the account to use instead and we will book everything that waited.",
+        "You chose Disputes Receivable. We are checking it and preparing the change before switching it on.",
+        "Disputes Receivable can no longer be used (we checked before switching anything on). Please choose again; your work stays held safely.",
+        "You chose Stripe Clearing 2027 mwvvj1x5. We are checking it and preparing the change before switching it on.",
+        "You chose Stripe Clearing 2027 mwvvj1x5. We are booking the transactions that waited.",
+        "Completed: all 1 Stripe transaction(s) that waited or were missed are in QuickBooks exactly once. Nothing was lost."
+      ]
+    },
+    {
+      "n": "8",
+      "text": "evt_Lm000000000000000017 booked once, debit on the new account (214); evt_Lm000000000000000013 still posts to 91 (history untouched)",
+      "ms": 3755
+    },
+    {
+      "n": "9",
+      "text": "Correction history: decision:active → configuration:rejected → decision:active → configuration:active",
+      "ms": 3760
+    },
+    {
+      "n": "10",
+      "text": "Rollback drill: the account mapping in effect is the previous one again (Stripe Clearing, 91); the event's evidence stays",
+      "ms": 3778
+    }
+  ]
+}

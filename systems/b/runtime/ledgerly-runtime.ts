@@ -4,7 +4,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { ComponentWorkItem, ComponentWorkOutcome } from "@feltdb/feltkit/server";
 import type { Runtime } from "./component.ts";
 import { AuthorizationLost } from "./netsuite.ts";
-import { QBO, accountMapByName, exchangeCode, grant, type QboGrant } from "./quickbooks.ts";
+import { QBO, accountMapByName, exchangeCode, grant, listAccounts, type QboGrant } from "./quickbooks.ts";
 import { PATCHES, UPSTREAM, artifactFor, declaredMinorVersion, executeEvent, stripeClient } from "./ledgerly.ts";
 
 export const UPSTREAM_LABEL = `${UPSTREAM.repository} @ ${UPSTREAM.commit.slice(0, 12)}`;
@@ -164,6 +164,27 @@ export async function deliver(rt: Runtime, ws: string, c: any, qboSecret: string
   if (r.status === "unauthorized") {
     await record("awaiting_authorization", extra);
     return { outcome: "done" };
+  }
+  if (r.status === "rejected") {
+    // QuickBooks refuses entries that use an inactive account (Intuit error 610). Confirmed from QuickBooks' own
+    // chart of accounts: a mapped account the customer made inactive is a target-side change, not a bad entry.
+    const accounts = await listAccounts(g);
+    const inactive = Object.entries(accountMap)
+      .map(([code, m]) => ({ code, ...m, account: accounts.find((a) => a.Id === m.qboId) }))
+      .filter((x) => x.account && x.account.Active === false)
+      .map((x) => ({ code: x.code, qboId: x.qboId, name: x.name, type: x.account!.AccountType }));
+    if (inactive.length) {
+      await record("held", {
+        detail,
+        ...(correction ? { correction } : {}),
+        target: {
+          provider: "quickbooks", contract: "quickbooks.journalentry.write",
+          finding: { observed: { code: /\b610\b/.test(r.message ?? "") ? "610" : null, message: r.message ?? null }, inactiveAccounts: inactive },
+          customerText: `QuickBooks no longer accepts entries to ${inactive.map((x) => x.name).join(", ")} (made inactive). Your Stripe transactions are held safely; nothing is lost.`,
+        },
+      });
+      return { outcome: "done", receipt: { held: inactive.map((x) => x.qboId) } };
+    }
   }
   const rec = await record(r.status === "rejected" ? "rejected" : "failed", extra);
   return rec.retry ? { outcome: "retry", error: { message: r.message ?? "failed" } } : { outcome: "done" };

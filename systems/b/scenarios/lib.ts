@@ -12,6 +12,8 @@ export const FX = {
   shopify: process.env.FX_SHOPIFY ?? "http://127.0.0.1:5010",
   shopify2: process.env.FX_SHOPIFY2 ?? "http://127.0.0.1:5011",
   shopify3: process.env.FX_SHOPIFY3 ?? "http://127.0.0.1:5012",
+  shopify4: process.env.FX_SHOPIFY4 ?? "http://127.0.0.1:5013",
+  shopify5: process.env.FX_SHOPIFY5 ?? "http://127.0.0.1:5014",
   netsuite: process.env.FX_NETSUITE ?? "http://127.0.0.1:5020",
   stripe: process.env.FX_STRIPE ?? "http://127.0.0.1:5030",
   qbo: process.env.FX_QBO ?? "http://127.0.0.1:5040",

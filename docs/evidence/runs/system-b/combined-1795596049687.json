@@ -1,0 +1,48 @@
+{
+  "scenario": "combined",
+  "system": "B",
+  "startedAt": "2026-11-25T08:40:49.687Z",
+  "ms": 3604,
+  "steps": [
+    {
+      "n": "1",
+      "text": "Baseline: #C-mwvviz2v-0 delivered normally",
+      "ms": 1244
+    },
+    {
+      "n": "2",
+      "text": "Target change (OneWorld): #C-mwvviz2v-1 reached NetSuite, was refused for a subsidiary and is held",
+      "ms": 1425
+    },
+    {
+      "n": "3",
+      "text": "Source change (2027-01): #C-mwvviz2v-2 held at the source; event mwvvj0d15b0cae991128 switched its adapter on and waits: \"Correction mwvvj0dw4e88b17603d4 activated by runtime (adapter auto-activation); held orders wait for the other open change (target_contract_change) to be corrected too\"",
+      "ms": 1807
+    },
+    {
+      "n": "4",
+      "text": "Two events, one per change: mwvvj0d15b0cae991128 (source), mwvvj04ye368209bdba9 (target); both orders still held",
+      "ms": 1807
+    },
+    {
+      "n": "5",
+      "text": "Customer chose \"Harbor Canada\"",
+      "ms": 1817
+    },
+    {
+      "n": "6",
+      "text": "Patch validated over the whole path: \"2/2 held orders\" (the source-held order through the adapter, the mapping and the patched adapter)",
+      "ms": 2134
+    },
+    {
+      "n": "7",
+      "text": "Operator activated the patch; both events resolved: source {\"affected\":1,\"delivered\":1,\"unresolved\":0,\"duplicates\":0}, target {\"affected\":1,\"delivered\":1,\"unresolved\":0,\"duplicates\":0}",
+      "ms": 3599
+    },
+    {
+      "n": "8",
+      "text": "Every order exactly once with Shopify's price, in subsidiary 2 (#C-mwvviz2v-1 7.25, #C-mwvviz2v-2 12.50); #C-mwvviz2v-0 untouched",
+      "ms": 3602
+    }
+  ]
+}

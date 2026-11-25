@@ -1,383 +1,108 @@
-# b
+# Managed Integrations — the application (FeltKit)
 
-A FeltKit application: a small task manager with projects, tasks and notes, roles, live
-queries, AppPort Services, an agent, and a development dashboard (Studio). Each
-environment keeps all of its state in one FeltDB instance.
+This is the primary application of the repository. It takes operational responsibility for a customer's
+integrations — adopted open-source integration code, run unmodified at a pinned commit — and keeps them
+correct when the source, the target, the provider or the code changes. System A (`apps/`, `packages/` at the
+repository root) is the PostgreSQL reference implementation it was built to match; see
+[`docs/experiment/PARITY.md`](../../docs/experiment/PARITY.md).
 
-## Quick start
+Built on FeltKit 0.4.0: FeltDB is the only store, FeltKit owns accounts, sessions, workspaces (tenancy),
+durable work, the AppPort and MCP surfaces and the deploy artifact. This application owns the product logic.
+
+## Run it
+
+From the repository root (the provider simulators live in `packages/test-fixtures`):
 
 ```bash
-npm install
-npm run dev
+make app-install
 ```
 
-`npm run dev` prints:
-
-```
-  App        http://localhost:3000
-  Dashboard  http://localhost:3000/_feltkit/#token=…
-  AppPort    http://localhost:3000/appport
-  MCP        http://localhost:3000/mcp
-  State      …/.feltkit/development/state
+```bash
+make app-dev
 ```
 
-The port is 3000 unless something already uses it: another FeltKit app (or anything else) on 3000
-moves this one to the next free port, and the line above shows the one it got. To choose it:
-`npm run dev -- --port 3001`, or `FELTKIT_PORT=3001 npm run dev` (or `PORT`). A port you choose is
-used exactly or the server does not start; `--port 0` takes any free port.
+The app is on <http://127.0.0.1:3100>; the simulators are on ports 5010–5040 (Shopify ×5, NetSuite,
+Stripe, QuickBooks), each in memory. `make app-dev` **destroys** development state (`.feltkit/development`)
+and restarts everything. It reads secrets from `systems/b/.env.scenarios`, which `make app-secrets` creates
+once with the simulators' client secrets and a fresh keyring (gitignored; never commit it).
 
-- **App**: you are signed in as a development user. **Ada** (`member`, `admin`) can do
-  everything; **Grace** (`viewer`) can only read. Switch between them from the app's header.
-- **Dashboard** (Studio): your data, functions, capabilities, services, agent, models and
-  every operation that ran. Keep the link private: the token in it is this environment's
-  admin token.
-- Edit anything in `feltkit/`. The backend reloads in place and keeps its state, sessions and
-  history. The frontend in `src/` hot-reloads.
+| Check | Command | Needs |
+|---|---|---|
+| Function and unit tests | `make app-test` | nothing running |
+| All ten shared scenarios, after one reset | `make app-scenarios` | — (it resets) |
+| Browser journeys | `make app-e2e` | — (it resets) |
+| Typecheck, prebuilt artifacts current, code classification | `make app-check` | — |
 
-Development state lives in `.feltkit/development/` (ignored by git). Delete that folder to
-start over.
+Each scenario writes its evidence (every step with its time and data) to `docs/evidence/runs/system-b/`.
 
-## What's in the project
+## What it does
 
-| Path | What it is |
+| Integration (`integrations.kind`) | Adopted code | Target |
+|---|---|---|
+| `order_sync` | `Milo-ai-HQ/shopify-erp-order-sync` @ `d01b51d` (MIT) | Shopify orders → NetSuite sales orders |
+| `ledgerly` | `jakethehoffer/ledgerly` @ `3101182` | Stripe → QuickBooks journal entries |
+| `stripe_app` | `stripe-webhooks-subscriptions-node-ts` @ `4812d25` (vendored) | a hosted Stripe application |
+| `qbo_tools` | `quickbooks-mcp` @ `ce1317e` (vendored) | QuickBooks invoices as tools |
+| `native_sync` | our own polling engine (declared query spec) | Shopify → NetSuite |
+
+Each one runs through the same mechanisms:
+
+- **Receipt and delivery.** Provider webhooks are verified by provider-specific signatures, sealed, deduplicated
+  and delivered as durable work; a delivery is one per source transaction, with its attempt history.
+- **Maintenance events.** A change at a boundary (`source`, `target`, `provider`, `integration`) opens one
+  event per change, not per transaction. The driver investigates (naming the line of adopted code), corrects,
+  validates, activates, recovers and verifies, then accounts for every affected transaction.
+- **Corrections registry** (`corrections`): `adapter`, `patch`, `configuration`, `decision`, `unsupported`, each
+  with validation evidence and a full history; activation and rollback are recorded with who did them.
+  - A **decision** is a business question only the customer may answer (`maintenance.decide`; staff are refused),
+    with options read from the customer's own system.
+  - A **configuration** records the settings before and after, is validated against the target before it is
+    switched on, and is rolled back exactly.
+  - A **patch** is a reviewed exact-text change to the pinned source, built as a content-addressed artifact
+    beside it (`runtime/artifacts.ts`; the installed code is never modified). Patches need an operator.
+- **Whole path or nothing.** Held work is released only when no other change of the same integration still
+  awaits its correction (`blockingEvents` in `feltkit/target.ts`).
+- **Reconciliation** reads the source independently of webhooks and recovers what never arrived, exactly once.
+- **Onboarding** discovers an existing deployment from what the customer's own code already wrote.
+- **Repair agent (S1 only):** EVE (`agent-eve/`, Node 24, its own server) proposes a change to the native
+  engine's declared query specification; the application validates it deterministically, an operator approves,
+  a canary verifies. Without the agent, a deterministic playbook proposes.
+
+## Where things are
+
+| Path | What |
 |---|---|
-| `feltkit/app.ts` | The application: its name, roles and permissions, dev users, enabled services, collections |
-| `feltkit/projects.ts`, `feltkit/tasks.ts` | Functions: queries (read) and mutations (write). A function is `<module>:<export>`, e.g. `tasks:create` |
-| `feltkit/_*.ts` | Helpers shared by function modules (business rules, formatting). A file whose name starts with `_` is not loaded as a function module |
-| `feltkit/_generated/api.ts` | Typed references to every function. Regenerated by `feltkit dev` and `feltkit codegen`; don't edit it |
-| `src/` | The React frontend. Colors are tokens in `src/styles.css`, each `light-dark(light, dark)`; the top bar's switch (`src/theme.tsx`) picks light, dark, or the system setting, remembered per browser and applied before first paint by `public/theme.js` |
-| `tests/` | Tests, each against a fresh FeltDB instance |
-| `.feltkit/` | Local state, keys and builds, per environment. Never commit it |
+| `feltkit/app.ts` | Roles, tenancy, the `runtime` component, every collection (the data model) |
+| `feltkit/*.ts` | Functions (queries/mutations), 24 of them published as AppPort capabilities |
+| `feltkit/target.ts` | Decisions, configurations and whole-path release for target-side changes |
+| `runtime/component.ts` | The FeltKit component: webhook routes, OAuth callbacks, sealed secrets, the work loop |
+| `runtime/maintain.ts`, `runtime/target.ts` | The maintenance driver (deterministic) |
+| `runtime/order-sync.ts`, `ledgerly*.ts`, `apps*.ts`, `native.ts` | Running each adopted code base; their reviewed patches |
+| `runtime/patches/` | Reviewed patches stored as data |
+| `runtime/generated/artifacts.json` | Every reviewed artifact variant, prebuilt (`node scripts/build-artifacts.ts`; deployments carry no sources) |
+| `src/` | The customer (`/app`) and operator (`/ops`) UI |
+| `tests/` | Function tests (fresh FeltDB each) and runtime unit tests |
+| `scenarios/` | The shared scenarios S1–S10, driving the app only through its public surfaces and the simulators |
+| `e2e/` | Browser journeys (Playwright) |
 
-## How it works
+## Roles
 
-**Data.** Collections are declared in `feltkit/app.ts` with a schema; every write is
-validated against it.
-
-```ts
-export const tasks = app.collection("tasks", {
-  projectId: s.string(),
-  title: s.string({ minLength: 1, maxLength: 200 }),
-  done: s.boolean(),
-});
-```
-
-**Functions.** A query reads, a mutation writes. Writes in one mutation commit together, or
-not at all. `access` is the permission the caller needs; `capability` publishes the
-function through AppPort, so agents can use it too.
-
-```ts
-export const create = app.mutation({
-  access: "tasks.write",
-  args: { projectId: s.string(), title: s.string({ minLength: 1 }) },
-  capability: { name: "tasks.create", description: "Add a task to a project." },
-  handler: async (ctx, { projectId, title }) =>
-    ctx.db.insert(tasks, { projectId, title, done: false, createdAt: Date.now(), createdBy: ctx.auth.requirePrincipal().id }),
-});
-```
-
-**Roles.** `roles` in `feltkit/app.ts` grant permissions; `"tasks.*"` grants every
-`tasks.<x>`. The server checks them on every call, whatever the frontend shows.
-
-**Frontend.** Queries are live: they update when the data changes.
-
-```tsx
-import { useMutation, useQueryState } from "@feltdb/feltkit/react";
-import { api } from "../feltkit/_generated/api";
-
-const tasks = useQueryState(api.tasks.list, { projectId });
-const create = useMutation(api.tasks.create);
-```
-
-## Services
-
-Every AppPort Service is enabled in `feltkit/app.ts` and stored in the same FeltDB instance:
-Files, Notifications, Configuration, API keys, Webhooks, Jobs, Schedules and Intelligence.
-Configure each one in **Studio → Services**: every service has its own screen, and each
-operation there is authorized as the dev user you choose with **Act as**. From a function:
-
-```ts
-// Effects that announce this mutation's change: performed only if it commits (mutations only).
-ctx.afterCommit.webhooks.emit("task.created", { id });
-ctx.afterCommit.notifications.send({ recipient: "grace", type: "task.completed", title: "Done" });
-ctx.afterCommit.jobs.enqueue("projects.clear-completed", {});
-// Reads and stored files, right away:
-await ctx.services.files.upload({ name: "notes.txt", content: text });
-const greeting = await ctx.services.configuration.get("GREETING");
-```
-
-Use `ctx.afterCommit` for anything that tells the world about the mutation's change. The same
-calls on `ctx.services` (`ctx.services.webhooks.emit`, `…notifications.send`, `…jobs.enqueue`)
-happen immediately and stay done even if the mutation then fails (a `CONFLICT` at commit), so
-receivers would hear about a change that never happened. `npx feltkit outbox list` shows every
-after-commit effect and its state.
-
-The starter already uses them: creating and completing a task emits `task.created` and
-`task.completed` to any registered webhook endpoint; completing someone else's task notifies
-its creator; and the job `projects.clear-completed` runs `projects:clearCompleted`.
-
-Declare what your app sends in `feltkit/app.ts`, so Studio's forms offer it in dropdowns:
-
-```ts
-services: {
-  notifications: { types: ["task.completed"] },
-  webhooks: { events: ["task.created", "task.completed"] },
-  jobs: { handlers: { "projects.clear-completed": "projects:clearCompleted" } },
-  // …
-}
-```
-
-A job type runs the mutation you name, as the user who queued it, with retries. To turn a
-service off, remove it from `services`.
-
-## Connecting an API
-
-**Studio → Integrations → Connect an API** reads an OpenAPI document (JSON) or lets you
-describe the operations yourself, then writes `feltkit/<name>.ts` and grants `<name>.*` to the
-roles you choose. Each operation becomes an AppPort capability (`<name>.<operation>`) with its
-permission, and every call is recorded. It is called through AppPort, not from a query or
-mutation: by the agent (MCP tools, proposals), by other apps and scripts (`POST /appport`), and by
-your frontend with an AppPort request carrying the session token. To act on the result inside
-your app, name a mutation in the operation's `onOutcome`: it runs as the caller with the call's
-record when the call finishes (success or failure). The API key is
-stored in FeltKit's custody; in production set `<NAME>_URL` and `FELTKIT_CREDENTIAL_<NAME>`.
-Then narrow each operation's `output` schema in that file to what the API returns.
-
-## Choosing a model for the agent
-
-Open **Studio → Models**, pick a provider and model, type its API key, then **Save and use**
-and **Test**. **Save for later** keeps more models (other providers too) under **Saved
-models**, each with its own key; **Use** switches the agent to one. Or from a terminal:
-
-```bash
-npx feltkit model set --provider anthropic --model <model> --api-key-stdin
-```
-
-The key is stored encrypted outside FeltDB (`.feltkit/development/credentials.vault`) and is
-never shown again. Never put a key in `feltkit/`, `src/`, tests or a committed file.
-
-## Testing
-
-```bash
-npm test
-```
-
-runs `tests/**/*.test.ts`. Each `createTestApp()` gets its own temporary FeltDB instance,
-and `t.as("ada")` calls functions as a dev user:
-
-```ts
-const t = await createTestApp();
-const projectId = await t.as("ada").mutation(api.projects.create, { name: "Launch" });
-await assert.rejects(t.as("grace").mutation(api.tasks.create, { projectId, title: "x" }), { code: "FORBIDDEN" });
-await t.close();
-```
+Each customer company is a FeltKit workspace. Its people hold `owner` (`mi.decide`, `mi.configure`, …); the
+provider's staff are invited into it as `operator` (`mi.maintain`, `mi.read.evidence`); the runtime component is
+a member as `runtime`. Another company's records are `NOT_FOUND`. In development, staff are the declared dev
+users `staff-1` and `staff-2`; in production they need accounts with a verified address (FINDINGS F14).
 
 ## Deploying
 
-FeltKit doesn't host your app; it builds what you run, for the way you want to run it:
+`npx feltkit deploy` builds and boot-verifies a deployment artifact (container target by default). Production
+needs `FELTKIT_CREDENTIAL_MI_KEYRING` (comma-separated `keyId:base64(32 bytes)`, first is primary),
+`FELTKIT_CREDENTIAL_SHOPIFY_CLIENT_SECRET`, `FELTKIT_CREDENTIAL_QBO_CLIENT_SECRET`, the providers' real URLs
+and client ids (`SHOPIFY_CLIENT_ID`, `QBO_*`, `STRIPE_API_BASE`) and `MI_PUBLIC_URL`. FeltKit's own deployment
+guide: `npx feltkit docs PATH-TO-PRODUCTION`.
 
-| Target | What runs | Data |
-|---|---|---|
-| `container` (default) | Everything in one container | FeltDB state on a volume |
-| `hosted` | A separate app container | Managed FeltDB, hosted for you, from the artifact's contract (it declares AppPort Services' collections too) |
-| `self-hosted` | A separate app container | A FeltDB server you operate (`feltdb-server`), in this app's namespace |
-| `vercel` | Vercel's container runtime (beta), scaling with traffic | Managed FeltDB, or your FeltDB server with `--data self-hosted` |
+## Known limits
 
-Each target's `DEPLOY.md` spells out its contract: what to set, where state lives and how to
-recover it, what stops startup, and how to upgrade and roll back. A target never changes where
-state is stored: the container target refuses `FELTDB_URL`, and the others refuse to start
-without their FeltDB settings.
-
-1. **Check what production needs.**
-
-   ```bash
-   npx feltkit readiness --env production
-   ```
-
-2. **Build and verify.** It asks which target (or pass `--target container`, `hosted`, `self-hosted` or `vercel`):
-
-   ```bash
-   npm run deploy
-   ```
-
-   This builds the backend and frontend, boots the production build against throwaway state
-   to prove it serves, and writes `.feltkit/deploy/` with a `Dockerfile`, `docker-compose.yml`,
-   `fly.toml`, `.env.example` (exactly the variables it needs) and `DEPLOY.md`. Each deploy
-   replaces it, keeping production state a previous run kept inside it. It prints the commands
-   to run next.
-
-3. **Run it.** Everything in one container:
-
-   ```bash
-   docker compose -f .feltkit/deploy/docker-compose.yml up --build
-   ```
-
-   Or with Node, from the artifact (data in its `.feltkit/production`):
-
-   ```bash
-   cd .feltkit/deploy
-   ```
-
-   ```bash
-   npm ci --omit=dev
-   ```
-
-   ```bash
-   npm start
-   ```
-
-   With Managed FeltDB (`--target hosted`), create the app and its key from the artifact's
-   contract (`npx feltdb init-managed --contract .feltkit/deploy/feltdb.contract.json
-   --runtime-scopes minimal`), put `FELTDB_URL`, `FELTDB_APPLICATION_ID` and `FELTDB_TOKEN` in
-   `.feltkit/deploy/.env`, then run the same `docker compose` command. With your own FeltDB
-   server (`--target self-hosted`), create a key for the app's namespace (`feltdb-server keys
-   create --keys <keys.json> --name b --namespace b --scope state:read,state:write`) and
-   put `FELTDB_URL` and `FELTDB_TOKEN` in `.env`. On Vercel (`--target vercel`), create the app in
-   Managed FeltDB (`npx feltdb init-managed --contract .feltkit/deploy/feltdb.contract.json
-   --runtime-scopes minimal`, which writes `.env.local`), then run `npx feltkit vercel deploy`. It links
-   the Vercel project the first time, uploads only the settings the deployment needs, deploys, and
-   signs you in: it prints the app's URL, your session token, and a one-time link to production
-   Studio. On Cloudflare (`--target cloudflare`), the same with `npx feltkit cloudflare deploy`
-   (Docker must be running: wrangler builds the image locally). Either container refuses to start without its
-   settings, and checks the database answers, so it never keeps data on its own disk. For
-   Fly.io, plain Docker, or other hosts, follow `.feltkit/deploy/DEPLOY.md`.
-
-   Open <http://localhost:3000>.
-
-4. **Sign in.** Production has no development sign-in (Ada and Grace are for development). The
-   app has built-in accounts (`auth: { accounts: { roles: ["member"] } }` in `feltkit/app.ts`):
-   open it and create your account with an e-mail address and a password; anyone you share the
-   link with can do the same, and a new account is a member. Passwords are stored only as a
-   scrypt hash, in the app's own FeltDB. To close sign-up once your people have accounts, set
-   `signUp: false`. To give someone admin, or to use your own login instead, see
-   `auth.authenticate` and production Studio below.
-
-   The sign-in screen grows with configuration: add `email: { from: "auth@yourdomain" }` to
-   `auth.accounts` for "Forgot your password?" and address verification (development prints each
-   e-mail; production sends through your Mailerport service, `MAILPORT_URL` and
-   `MAILPORT_API_KEY`), and `auth.providers` for "Continue with Google / GitHub" (client id in
-   `feltkit/app.ts`, client secret as `FELTKIT_CREDENTIAL_<ID>_CLIENT_SECRET`).
-
-   **On AppBoundry** (`npx feltkit build --target appboundry`, then
-   `npx @appport/appboundry@^1.3.0 run tasks.app`; to test the artifact itself, use
-   `createArtifactTestApp("tasks.app")` from `@feltdb/feltkit/testing`), AppBoundry's operators
-   create users with your app's roles and issue their sessions:
-
-   ```bash
-   appboundry admin users add you --role member --state <installation>
-   appboundry admin sessions issue --user you --state <installation>
-   ```
-
-   See AppBoundry's production operations guide for bootstrapping the first operator.
-
-   Operators and scripts can still get a session token without an account:
-   `npx feltkit session create --env production --type user --id <id> --role <role>` in the
-   project's folder (it uses the deployment's FeltDB settings from `.env.local`). For the
-   one-container Docker run, use a one-off container on the same volume while the app's container
-   is stopped:
-
-   ```bash
-   docker run --rm -v b-data:/data b node node_modules/@feltdb/feltkit/bin/feltkit.js session create --env production --type user --id you --role member
-   ```
-
-5. **Manage it.** On Vercel, production Studio is on (at `/_feltkit/` of your app). Run
-   `npx feltkit manage` for a one-time sign-in link, or use **Manage in production Studio** on
-   the Settings page of your local Studio (`npm run dev`), which also shows where production's data
-   is and links to the live app.
-
-**Production settings** (from your secret manager, never in the repository). With one
-container, none is required:
-
-| Variable | What it's for |
-|---|---|
-| `FELTDB_URL`, `FELTDB_APPLICATION_ID`, `FELTDB_TOKEN` | Managed FeltDB (`--target hosted`) |
-| `FELTDB_URL`, `FELTDB_TOKEN` | Your FeltDB server (`--target self-hosted`) |
-| `FELTKIT_WEBHOOK_PRIVATE_NETWORKS` | `1` lets webhooks reach receivers on private networks (refused by default outside development) |
-| `FELTKIT_API_KEY_VERIFIER_KEY` | Hosted and self-hosted: 32+ random bytes (`openssl rand -base64 32`). In one container it is generated once and kept beside the state on the volume |
-| `FELTKIT_CREDENTIAL_<ID>` | Credential values, e.g. `FELTKIT_CREDENTIAL_ANTHROPIC` for `credential-ref:anthropic`. Keys you entered in Studio are development-only and are not deployed |
-| `FELTKIT_STATE_DIR` | Where local state lives (the container image uses `/data/state`, on the volume) |
-| `FELTKIT_OPERATOR_KEY` | Optional: signs operator sign-ins for production Studio |
-| `FELTKIT_PORT`, `PORT` | The port to listen on, exactly (`--port` wins over both, `FELTKIT_PORT` over `PORT`). Unset: the first free port from 3000 |
-
-**Production Studio.** Studio isn't served in production unless `FELTKIT_DASHBOARD=1`. Then
-operators sign in with a one-time grant you create on the host
-(`npx feltkit operator grant --id <id> --role <role> --env production`). Production Studio
-is for operating the app; data edits and service configuration stay development tools.
-To move non-secret configuration between environments, use
-`npx feltkit config export` and `npx feltkit config import <file> --env production --dry-run`.
-
-To deploy on Managed FeltDB, where no host keeps state, start from
-`npm create feltkit@latest <dir> -- --template managed`; its README walks through setup.
-
-## Portability (AppBoundry)
-
-`npx feltkit build --target appboundry` compiles the app into `tasks.app`, which runs without
-this project or FeltKit. A plain `npx feltkit build` warns about anything that would block it.
-An artifact refuses (the build names the file and line):
-
-- `ctx.agent`, `ctx.unsafe`, `ctx.afterCommit`, `ctx.db.sequence`: they need the FeltKit server;
-- `app.integration(...)` and `auth.authenticate`;
-- Node built-ins in `feltkit/`;
-- `Intl`, `toLocaleString`, `localeCompare`: the artifact has no locale data, so format for
-  people in the frontend.
-
-It also leaves out Studio, `/mcp`, API keys, schedules and webhook delivery. To run your tests
-against the artifact itself: `createArtifactTestApp("tasks.app")` from `@feltdb/feltkit/testing`.
-
-## Commands
-
-npm scripts:
-
-| Script | Runs |
-|---|---|
-| `npm run dev` | `feltkit dev`: backend, frontend, Studio and hot reload |
-| `npm test` | `feltkit test`: the tests, against isolated test environments |
-| `npm run build` | `feltkit build`: bundle the backend, build the frontend, verify the bundle |
-| `npm start` | `feltkit start`: run the production build |
-| `npm run deploy` | `feltkit deploy`: build a verified deployment artifact |
-| `npm run inspect` | `feltkit inspect`: status, state location, functions, services, recent activity |
-| `npm run typecheck` | `tsc --noEmit` |
-
-Every `feltkit` command (run as `npx feltkit <command>`; `--help` on any of them for its options):
-
-| Command | What it does |
-|---|---|
-| `dev [--port 3000]` | Development environment: backend, frontend, Studio, hot reload |
-| `build` | Bundle the backend, build the frontend, load the bundle to verify it |
-| `start [--port $PORT]` | Run the production build (the `production` environment) |
-| `test [files…]` | Run `tests/**/*.test.ts` against isolated test environments |
-| `deploy [--out <dir>]` | Build, verify the production build boots, write a Node/Docker artifact |
-| `inspect [--json]` | What the app is, where its state lives, and what it's doing |
-| `readiness [--env production]` | What an environment has and lacks before production, with fixes |
-| `model show` / `model set` | Show or choose the model that makes agent decisions |
-| `credential set` / `status` / `remove` | Store an API key (from a hidden prompt or stdin, never an argument), see where each credential comes from, or erase one |
-| `config export` / `import` | Move non-secret configuration (variables, webhook endpoints, …) between environments |
-| `session create` / `list` / `revoke` | Sessions for agents and service accounts |
-| `operator grant` | A one-time production Studio sign-in for an operator |
-| `codegen` | Regenerate `feltkit/_generated/api.ts` |
-| `contract` | Write the FeltDB application contract (Managed FeltDB) |
-| `doctor` | Check Node, dependencies and running servers for problems |
-| `skills install` / `check` | Add or validate the FeltKit skills for coding agents (Claude Code) |
-
-## Using a coding agent
-
-```bash
-npx feltkit skills install
-```
-
-adds the FeltKit skills to `.claude/skills/`, so Claude Code knows how to build, test and
-operate this app.
-
-## When something's wrong
-
-- `npx feltkit doctor` checks Node, dependencies and running servers.
-- `npx feltkit inspect` shows the environment's state, functions and recent errors.
-- Studio → **Activity** shows every operation: who ran it, what was decided, and what FeltDB
-  committed.
-- Errors carry a code (`FORBIDDEN`, `INVALID_ARGUMENT`, `NOT_FOUND`, …) and usually a hint with
-  the fix.
-
-FeltKit documentation ships with the package: `npx feltkit docs` lists it (guarantees, transactions,
-security, agents, path to production, backup) and `npx feltkit docs <name>` prints one. The same files
-are in `node_modules/@feltdb/feltkit/docs/`, and online at
-<https://cdn.jsdelivr.net/npm/@feltdb/feltkit/docs/README.md>.
+Stated in [`docs/experiment/PARITY.md`](../../docs/experiment/PARITY.md) ("Not at parity") and
+[`docs/experiment/FINDINGS.md`](../../docs/experiment/FINDINGS.md). In short: nothing has run against real provider
+accounts; the container image of the deployment was not built in this environment (F7); the production staff
+path needs a mail service (F14); EVE is a second runtime to operate (F15–F18).

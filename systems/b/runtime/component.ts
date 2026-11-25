@@ -17,7 +17,7 @@ import { verifyShopifyHmac } from "shopify-sync/src/webhook.js";
 import { createSealer, type Sealer } from "./seal.ts";
 import { exchangeToken, verifyCallbackHmac, subscribeOrdersCreate, type ShopifyCredential } from "./shopify.ts";
 import { accessToken, AuthorizationLost, forgetToken, newKeyPair, type NetSuiteCredential } from "./netsuite.ts";
-import { ADAPTERS, UPSTREAM, contractViolations, execute, type Payload } from "./order-sync.ts";
+import { ADAPTERS, ORDER_SYNC_PATCHES, UPSTREAM, contractViolations, execute, requiredFieldOf, type Payload } from "./order-sync.ts";
 import { handlers as maintenanceHandlers } from "./maintain.ts";
 import { handlers as reconcileHandlers } from "./reconcile.ts";
 import * as ledgerly from "./ledgerly-runtime.ts";
@@ -200,7 +200,9 @@ export default defineComponent(async (ctx) => {
           applied.push(a.id);
         }
       }
-      const by = `runtime (${UPSTREAM.repository} @ ${UPSTREAM.commit.slice(0, 12)})`;
+      const patches = (c.patches as { id: string; patch: string }[]).filter((p) => ORDER_SYNC_PATCHES[p.patch]);
+      applied.push(...patches.map((p) => p.id));
+      const by = `runtime (${UPSTREAM.repository} @ ${UPSTREAM.commit.slice(0, 12)}${patches.length ? ` + ${patches.map((p) => p.patch).join(" + ")}` : ""})`;
       const record = (outcome: string, extra: Record<string, unknown> = {}) =>
         rt.call<{ retry: boolean }>(ws, "runtime:recordAttempt", { deliveryId, outcome, by, ...(applied.length ? { correction: applied.join(",") } : {}), ...extra });
       const violations = contractViolations(payload);
@@ -222,10 +224,24 @@ export default defineComponent(async (ctx) => {
         await record("awaiting_authorization", { detail: "NetSuite is not connected" });
         return { outcome: "done" };
       }
-      const result = await execute(payload, c.integration.settings, { baseUrl: ns.cred.accountDomain, accessToken: ns.token });
+      const result = await execute(payload, c.integration.settings, { baseUrl: ns.cred.accountDomain, accessToken: ns.token }, patches.map((p) => p.patch));
       if (result.status === "created" || result.status === "duplicate") {
-        await record("delivered", { destinationRef: String(result.erpOrder?.id ?? ""), detail: `upstream: ${result.status}` });
+        await record("delivered", { destinationRef: String(result.erpOrder?.id ?? ""), detail: `upstream: ${result.status}; code ${result.artifact}` });
         return { outcome: "done", receipt: { upstream: result } };
+      }
+      // NetSuite now requires a field the adopted code does not send (e.g. OneWorld's subsidiary): the order is
+      // held, not rejected — the account changed, not the order.
+      const required = result.status === "rejected" ? requiredFieldOf(result.message) : null;
+      if (required && required !== "Customer") {
+        await record("held", {
+          detail: `NetSuite: ${result.message}`,
+          target: {
+            provider: "netsuite", contract: "salesOrder write: required fields",
+            finding: { requiredField: required, observed: { message: result.message }, artifact: result.artifact },
+            customerText: `NetSuite now requires a ${required.toLowerCase()} on every sales order. Your orders are held safely until it is set; nothing is lost.`,
+          },
+        });
+        return { outcome: "done", receipt: { held: `target requires ${required}` } };
       }
       if (result.status === "rejected" && /invalid login/i.test(result.message ?? "")) {
         forgetToken(ws);

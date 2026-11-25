@@ -1,0 +1,93 @@
+{
+  "scenario": "target",
+  "system": "B",
+  "startedAt": "2026-11-25T08:40:45.759Z",
+  "ms": 3828,
+  "steps": [
+    {
+      "n": "1",
+      "text": "Baseline: #T-mwvviw1r-0 delivered normally (no subsidiary: the account is not OneWorld)",
+      "ms": 1579
+    },
+    {
+      "n": "2",
+      "text": "Target change: the NetSuite account becomes OneWorld (a second subsidiary exists; every sales order needs one)",
+      "ms": 1583
+    },
+    {
+      "n": "3",
+      "text": "#T-mwvviw1r-1: NetSuite refused it for a subsidiary → held (not rejected); one event mwvvixd05f1ce5811586 (target_contract_change, boundary target)",
+      "ms": 1775
+    },
+    {
+      "n": "4",
+      "text": "Customer is asked: \"NetSuite now needs to know which subsidiary your Shopify orders belong to. Which one?\" options [\"Bluewave Holdings\",\"Harbor Canada\"] (read from their NetSuite)",
+      "ms": 1775
+    },
+    {
+      "n": "5",
+      "text": "Staff cannot answer the customer's business question: FORBIDDEN",
+      "ms": 1810
+    },
+    {
+      "n": "6",
+      "text": "Customer chose \"Harbor Canada\"; answering twice is refused (CONFLICT)",
+      "ms": 1823
+    },
+    {
+      "n": "7",
+      "text": "Corrections: decision active → configuration validated and active → reviewed patch validated over the whole path; orders still held",
+      "ms": 2147,
+      "data": [
+        "every held order passes the whole path (source boundary and mapping): passed (1/1 held orders)",
+        "the chosen subsidiary is active in NetSuite: passed (2: Harbor Canada)",
+        "each request equals the original plus exactly the chosen subsidiary: passed (1/1 requests through a recording double (nothing reached NetSuite))",
+        "without a configured subsidiary the request is the original: passed (1 requests compared)",
+        "pinned install unchanged; rollback target loads: passed (patched artifact f5d02d76d2daf40f built beside pinned:d01b51d95993)"
+      ]
+    },
+    {
+      "n": "8",
+      "text": "Investigation names the adopted code that builds the body: src/adapters/netsuite.js:18",
+      "ms": 2147
+    },
+    {
+      "n": "9",
+      "text": "Operator activated the patch; held order released and verified: {\"affected\":1,\"delivered\":1,\"unresolved\":0,\"duplicates\":0}",
+      "ms": 3414
+    },
+    {
+      "n": "10",
+      "text": "#T-mwvviw1r-1 is in NetSuite once, subsidiary 2, rate 7.25; #T-mwvviw1r-0 (written before the change) untouched",
+      "ms": 3417
+    },
+    {
+      "n": "11",
+      "text": "A new order (#T-mwvviw1r-2) flows straight through with the chosen subsidiary",
+      "ms": 3731
+    },
+    {
+      "n": "12",
+      "text": "Customer timeline (no internals):",
+      "ms": 3731,
+      "data": [
+        "NetSuite now requires a subsidiary on every sales order. Your orders are held safely until it is set; nothing is lost.",
+        "NetSuite now needs to know which subsidiary your Shopify orders belong to. Choose one and we will do the rest; your orders are held safely meanwhile.",
+        "You chose Harbor Canada. We are checking it and preparing the change before switching it on.",
+        "We prepared and tested the change with your held orders. An engineer is reviewing it before we switch it on.",
+        "We switched the change on. Orders that were held are being delivered now.",
+        "NetSuite accepts your orders again. All 1 order(s) that waited are in NetSuite exactly once, in Harbor Canada, with Shopify's prices. Nothing was lost."
+      ]
+    },
+    {
+      "n": "13",
+      "text": "Another company is refused: decide NOT_FOUND, read NOT_FOUND",
+      "ms": 3815
+    },
+    {
+      "n": "14",
+      "text": "Rollback drill: the pinned adapter runs again (running: decision:subsidiaryId, configuration:subsidiaryId); the event's evidence stays",
+      "ms": 3826
+    }
+  ]
+}

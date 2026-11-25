@@ -19,10 +19,12 @@ const Correction = s.object({
   history: s.array(s.object({ at: s.number(), from: s.string(), to: s.string(), by: s.string(), note: s.optional(s.string()) })),
 });
 
+const CONFIGURATION_KEYS = ["defaultCustomer", "customerByEmail", "subsidiaryId", "accountMap"];
+
 export const inspect = app.query({
   access: "mi.read.evidence",
   args: { integrationId: s.string() },
-  returns: s.object({ upstream: s.object({ repository: s.string(), commit: s.string(), license: s.string() }), running: s.array(s.string()), corrections: s.array(Correction) }),
+  returns: s.object({ upstream: s.object({ repository: s.string(), commit: s.string(), license: s.string() }), running: s.array(s.string()), configuration: s.record(s.unknown()), corrections: s.array(Correction) }),
   capability: { name: "adaptations.inspect", description: "The adopted code an integration runs and every correction applied to it." },
   handler: async (ctx, { integrationId }) => {
     const i = await ctx.db.get(integrations, integrationId);
@@ -30,7 +32,9 @@ export const inspect = app.query({
     const all = await ctx.db.find(corrections, { integrationId });
     return {
       upstream: { ...i.upstream, license: i.kind === "ledgerly" ? LEDGERLY.license : ADOPTED.order_sync.license },
-      running: all.filter((c) => c.status === "active").map((c) => `${c.kind}:${String(c.spec.adapter ?? c.spec.patch ?? c.id)}`),
+      // The configuration in effect (non-secret keys only: sealed values never leave the runtime).
+      configuration: Object.fromEntries(Object.entries(i.settings).filter(([k]) => CONFIGURATION_KEYS.includes(k))),
+      running: all.filter((c) => c.status === "active").map((c) => `${c.kind}:${String(c.spec.adapter ?? c.spec.patch ?? c.spec.setting ?? c.id)}`),
       corrections: all.map((c) => ({
         id: c.id, kind: c.kind, status: c.status, spec: c.spec, history: c.history,
         ...(c.eventId ? { eventId: c.eventId } : {}),
@@ -61,6 +65,11 @@ export const rollback = app.mutation({
     const c = await ctx.db.get(corrections, correctionId);
     if (!c) fail("NOT_FOUND", "No such correction.");
     if (c.status !== "active") fail("FAILED_PRECONDITION", "Only an active correction can be rolled back.");
+    // A configuration restores exactly the settings it replaced; the event's evidence stays.
+    if (c.kind === "configuration" && c.spec.settingsBefore) {
+      const i = await ctx.db.get(integrations, c.integrationId);
+      if (i) await ctx.db.patch(integrations, i.id, { settings: { ...i.settings, ...(c.spec.settingsBefore as Record<string, unknown>) } });
+    }
     await ctx.db.patch(corrections, c.id, { status: "rolled_back", history: [...c.history, { at: Date.now(), from: "active", to: "rolled_back", by: ctx.auth.requirePrincipal().id, note: reason }] });
     return { status: "rolled_back" };
   },
@@ -75,6 +84,7 @@ export const reject = app.mutation({
     const c = await ctx.db.get(corrections, correctionId);
     if (!c) fail("NOT_FOUND", "No such correction.");
     if (c.status !== "proposed" && c.status !== "validated") fail("FAILED_PRECONDITION", "Only a proposed or validated correction can be rejected.");
+    if (c.kind === "decision") fail("FAILED_PRECONDITION", "A decision is the customer's to answer; it cannot be rejected by staff.");
     await ctx.db.patch(corrections, c.id, { status: "rejected", history: [...c.history, { at: Date.now(), from: c.status, to: "rejected", by: ctx.auth.requirePrincipal().id, note: reason }] });
     return { status: "rejected" };
   },

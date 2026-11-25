@@ -60,5 +60,18 @@ export async function readSalesOrder(cred: NetSuiteCredential, token: string, ex
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`NetSuite read ${res.status}`);
-  return (await res.json()) as { id: string; item?: { items: { item: { id: string }; quantity: number; rate: number }[] } };
+  return (await res.json()) as { id: string; subsidiary?: { id: string } | null; item?: { items: { item: { id: string }; quantity: number; rate: number }[] } };
 }
+
+/** A read-only SuiteQL query (look-ups for maintenance: subsidiaries, the customer's own records). */
+export async function suiteql<T>(cred: NetSuiteCredential, token: string, q: string): Promise<T[]> {
+  const res = await fetch(`${cred.accountDomain}/services/rest/query/v1/suiteql`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}`, "content-type": "application/json", prefer: "transient" },
+    body: JSON.stringify({ q }),
+  });
+  if (!res.ok) throw new Error(`NetSuite SuiteQL ${res.status}`);
+  return ((await res.json()) as { items: T[] }).items;
+}
+
+export const ACTIVE_SUBSIDIARIES = "SELECT id, name FROM subsidiary WHERE isinactive = 'F' ORDER BY id";

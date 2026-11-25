@@ -16,7 +16,7 @@ pkill -f "packages/test-fixtures/src/cli.ts" 2>/dev/null || true
 sleep 1
 rm -rf "$B_DIR/.feltkit/development"
 
-(cd "$REPO" && FIXTURE_SET=system-b FIXTURE_SHOPIFY_PORT=5010 FIXTURE_SHOPIFY2_PORT=5011 FIXTURE_SHOPIFY3_PORT=5012 \
+(cd "$REPO" && FIXTURE_SET=system-b FIXTURE_SHOPIFY_PORT=5010 FIXTURE_SHOPIFY2_PORT=5011 FIXTURE_SHOPIFY3_PORT=5012 FIXTURE_SHOPIFY4_PORT=5013 FIXTURE_SHOPIFY5_PORT=5014 \
   FIXTURE_NETSUITE_PORT=5020 FIXTURE_STRIPE_PORT=5030 FIXTURE_QBO_PORT=5040 \
   nohup pnpm exec tsx packages/test-fixtures/src/cli.ts > "$LOGS/fixtures.log" 2>&1 &)
 

@@ -5,17 +5,25 @@
  */
 export {};
 process.env.MI_ARTIFACTS_FROM_SOURCE = "1";
+// Start from an empty cache: a running app's cache holds bundles unpacked from the prebuilt file, without the
+// source trees this script reads (it re-unpacks them on demand). Same path as before, so bundles are byte-stable.
+if (!process.env.MI_ARTIFACT_DIR) {
+  const { rmSync } = await import("node:fs");
+  rmSync((await import("node:path")).join(process.cwd(), ".feltkit", "artifacts"), { recursive: true, force: true });
+}
 const { readFileSync, writeFileSync, existsSync } = await import("node:fs");
 const { join } = await import("node:path");
 const { materialize, artifactKey } = await import("../runtime/artifacts.ts");
 const { PATCHES, artifactSpec: ledgerlySpec } = await import("../runtime/ledgerly.ts");
 const { APP_PATCHES, stripeAppSpec, qbToolsSpec } = await import("../runtime/apps.ts");
+const { ORDER_SYNC_PATCHES, orderSyncSpec } = await import("../runtime/order-sync.ts");
 
 const variants = [
   { spec: ledgerlySpec([]), cite: ["src/server/dispatchers/qbo.ts"] },
   ...Object.keys(PATCHES).map((id) => ({ spec: ledgerlySpec([id]), cite: ["src/server/dispatchers/qbo.ts"] })),
   { spec: stripeAppSpec([]), cite: ["src/webhooks/stripeEventProcessor.ts"] },
   ...Object.keys(APP_PATCHES).map((id) => ({ spec: stripeAppSpec([id]), cite: ["src/webhooks/stripeEventProcessor.ts"] })),
+  ...Object.keys(ORDER_SYNC_PATCHES).map((id) => ({ spec: orderSyncSpec([id]), cite: [ORDER_SYNC_PATCHES[id]!.file] })),
   { spec: qbToolsSpec("2.0.48"), cite: [] },
   { spec: qbToolsSpec("2.0.50"), cite: [] },
 ];
