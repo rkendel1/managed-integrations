@@ -13,6 +13,7 @@ import type * as native_module from "../native.js";
 import type * as onboarding_module from "../onboarding.js";
 import type * as reconcile_module from "../reconcile.js";
 import type * as runtime_module from "../runtime.js";
+import type * as target_module from "../target.js";
 
 /** Typed references to every query and mutation. Type-only imports: no backend code reaches the browser. */
-export const api = createApi<{ "app": typeof app_module; "apps": typeof apps_module; "connections": typeof connections_module; "corrections": typeof corrections_module; "deliveries": typeof deliveries_module; "integrations": typeof integrations_module; "ledgerly": typeof ledgerly_module; "maintenance": typeof maintenance_module; "native": typeof native_module; "onboarding": typeof onboarding_module; "reconcile": typeof reconcile_module; "runtime": typeof runtime_module }>();
+export const api = createApi<{ "app": typeof app_module; "apps": typeof apps_module; "connections": typeof connections_module; "corrections": typeof corrections_module; "deliveries": typeof deliveries_module; "integrations": typeof integrations_module; "ledgerly": typeof ledgerly_module; "maintenance": typeof maintenance_module; "native": typeof native_module; "onboarding": typeof onboarding_module; "reconcile": typeof reconcile_module; "runtime": typeof runtime_module; "target": typeof target_module }>();

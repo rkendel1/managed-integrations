@@ -17,6 +17,7 @@ import { APP_PATCHES, STRIPE_APP, createInvoice, differences, processWith, strip
 import { processAndVerify } from "./apps-runtime.ts";
 import { createServer } from "node:http";
 import { repair, SUITE_SHA256 } from "./native.ts";
+import { targetStep } from "./target.ts";
 
 const ALL_PATCHES = { ...PATCHES, ...APP_PATCHES };
 
@@ -100,6 +101,9 @@ export function handlers(get: () => Runtime): Record<string, Handler> {
         const c = await rt.call(ws, "maintenance:eventContext", { eventId });
         const phase: string = c.event.phase;
         const missing: string[] = (c.event.finding.missing as string[] | undefined) ?? [];
+        const t = await targetStep(rt, ws, c, eventId);
+        if (t === "continue") continue;
+        if (t !== "generic") return t;
 
         if (phase === "investigate") {
           const location = [...new Set(missing.flatMap(locate))];

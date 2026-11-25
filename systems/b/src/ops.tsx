@@ -58,16 +58,17 @@ export function OpsIntegration({ id, go }: { id: string; go: Go }) {
       {msg && <p role="status">{msg}</p>}
       <Card title="Adopted code" testId="adopted-code">
         {x && <p>{x.upstream.repository} @ <code>{x.upstream.commit.slice(0, 12)}</code> ({x.upstream.license}) · running: {x.running.length ? x.running.join(", ") : "as pinned"}</p>}
+        {x && Object.keys(x.configuration).length > 0 && <p className="muted" data-testid="configuration">Configuration in effect: {Object.entries(x.configuration).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : String(v)}`).join(" · ")}</p>}
       </Card>
       <Card title="Corrections" testId="corrections">
         {!x?.corrections.length ? <p className="muted">None.</p> : x.corrections.map((c) => (
           <div key={c.id} className="correction" data-testid={`correction-${c.kind}`}>
-            <p><strong>{c.kind}</strong> {String(c.spec.adapter ?? c.spec.patch ?? c.spec.dependency ?? "")} — <em>{c.status}</em></p>
+            <p><strong>{c.kind}</strong> {String(c.spec.adapter ?? c.spec.patch ?? c.spec.dependency ?? c.spec.setting ?? "")}{c.kind === "configuration" ? ` ${String(c.spec.from ?? "none")} → ${String(c.spec.to)} (${String(c.spec.label ?? "")})` : ""} — <em>{c.status}</em>{c.kind === "decision" ? " (the customer's to answer)" : ""}</p>
             <p className="muted">{c.history.map((h) => h.to).join(" → ")}</p>
             {c.validation && <ul>{((c.validation as { checks: { name: string; result: string; detail: string }[] }).checks ?? []).map((k) => <li key={k.name}>{k.result === "passed" ? "✓" : "✗"} {k.name} — {k.detail}</li>)}</ul>}
             {c.postActivation && <p>After activation: {JSON.stringify(c.postActivation)}</p>}
             {c.status === "validated" && <button onClick={() => void act(() => activate({ correctionId: c.id, reason: "Reviewed in the operator view" }), "Activated")}>Activate</button>}
-            {(c.status === "proposed" || c.status === "validated") && <button onClick={() => void act(() => reject({ correctionId: c.id, reason: "Rejected in the operator view" }), "Rejected")}>Reject</button>}
+            {(c.status === "proposed" || c.status === "validated") && c.kind !== "decision" && <button onClick={() => void act(() => reject({ correctionId: c.id, reason: "Rejected in the operator view" }), "Rejected")}>Reject</button>}
             {c.status === "active" && <button onClick={() => void act(() => rollback({ correctionId: c.id, reason: "Rolled back in the operator view" }), "Rolled back")}>Roll back</button>}
           </div>
         ))}

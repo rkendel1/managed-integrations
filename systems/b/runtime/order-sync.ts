@@ -7,6 +7,8 @@
 import { toCanonicalOrder } from "shopify-sync/src/mapping.js";
 import { createNetSuiteAdapter } from "shopify-sync/src/adapters/netsuite.js";
 import { syncOrder } from "shopify-sync/src/sync.js";
+import { materialize, type Patch } from "./artifacts.ts";
+import oneWorld from "./patches/netsuite-oneworld-subsidiary.json" with { type: "json" };
 
 export const UPSTREAM = {
   repository: "github.com/Milo-ai-HQ/shopify-erp-order-sync",
@@ -63,15 +65,55 @@ export interface ExecutionResult {
   message?: string;
 }
 
+/**
+ * Reviewed patches to the adopted order sync (exact-text replacements of the pinned source; see artifacts.ts).
+ * Each says which provider requirement it addresses, so maintenance can find the patch for a refusal.
+ */
+export const ORDER_SYNC_PATCHES: Record<string, Patch & { addresses: { provider: string; contract: string; requiredField: string } }> = {
+  [oneWorld.id]: oneWorld,
+};
+
+const ENTRY = [
+  "export { toCanonicalOrder } from './src/mapping.js';",
+  "export { createNetSuiteAdapter } from './src/adapters/netsuite.js';",
+  "export { syncOrder } from './src/sync.js';",
+].join("\n");
+
+export interface OrderSyncModule {
+  toCanonicalOrder: typeof toCanonicalOrder;
+  createNetSuiteAdapter(o: { baseUrl: string; accessToken: string; subsidiaryId?: string }): unknown;
+  syncOrder(adapter: unknown, order: unknown): Promise<unknown>;
+}
+
+export const orderSyncSpec = (patchIds: string[]) => ({
+  pkg: "shopify-sync", entry: "mi-entry.js", entrySource: ENTRY,
+  patches: patchIds.map((id) => ORDER_SYNC_PATCHES[id]!).filter(Boolean),
+});
+
+/** The code that runs: the pinned install itself, or a patched artifact built beside it (never modifying it). */
+export async function orderSyncCode(patchIds: string[]): Promise<{ id: string; module: OrderSyncModule }> {
+  if (!patchIds.length) return { id: `pinned:${UPSTREAM.commit.slice(0, 12)}`, module: { toCanonicalOrder, createNetSuiteAdapter, syncOrder } };
+  const a = await materialize<OrderSyncModule>(orderSyncSpec(patchIds));
+  return { id: a.id, module: a.module };
+}
+
 export async function execute(
   payload: Payload,
-  settings: { defaultCustomer?: string; customerByEmail?: Record<string, string> },
+  settings: { defaultCustomer?: string; customerByEmail?: Record<string, string>; subsidiaryId?: string },
   netsuite: { baseUrl: string; accessToken: string },
-): Promise<ExecutionResult> {
-  const order = toCanonicalOrder(payload, {
+  patchIds: string[] = [],
+): Promise<ExecutionResult & { artifact: string }> {
+  const code = await orderSyncCode(patchIds);
+  const order = code.module.toCanonicalOrder(payload, {
     defaultCustomer: settings.defaultCustomer ?? "WEB",
     customerByEmail: settings.customerByEmail ?? {},
   });
-  const adapter = createNetSuiteAdapter(netsuite);
-  return (await syncOrder(adapter, order)) as ExecutionResult;
+  // The original adapter takes { baseUrl, accessToken } only; the subsidiary is passed only to patched code.
+  const adapter = code.module.createNetSuiteAdapter({ ...netsuite, ...(patchIds.length && settings.subsidiaryId ? { subsidiaryId: settings.subsidiaryId } : {}) });
+  return { ...((await code.module.syncOrder(adapter, order)) as ExecutionResult), artifact: code.id };
+}
+
+/** "Please enter value(s) for: Subsidiary" → "Subsidiary": a field the target now requires. */
+export function requiredFieldOf(message: string | undefined): string | null {
+  return /Please enter value\(s\) for: ([A-Za-z ]+)/.exec(message ?? "")?.[1]?.trim() ?? null;
 }

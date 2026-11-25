@@ -31,6 +31,17 @@ const shopify3 = createShopifyFixture({
 });
 await shopify3.app.listen({ port: shopify3Port, host });
 console.log(`[fixture] shopify  http://${host}:${shopify3Port} (northwind-goods.myshopify.com)`);
+// Harness-only (System B's target-change scenarios): two more separate shops, started only when their ports
+// are set, so a scenario's orders reach only the company it created.
+for (const [env, domain, first] of [
+  ['FIXTURE_SHOPIFY4_PORT', 'harbor-outfitters.myshopify.com', 7000000001n],
+  ['FIXTURE_SHOPIFY5_PORT', 'summit-tools.myshopify.com', 8000000001n],
+] as const) {
+  if (!process.env[env]) continue;
+  const shop = createShopifyFixture({ shopDomain: domain, firstOrderId: first });
+  await shop.app.listen({ port: Number(process.env[env]), host });
+  console.log(`[fixture] shopify  http://${host}:${process.env[env]} (${domain})`);
+}
 await netsuite.app.listen({ port: netsuitePort, host });
 console.log(`[fixture] shopify  http://${host}:${shopifyPort}`);
 console.log(`[fixture] netsuite http://${host}:${netsuitePort}`);

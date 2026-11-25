@@ -124,3 +124,28 @@ test("a customer whose integration is already managed is not asked to set up aga
   await expect(page.getByTestId("onboarding-order_sync")).not.toContainText("Connect shopify");
   await expect(page.getByTestId("onboarding-order_sync")).not.toContainText("Find my integration");
 });
+
+test("customer: a target change asks a business question only the customer can answer, and the answer is taken from the screen", async ({ page }) => {
+  const co = await adoptedCompany(api, "Harbor", FX.shopify4);
+  try {
+    await json(`${FX.netsuite}/__fixture/subsidiaries`, { method: "POST", body: { id: "2", name: "Harbor Canada" } });
+    await json(`${FX.netsuite}/__fixture/config`, { method: "POST", body: { oneWorld: true } });
+    await json(`${FX.shopify4}/__fixture/orders`, { method: "POST", body: { name: `#E-${run()}`, email: "buyer@harbor.test", lineItems: [{ sku: "SKU-BLUE", title: "Part", quantity: 1, unitPrice: "7.25" }] } });
+    const ev = await wait("the customer is asked", async () => {
+      const e = (await co.c.query(api.maintenance.list, { integrationId: co.integrationId })).find((x) => x.kind === "target_contract_change");
+      return e && (await co.c.query(api.maintenance.get, { eventId: e.id })).decision ? e : null;
+    });
+    await signIn(page, (await co.c.session()).account?.email as string, password("Harbor"));
+    await page.goto(`/app/events/${ev.id}`);
+    await expect(page.getByTestId("event-status")).toHaveText("Needs you");
+    const panel = page.getByTestId("decision");
+    await expect(panel).toContainText("Which one?");
+    await expect(panel.getByRole("button", { name: "Confirm" })).toBeDisabled();
+    await panel.getByLabel("Harbor Canada").check();
+    await panel.getByRole("button", { name: "Confirm" }).click();
+    await expect(page.getByTestId("event")).toContainText("You chose Harbor Canada");
+    await expect(page.getByTestId("decision")).toHaveCount(0);
+  } finally {
+    await json(`${FX.netsuite}/__fixture/config`, { method: "POST", body: { oneWorld: false } });
+  }
+});

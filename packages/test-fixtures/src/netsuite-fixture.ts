@@ -468,6 +468,13 @@ export function createNetSuiteFixture(opts: NetSuiteFixtureOptions = {}) {
     if (typeof b.oneWorld === 'boolean') state.oneWorld = b.oneWorld;
     return { oneWorld: state.oneWorld };
   });
+  /** Harness-only (System B's scenarios): the customer adds a subsidiary (OneWorld). */
+  app.post('/__fixture/subsidiaries', async (req) => {
+    const b = req.body as { id: string; name: string };
+    state.subsidiaries.add(b.id);
+    state.subsidiaryNames.set(b.id, b.name);
+    return { subsidiaries: [...state.subsidiaries] };
+  });
   app.post('/__fixture/mandatory-fields', async (req) => {
     control.setMandatoryBodyFields((req.body as { fields: string[] }).fields);
     return { ok: true };

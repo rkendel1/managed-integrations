@@ -6,6 +6,7 @@
 import { fail, s } from "@feltdb/feltkit";
 import type { MutationCtx } from "@feltdb/feltkit";
 import { app, appRequests, corrections, deliveries, events, integrations, receipts, reconItems, reconRuns, syncRuns } from "./app.js";
+import { blockingEvents, wakeOthers } from "./target.js";
 
 type Boundary = "source" | "target" | "provider" | "integration" | "combined";
 
@@ -64,6 +65,8 @@ const CustomerEvent = s.object({
   timeline: s.array(TimelineEntry),
   accounting: s.optional(s.object({ affected: s.integer(), delivered: s.integer(), unresolved: s.integer(), duplicates: s.integer() })),
   customerAction: s.boolean(),
+  /** A business question only the customer can answer, with options read from their own systems. */
+  decision: s.optional(s.object({ id: s.string(), question: s.string(), options: s.array(s.object({ id: s.string(), label: s.string() })) })),
   openedAt: s.number(),
   resolvedAt: s.optional(s.number()),
 });
@@ -79,6 +82,7 @@ export const get = app.query({
     if (!e) fail("NOT_FOUND", "No such event.");
     const pending = await ctx.db.find(corrections, { eventId, kind: "decision", status: "proposed" });
     const visible = e.timeline.filter((t) => t.customerVisible).map(({ at, status, text }) => ({ at, status, text }));
+    const ask = pending.find((p) => p.question?.authority === "customer");
     return {
       id: e.id,
       integrationId: e.integrationId,
@@ -87,6 +91,7 @@ export const get = app.query({
       timeline: visible,
       ...(e.accounting ? { accounting: e.accounting } : {}),
       customerAction: e.phase === "await_customer" || pending.some((p) => p.question?.authority === "customer"),
+      ...(ask ? { decision: { id: ask.id, question: ask.question!.text, options: ask.spec.options as { id: string; label: string }[] } } : {}),
       openedAt: e.openedAt,
       ...(e.resolvedAt ? { resolvedAt: e.resolvedAt } : {}),
     };
@@ -142,7 +147,18 @@ export const eventContext = app.query({
       ? (await ctx.db.find(syncRuns, { integrationId: e.integrationId })).filter((r) => r.startedAt >= e.openedAt).sort((a, b) => a.startedAt - b.startedAt)
           .map((r) => ({ id: r.id, status: r.status, canary: r.canary ?? null, startedAt: r.startedAt, records: r.records, engineVersion: r.engineVersion }))
       : [];
+    const activeAll = await ctx.db.find(corrections, { integrationId: e.integrationId, status: "active" });
+    const heldAll = [];
+    for (const d of all.filter((x) => x.status === "held")) {
+      const r = await ctx.db.get(receipts, d.receiptId);
+      if (r) heldAll.push({ deliveryId: d.id, sourceId: d.sourceId, reference: d.reference, heldBy: d.heldBy ?? null, sealed: r.sealed, apiVersion: r.apiVersion ?? null });
+    }
     return {
+      blocking: await blockingEvents(ctx, e.integrationId, e.id),
+      heldAll,
+      activeAdapters: activeAll.filter((x) => x.kind === "adapter").map((x) => ({ id: x.id, adapter: String(x.spec.adapter), appliesTo: (x.spec.appliesTo as string[] | undefined) ?? [] })),
+      released: (((e.finding ?? {}).released as string[] | undefined) ?? []).map((id) => all.find((d) => d.id === id)).filter(Boolean).map((d) => ({ id: d!.id, sourceId: d!.sourceId, reference: d!.reference, status: d!.status, heldBy: d!.heldBy ?? null })),
+      deliveredBefore: all.filter((d) => d.status === "delivered" && !d.heldBy && d.attempts.some((x) => x.outcome === "delivered" && x.at < e.openedAt)).map((d) => ({ sourceId: d.sourceId, reference: d.reference })),
       nativeRuns,
       integrationSettings: integ?.settings ?? {},
       heldRequests: heldRequests.map((r) => ({ requestId: r.requestId, status: r.status, result: r.result ?? null })),
@@ -150,7 +166,7 @@ export const eventContext = app.query({
       lastDeliveredReceipt: lastReceipt ? lastReceipt.sealed : null,
       deliveredAttemptsSince: all.flatMap((d) => d.attempts.filter((a) => a.outcome === "delivered" && a.at >= e.openedAt).map((a) => ({ deliveryId: d.id, at: a.at, correction: a.correction ?? null, detail: a.detail ?? null }))),
       event: { id: e.id, kind: e.kind, integrationId: e.integrationId, status: e.status, phase: e.phase ?? "investigate", finding: e.finding ?? {}, openedAt: e.openedAt, reconRunId: e.reconRunId ?? null },
-      corrections: fixes.map((c) => ({ id: c.id, kind: c.kind, status: c.status, spec: c.spec, validation: c.validation ?? null })),
+      corrections: fixes.map((c) => ({ id: c.id, kind: c.kind, status: c.status, spec: c.spec, validation: c.validation ?? null, answer: c.answer ?? null })),
       affected: affected.map((d) => ({ id: d.id, sourceId: d.sourceId, reference: d.reference, status: d.status, destinationRef: d.destinationRef ?? null })),
       receipts: sealed,
     };
@@ -233,8 +249,19 @@ export async function activateCorrection(ctx: MutationCtx, correctionId: string,
   const now = Date.now();
   await ctx.db.patch(corrections, c.id, { status: "active", history: [...c.history, { at: now, from: c.status, to: "active", by }] });
   if (c.eventId && c.kind === "patch") {
-    // A patch changes what the adopted code sends; it is verified on the next real request.
     const e = await ctx.db.get(events, c.eventId);
+    if (e?.kind === "target_contract_change") {
+      // The held orders are released by the driver once the whole path is corrected, then verified.
+      await ctx.db.patch(events, e.id, {
+        status: "recovery",
+        phase: "release",
+        timeline: [...e.timeline, note(`Patch ${c.id} activated by ${by}`, false, "recovery"), note("We switched the change on. Orders that were held are being delivered now.", true, "recovery")],
+      });
+      ctx.afterCommit.work("runtime", "maintain", { eventId: e.id }, { maxAttempts: 100 });
+      await wakeOthers(ctx, c.integrationId, e.id);
+      return;
+    }
+    // A patch changes what the adopted code sends; it is verified on the next real request.
     if (e) {
       await ctx.db.patch(events, e.id, {
         status: "verification",
@@ -247,6 +274,17 @@ export async function activateCorrection(ctx: MutationCtx, correctionId: string,
   }
   if (c.eventId) {
     const e = await ctx.db.get(events, c.eventId);
+    const blocking = e ? await blockingEvents(ctx, c.integrationId, e.id) : [];
+    if (e && blocking.length) {
+      // Whole path or nothing: another change of this integration still awaits its correction.
+      await ctx.db.patch(events, e.id, {
+        status: "recovery",
+        phase: "await_release",
+        timeline: [...e.timeline, note(`Correction ${c.id} activated by ${by}; held orders wait for the other open change (${blocking.map((b) => b.kind).join(", ")}) to be corrected too`, false, "recovery")],
+      });
+      await wakeOthers(ctx, c.integrationId, e.id);
+      return;
+    }
     if (e) {
       let released = 0;
       for (const d of await ctx.db.find(deliveries, { integrationId: c.integrationId, status: "held" })) {
@@ -344,7 +382,11 @@ export const recordAccounting = app.mutation({
           : note(`${a.unresolved} order(s) still need attention; our team has it.`, true, "requires_action"),
       ],
     });
-    if (ok) await ctx.db.patch(integrations, e.integrationId, { status: "verified" });
+    if (ok) {
+      const stillOpen = (await ctx.db.find(events, { integrationId: e.integrationId })).some((x) => x.id !== e.id && x.status !== "resolved");
+      await ctx.db.patch(integrations, e.integrationId, { status: stillOpen ? "maintaining" : "verified" });
+      await wakeOthers(ctx, e.integrationId, e.id);
+    }
   },
 });
 

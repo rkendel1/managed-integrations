@@ -475,6 +475,19 @@ export function createQuickBooksFixture(opts: QuickBooksFixtureOptions = {}) {
     control.expireAccessTokens();
     return { ok: true };
   });
+  /** Harness-only (System B's scenarios): the customer reorganizes their chart of accounts. */
+  app.post('/__fixture/accounts', async (req) => {
+    const b = req.body as { name: string; type: string };
+    return { id: control.addAccount(b.name, b.type) };
+  });
+  app.post('/__fixture/accounts/deactivate', async (req) => {
+    control.deactivateAccount((req.body as { id: string }).id);
+    return { inactive: [...state.inactive] };
+  });
+  app.post('/__fixture/accounts/activate', async (req) => {
+    state.inactive.delete((req.body as { id: string }).id);
+    return { inactive: [...state.inactive] };
+  });
   app.get('/__fixture/state', async () => ({
     realmId,
     journalEntries: [...state.journalEntries.values()],

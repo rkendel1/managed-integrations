@@ -88,3 +88,12 @@ export async function accountMapByName(g: QboGrant, ledgerlyAccounts: Record<str
   }
   return { map, missing };
 }
+
+export interface QboAccount { Id: string; Name: string; Active?: boolean; AccountType?: string }
+
+/** The customer's whole chart of accounts, inactive accounts included (Intuit lists those only when asked). */
+export async function listAccounts(g: QboGrant): Promise<QboAccount[]> {
+  const r = await query<{ QueryResponse?: { Account?: QboAccount[] } }>(g, "select * from Account where Active in (true, false)");
+  if (r.status !== 200) throw new Error(`QuickBooks account query ${r.status}`);
+  return r.body.QueryResponse?.Account ?? [];
+}

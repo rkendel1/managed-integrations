@@ -2,13 +2,52 @@
 
 > Your application stays connected. We keep the integrations working.
 
-A managed service that takes operational responsibility for one data flow — **Shopify orders → NetSuite
-sales orders** — and keeps it correct, complete, current and recoverable. Customers buy the reliability
-outcome; the engine, workers, reliability system and maintenance agent are internal delivery mechanisms.
+A managed service that takes operational responsibility for customers' integrations — adopted open-source
+integration code (Shopify → NetSuite order sync, Stripe → QuickBooks bookkeeping, provider-dependent
+applications) — and keeps them correct, complete, current and recoverable when the source, the target, the
+provider or the code changes. Customers buy the reliability outcome; the runtime, the maintenance driver and
+the repair agent are internal delivery mechanisms.
 
-**Status:** first vertical slice built and verified against **deterministic provider fixtures**. It has
-**not** been run against real Shopify or NetSuite accounts (no credentials were available) — see
-[`docs/evidence/KNOWN-LIMITATIONS.md`](docs/evidence/KNOWN-LIMITATIONS.md) and
+## The application: [`systems/b`](systems/b) (FeltKit)
+
+**The primary application is System B**, built on FeltKit (FeltDB, AppPort, AppPort Services). It is the code
+to run, change and extend. Start with [`systems/b/README.md`](systems/b/README.md).
+
+```bash
+make app-install
+```
+
+```bash
+make app-test        # function and unit tests (a fresh FeltDB per test; no servers)
+```
+
+```bash
+make app-scenarios   # reset, then all ten shared scenarios S1–S10 against the provider simulators
+```
+
+```bash
+make app-dev         # run it: http://127.0.0.1:3100 (simulators on ports 50xx)
+```
+
+`make app-e2e` runs the browser journeys; `make app-check` the typecheck, the prebuilt-artifact check and
+FeltKit's code classification. Requirements: Node ≥ 22.12 with npm, pnpm 10 (for the shared simulators), openssl.
+
+**Status:** every shared scenario passes on B, including the target-side and combined changes; parity with
+System A, and what is still not at parity, is in [`docs/experiment/PARITY.md`](docs/experiment/PARITY.md).
+Everything runs against **deterministic provider simulators**, never real Shopify, NetSuite, Stripe or
+QuickBooks accounts.
+
+## The reference implementation: System A (PostgreSQL, Docker)
+
+Everything below this line describes **System A**, the original implementation (Fastify, pg-boss,
+Drizzle/PostgreSQL, React, its own Docker stack) in `apps/` and `packages/`. It is kept **only as a
+reference**: the control in the comparison ([`docs/experiment/REPORT.md`](docs/experiment/REPORT.md)), the
+record of behaviour B was built to match, and the source of the shared provider simulators
+(`packages/test-fixtures`, which B also uses). New work goes into `systems/b`. A is not deleted because its
+deeper test suite and its demos remain the most detailed specification of the behaviour.
+
+A's own status: first vertical slice built and verified against deterministic provider fixtures, never real
+accounts — see [`docs/evidence/KNOWN-LIMITATIONS.md`](docs/evidence/KNOWN-LIMITATIONS.md) and
 [`docs/evidence/ACCEPTANCE.md`](docs/evidence/ACCEPTANCE.md).
 
 **SLICE 1 (AppPort-native foundation):** the application is now an AppPort application

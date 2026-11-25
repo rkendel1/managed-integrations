@@ -163,6 +163,8 @@ export const recordAttempt = app.mutation({
     correction: s.optional(s.string()),
     violations: s.optional(s.array(s.string())),
     apiVersion: s.optional(s.string()),
+    /** Held because the target now refuses what the adopted code sends (a target-side change). */
+    target: s.optional(s.object({ provider: s.enum(["netsuite", "quickbooks"]), contract: s.string(), finding: s.record(s.unknown()), customerText: s.string() })),
     by: s.string(),
   },
   returns: s.object({ status: s.string(), automaticAttempts: s.integer(), retry: s.boolean() }),
@@ -187,7 +189,16 @@ export const recordAttempt = app.mutation({
         customerAction: true,
       });
     }
-    if (a.outcome === "held") {
+    if (a.outcome === "held" && a.target) {
+      heldBy = await openOrJoinEvent(ctx, {
+        integrationId: d.integrationId,
+        kind: "target_contract_change",
+        boundary: "target",
+        dedupeKey: `${d.integrationId}:target:${a.target.provider}:${a.target.contract}`,
+        finding: { provider: a.target.provider, contract: a.target.contract, ...a.target.finding, firstTransaction: d.reference, detectedAt: now },
+        customerText: a.target.customerText,
+      });
+    } else if (a.outcome === "held") {
       heldBy = await openOrJoinEvent(ctx, {
         integrationId: d.integrationId,
         kind: "input_contract_changed",

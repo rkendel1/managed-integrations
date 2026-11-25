@@ -910,6 +910,13 @@ export function createStripeFixture(opts: StripeFixtureOptions = {}) {
     state.endpoints.push(ep);
     return { ...ep, object: 'webhook_endpoint' };
   });
+  // Stripe: DELETE /v1/webhook_endpoints/{id} (harness use: a scenario removes the endpoint it created).
+  app.delete('/v1/webhook_endpoints/:id', async (req, reply) => {
+    const i = state.endpoints.findIndex((e) => e.id === (req.params as { id: string }).id);
+    if (i < 0) return err(reply, 404, 'invalid_request_error', 'No such webhook endpoint.', 'resource_missing');
+    const [ep] = state.endpoints.splice(i, 1);
+    return { id: ep!.id, object: 'webhook_endpoint', deleted: true };
+  });
   app.get('/v1/webhook_endpoints', async () => ({
     object: 'list',
     data: state.endpoints.map(({ secret: _s, ...e }) => ({ ...e, object: 'webhook_endpoint' })),
